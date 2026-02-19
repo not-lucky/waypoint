@@ -1,0 +1,74 @@
+gateway:
+  port: 20128
+  global_retry_limit: 3
+  cooldown:
+    base_seconds: 30       # Base cooldown for rate-limit exponential backoff
+    max_seconds: 3600      # Cap for exponential backoff cooldowns (1 hour)
+  max_payload_size: "10mb"
+  routing:
+    # Supported strategies:
+    # - "round-robin": Sequential key rotation per request. Distributes load evenly
+    #   across all active keys. Best general-purpose default.
+    # - "fill-first": Exhausts primary key quota entirely before rotating to the next.
+    #   Best when prompt cache locality matters more than RPM distribution.
+    strategy: "round-robin"
+  cors:
+    allowed_origins: ["*"]
+
+logging:
+  enable_console: true
+  enable_file: true
+  file_path: "./logs/Waypoint.log"
+  format: "json" # Supported: "json" | "text"
+
+clients:
+  - name: "open-webui"
+    token: "${OPEN_WEBUI_TOKEN}"
+    rate_limit:
+      window_ms: 60000
+      max: 100
+  - name: "codex-agent"
+    token: "${CODEX_AGENT_TOKEN}"
+    rate_limit:
+      window_ms: 60000
+      max: 30
+
+# Reserved provider names: gemini, anthropic, openai
+# These use official SDKs and do NOT require a base_url.
+# Custom providers MUST specify a base_url.
+providers:
+  gemini:
+    keys:
+      - "${GEMINI_API_KEY_1}"
+      - "${GEMINI_API_KEY_2}"
+    models:
+      - id: "gemini-2.5-pro"
+        aliases: ["gemini-pro", "pro"]
+        actual_model_id: "gemini-2.5-pro-preview-05-06"
+        thinking_supported: true
+        default_thinking_budget: 2048
+        fallback_model: "openai/gpt-4o"
+      - id: "gemini-2.0-flash"
+        aliases: ["flash"]
+        actual_model_id: "gemini-2.0-flash"
+        thinking_supported: false
+
+  anthropic:
+    keys:
+      - "${ANTHROPIC_API_KEY_1}"
+    models:
+      - id: "claude-sonnet-4"
+        aliases: ["sonnet"]
+        actual_model_id: "claude-sonnet-4-20250514"
+        thinking_supported: true
+        default_thinking_budget: 4096
+        fallback_model: "gemini/gemini-2.5-pro"
+
+  openai:
+    keys:
+      - "${OPENAI_API_KEY_1}"
+    models:
+      - id: "gpt-4o"
+        aliases: ["gpt4"]
+        actual_model_id: "gpt-4o"
+        thinking_supported: false

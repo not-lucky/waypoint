@@ -1,10 +1,9 @@
 import express from 'express';
-import { ConfigLoader, validateConfig } from './config/loader.js';
+import { ConfigLoader } from './config/loader.js';
 
-// Load and validate configuration
+// Load configuration
 const configLoader = new ConfigLoader();
 const config = configLoader.loadConfig();
-validateConfig(config);
 
 const app = express();
 const port = config.gateway.port;

@@ -578,6 +578,70 @@ providers:
         // but fs.watch triggers it naturally on Linux when unlinked.
       });
     });
+
+    it('should safely handle non-string (e.g. numeric) env variables without throwing trim TypeErrors', () => {
+      // Stub process.env to return a number for our placeholder
+      process.env.GATEWAY_PORT = 30005;
+
+      writeTempConfig(`
+gateway:
+  port: "\${GATEWAY_PORT}"
+  routing:
+    strategy: "round-robin"
+providers:
+  gemini:
+    keys:
+      - "key-1"
+    models:
+      - id: "gemini-2.5-pro"
+        actual_model_id: "gemini-2.5-pro"
+`);
+
+      expect(() => {
+        configLoader.loadConfig(tempConfigPath);
+      }).not.toThrow();
+
+      const config = configLoader.currentConfig;
+      expect(config.gateway.port).toBe(30005);
+    });
+
+    it('should stop watching and log warning after 5 failed watch attempts (infinite loop prevention)', () => {
+      vi.useFakeTimers();
+      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const fsWatchSpy = vi.spyOn(fs, 'watch').mockImplementation(() => {
+        throw new Error('Watch failed');
+      });
+
+      writeTempConfig(`
+gateway:
+  port: 20128
+  routing:
+    strategy: "round-robin"
+providers:
+  gemini:
+    keys:
+      - "key-1"
+    models:
+      - id: "gemini-2.5-pro"
+        actual_model_id: "gemini-2.5-pro"
+`);
+
+      configLoader.loadConfig(tempConfigPath);
+
+      // Fast forward time to trigger all 5 attempts
+      vi.runAllTimers();
+
+      expect(fsWatchSpy).toHaveBeenCalledTimes(5);
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Stopped watching configuration file after 5 failed attempts')
+      );
+      expect(configLoader.isWatching).toBe(false);
+
+      consoleWarnSpy.mockRestore();
+      fsWatchSpy.mockRestore();
+      vi.useRealTimers();
+    });
   });
 });
+
 

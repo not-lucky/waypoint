@@ -1,18 +1,38 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs';
 import path from 'path';
-import { loadConfig, resetConfig, onConfigChange } from '../src/config/loader.js';
+import { ConfigLoader } from '../src/config/loader.js';
 
 // Resolve the absolute path for a temporary configuration file used during tests.
 const tempConfigPath = path.resolve('test/temp_config.yaml');
 
 /**
  * Utility function to write string content to the temporary test configuration file.
+ * Automatically appends missing required structural fields like logging and clients.
  * 
  * @param {string} content - YAML content string.
  */
 function writeTempConfig(content) {
-  fs.writeFileSync(tempConfigPath, content, 'utf8');
+  let fullContent = content;
+  if (!content.includes('logging:')) {
+    fullContent += `
+logging:
+  enable_console: true
+  enable_file: false
+  format: "json"
+`;
+  }
+  if (!content.includes('clients:')) {
+    fullContent += `
+clients:
+  - name: "test-client"
+    token: "test-token"
+    rate_limit:
+      window_ms: 60000
+      max: 100
+`;
+  }
+  fs.writeFileSync(tempConfigPath, fullContent, 'utf8');
 }
 
 /**
@@ -30,10 +50,11 @@ function removeTempConfig() {
 
 describe('Configuration Loader Tests', () => {
   let originalEnv;
+  let configLoader;
 
   // Setup environment variable mock pool and reset loader state before each test.
   beforeEach(() => {
-    resetConfig();
+    configLoader = new ConfigLoader();
     originalEnv = { ...process.env };
     
     // Set standard mock environment variables for the gateway configuration.
@@ -48,14 +69,14 @@ describe('Configuration Loader Tests', () => {
   // Restore the original environment and cleanup files after each test.
   afterEach(() => {
     process.env = originalEnv;
-    resetConfig();
+    configLoader.resetConfig();
     removeTempConfig();
     vi.restoreAllMocks();
   });
 
   describe('Standard Config Loading', () => {
     it('should parse standard config.yaml and correctly interpolate env vars', () => {
-      const config = loadConfig('config/config.yaml');
+      const config = configLoader.loadConfig('config/config.yaml');
       
       // Verify that structural scalar configurations match.
       expect(config.gateway.port).toBe(20128);
@@ -90,7 +111,7 @@ describe('Configuration Loader Tests', () => {
 
       // Assertion: process should fail-fast and abort execution immediately.
       expect(() => {
-        loadConfig('config/config.yaml');
+        configLoader.loadConfig('config/config.yaml');
       }).toThrow('process.exit called');
 
       expect(exitSpy).toHaveBeenCalledWith(1);
@@ -108,7 +129,7 @@ describe('Configuration Loader Tests', () => {
       // Simulate a single missing Gemini key, keeping the second key active.
       delete process.env.GEMINI_API_KEY_1;
 
-      const config = loadConfig('config/config.yaml');
+      const config = configLoader.loadConfig('config/config.yaml');
 
       // Assertion: The missing key should be filtered out, leaving the remaining valid key.
       expect(config.providers.gemini.keys).not.toContain('gemini-key-1');
@@ -135,7 +156,7 @@ describe('Configuration Loader Tests', () => {
 
       // Assertion: Startup must fail since active keys are zero.
       expect(() => {
-        loadConfig('config/config.yaml');
+        configLoader.loadConfig('config/config.yaml');
       }).toThrow('process.exit called');
 
       expect(exitSpy).toHaveBeenCalledWith(1);
@@ -163,11 +184,14 @@ providers:
   my-ollama:
     keys:
       - "ollama-key"
+    models:
+      - id: "llama3"
+        actual_model_id: "llama3"
 `);
 
       // Assertion: Custom provider without base_url is a fatal error.
       expect(() => {
-        loadConfig(tempConfigPath);
+        configLoader.loadConfig(tempConfigPath);
       }).toThrow('process.exit called');
 
       expect(exitSpy).toHaveBeenCalledWith(1);
@@ -191,9 +215,12 @@ providers:
     base_url: "http://localhost:11434/v1"
     keys:
       - "ollama-key"
+    models:
+      - id: "llama3"
+        actual_model_id: "llama3"
 `);
 
-      const config = loadConfig(tempConfigPath);
+      const config = configLoader.loadConfig(tempConfigPath);
       
       // Assertion: Validation passes.
       expect(config.providers['my-ollama'].base_url).toBe('http://localhost:11434/v1');
@@ -211,13 +238,42 @@ providers:
   cohere:
     keys:
       - "cohere-key"
+    models:
+      - id: "cohere-model"
+        actual_model_id: "cohere-model"
 `);
 
       const customReserved = new Set(['cohere']);
-      const config = loadConfig(tempConfigPath, customReserved);
+      const config = configLoader.loadConfig(tempConfigPath, customReserved);
       
       // Assertion: Cohere did not crash validation despite not having a base_url because it was injected as reserved.
       expect(config.providers.cohere.keys).toContain('cohere-key');
+    });
+
+    it('should filter out literal empty string, null, or undefined keys in providers with a warning (BUG-2)', () => {
+      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      writeTempConfig(`
+gateway:
+  port: 20128
+  routing:
+    strategy: "round-robin"
+providers:
+  gemini:
+    keys:
+      - "key-1"
+      - ""
+      - null
+      - "key-2"
+    models:
+      - id: "gemini-2.5-pro"
+        actual_model_id: "gemini-2.5-pro"
+`);
+
+      const config = configLoader.loadConfig(tempConfigPath);
+      expect(config.providers.gemini.keys).toEqual(['key-1', 'key-2']);
+      expect(consoleWarnSpy).toHaveBeenCalledTimes(2);
+      consoleWarnSpy.mockRestore();
     });
   });
 
@@ -233,14 +289,17 @@ providers:
   gemini:
     keys:
       - "key-1"
+    models:
+      - id: "gemini-2.5-pro"
+        actual_model_id: "gemini-2.5-pro"
 `);
 
-        const config = loadConfig(tempConfigPath);
+        const config = configLoader.loadConfig(tempConfigPath);
         expect(config.providers.gemini.keys).toContain('key-1');
         expect(Object.isFrozen(config)).toBe(true);
 
         // Subscribe to configuration changes.
-        const unsubscribe = onConfigChange((newConfig, oldConfig) => {
+        const unsubscribe = configLoader.onConfigChange((newConfig, oldConfig) => {
           try {
             // Verify that the new config contains the updated value and is frozen.
             expect(newConfig.providers.gemini.keys).toContain('key-2');
@@ -272,6 +331,9 @@ providers:
   gemini:
     keys:
       - "key-2"
+    models:
+      - id: "gemini-2.5-pro"
+        actual_model_id: "gemini-2.5-pro"
 `);
       });
     });
@@ -287,13 +349,16 @@ providers:
   gemini:
     keys:
       - "key-1"
+    models:
+      - id: "gemini-2.5-pro"
+        actual_model_id: "gemini-2.5-pro"
 `);
 
-        const config = loadConfig(tempConfigPath);
+        const config = configLoader.loadConfig(tempConfigPath);
         const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
         // Subscribe to configuration changes.
-        const unsubscribe = onConfigChange((newConfig) => {
+        const unsubscribe = configLoader.onConfigChange((newConfig) => {
           try {
             // Assertion: Warning should be emitted when structural configuration (e.g. gateway port) is modified.
             expect(consoleWarnSpy).toHaveBeenCalledWith(
@@ -319,6 +384,9 @@ providers:
   gemini:
     keys:
       - "key-1"
+    models:
+      - id: "gemini-2.5-pro"
+        actual_model_id: "gemini-2.5-pro"
 `);
       });
     });
@@ -335,9 +403,12 @@ providers:
   gemini:
     keys:
       - "key-1"
+    models:
+      - id: "gemini-2.5-pro"
+        actual_model_id: "gemini-2.5-pro"
 `);
 
-        const config = loadConfig(tempConfigPath);
+        const config = configLoader.loadConfig(tempConfigPath);
         
         // Spy on process.exit and console.error
         const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
@@ -346,7 +417,7 @@ providers:
         const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
         // Setup a listener that shouldn't fire because the reload is invalid
-        const unsubscribe = onConfigChange(() => {
+        const unsubscribe = configLoader.onConfigChange(() => {
           unsubscribe();
           exitSpy.mockRestore();
           consoleErrorSpy.mockRestore();
@@ -362,6 +433,9 @@ gateway:
 providers:
   gemini:
     keys: []
+    models:
+      - id: "gemini-2.5-pro"
+        actual_model_id: "gemini-2.5-pro"
 `);
 
         // Wait a short time to verify process.exit is not called and the error is logged
@@ -385,4 +459,125 @@ providers:
       });
     });
   });
+
+  describe('Extended Loader Features', () => {
+    it('should coerce stringified environment variables for numeric fields into actual numbers', () => {
+      process.env.GATEWAY_PORT = '30001';
+      process.env.RATE_LIMIT_MAX = '50';
+      process.env.RATE_LIMIT_WINDOW = '30000';
+
+      writeTempConfig(`
+gateway:
+  port: "\${GATEWAY_PORT}"
+  routing:
+    strategy: "round-robin"
+logging:
+  enable_console: true
+  enable_file: false
+  format: "json"
+clients:
+  - name: "test-client"
+    token: "test-token"
+    rate_limit:
+      window_ms: "\${RATE_LIMIT_WINDOW}"
+      max: "\${RATE_LIMIT_MAX}"
+providers:
+  gemini:
+    keys:
+      - "gemini-key"
+    models:
+      - id: "gemini-2.5-pro"
+        actual_model_id: "gemini-2.5-pro"
+`);
+
+      const config = configLoader.loadConfig(tempConfigPath);
+
+      // Check type of coerced parameters
+      expect(typeof config.gateway.port).toBe('number');
+      expect(config.gateway.port).toBe(30001);
+
+      expect(typeof config.clients[0].rate_limit.max).toBe('number');
+      expect(config.clients[0].rate_limit.max).toBe(50);
+
+      expect(typeof config.clients[0].rate_limit.window_ms).toBe('number');
+      expect(config.clients[0].rate_limit.window_ms).toBe(30000);
+    });
+
+    it('should handle rename event (atomic save) by closing the old watcher and re-initializing the new watcher', () => {
+      return new Promise((resolve, reject) => {
+        writeTempConfig(`
+gateway:
+  port: 20128
+  routing:
+    strategy: "round-robin"
+providers:
+  gemini:
+    keys:
+      - "key-1"
+    models:
+      - id: "gemini-2.5-pro"
+        actual_model_id: "gemini-2.5-pro"
+`);
+
+        const config = configLoader.loadConfig(tempConfigPath);
+        expect(config.providers.gemini.keys).toContain('key-1');
+
+        let triggerCount = 0;
+        const unsubscribe = configLoader.onConfigChange((newConfig) => {
+          try {
+            triggerCount++;
+            if (triggerCount === 1) {
+              expect(newConfig.providers.gemini.keys).toContain('key-2');
+              
+              // Now trigger a second write (rename/atomic save style again) to verify the new watcher works!
+              if (fs.existsSync(tempConfigPath)) {
+                fs.unlinkSync(tempConfigPath);
+              }
+              writeTempConfig(`
+gateway:
+  port: 20128
+  routing:
+    strategy: "round-robin"
+providers:
+  gemini:
+    keys:
+      - "key-3"
+    models:
+      - id: "gemini-2.5-pro"
+        actual_model_id: "gemini-2.5-pro"
+`);
+            } else if (triggerCount === 2) {
+              expect(newConfig.providers.gemini.keys).toContain('key-3');
+              unsubscribe();
+              resolve();
+            }
+          } catch (err) {
+            unsubscribe();
+            reject(err);
+          }
+        });
+
+        // Simulate atomic save: unlink then write.
+        if (fs.existsSync(tempConfigPath)) {
+          fs.unlinkSync(tempConfigPath);
+        }
+        writeTempConfig(`
+gateway:
+  port: 20128
+  routing:
+    strategy: "round-robin"
+providers:
+  gemini:
+    keys:
+      - "key-2"
+    models:
+      - id: "gemini-2.5-pro"
+        actual_model_id: "gemini-2.5-pro"
+`);
+        // Manually dispatch rename event to watcher to speed up/simulate OS-level unlink watch trigger if needed,
+        // but fs.watch triggers it naturally on Linux when unlinked.
+      });
+    });
+  });
 });
+

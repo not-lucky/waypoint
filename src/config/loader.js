@@ -9,6 +9,43 @@ const RESERVED_PROVIDERS = new Set(['gemini', 'anthropic', 'openai']);
 // Export node's built-in deep compare as isDeepEqual.
 export { isDeepStrictEqual as isDeepEqual };
 
+const VAR_REGEX = /\$\{([A-Za-z0-9_]+)\}/g;
+
+/**
+ * Scans a string for environment variable placeholders and returns the name of
+ * the first one that is missing or empty in the environment.
+ * 
+ * @param {string} str - The string to check.
+ * @returns {string|null} The name of the missing env var, or null if all exist.
+ */
+function getMissingEnvVar(str) {
+  const matches = [...str.matchAll(VAR_REGEX)];
+  for (const match of matches) {
+    const varName = match[1];
+    const envVal = process.env[varName];
+    if (envVal === undefined || envVal === null) {
+      return varName;
+    }
+    const trimmed = typeof envVal === 'string' ? envVal.trim() : String(envVal).trim();
+    if (trimmed === '') {
+      return varName;
+    }
+  }
+  return null;
+}
+
+/**
+ * Coerces a specific property of an object to an integer if it's a string of digits.
+ * 
+ * @param {object} obj - The target object.
+ * @param {string} key - The property key.
+ */
+function coerceToInt(obj, key) {
+  if (obj && typeof obj[key] === 'string' && /^\d+$/.test(obj[key])) {
+    obj[key] = parseInt(obj[key], 10);
+  }
+}
+
 /**
  * Recursively deep-freezes an object to make it completely immutable.
  * Prevents runtime state corruption and request processing race conditions.
@@ -133,6 +170,35 @@ export function validateConfig(config, shouldExit = true, reservedProviders = RE
   if (typeof config.gateway.port !== 'number' || config.gateway.port <= 0 || !Number.isInteger(config.gateway.port)) {
     logErrorAndExitOrThrow("Invalid 'gateway.port'. Must be a positive integer.", shouldExit);
     return;
+  }
+
+  if (config.gateway.global_retry_limit !== undefined) {
+    const limit = config.gateway.global_retry_limit;
+    if (typeof limit !== 'number' || limit <= 0 || !Number.isInteger(limit)) {
+      logErrorAndExitOrThrow("Invalid 'gateway.global_retry_limit'. Must be a positive integer.", shouldExit);
+      return;
+    }
+  }
+
+  if (config.gateway.cooldown !== undefined) {
+    if (typeof config.gateway.cooldown !== 'object' || config.gateway.cooldown === null) {
+      logErrorAndExitOrThrow("Invalid 'gateway.cooldown'. Must be an object.", shouldExit);
+      return;
+    }
+    const base = config.gateway.cooldown.base_seconds;
+    if (base !== undefined) {
+      if (typeof base !== 'number' || base <= 0 || !Number.isInteger(base)) {
+        logErrorAndExitOrThrow("Invalid 'gateway.cooldown.base_seconds'. Must be a positive integer.", shouldExit);
+        return;
+      }
+    }
+    const max = config.gateway.cooldown.max_seconds;
+    if (max !== undefined) {
+      if (typeof max !== 'number' || max <= 0 || !Number.isInteger(max)) {
+        logErrorAndExitOrThrow("Invalid 'gateway.cooldown.max_seconds'. Must be a positive integer.", shouldExit);
+        return;
+      }
+    }
   }
 
   // Validate gateway.routing.strategy (SPEC-3)
@@ -289,6 +355,13 @@ export function validateConfig(config, shouldExit = true, reservedProviders = RE
           logErrorAndExitOrThrow(`Invalid 'fallback_model' reference '${model.fallback_model}' at index ${j} for provider '${providerName}': model ID or alias '${fallbackModel}' does not exist in provider '${fallbackProvider}'.`, shouldExit);
           return;
         }
+        if (fallbackProvider === providerName) {
+          const isSelf = fallbackModel === model.id || (Array.isArray(model.aliases) && model.aliases.includes(fallbackModel));
+          if (isSelf) {
+            logErrorAndExitOrThrow(`Invalid 'fallback_model' reference '${model.fallback_model}' at index ${j} for provider '${providerName}': model cannot fall back to itself.`, shouldExit);
+            return;
+          }
+        }
       }
     }
   }
@@ -405,31 +478,19 @@ export class ConfigLoader {
     if (!config) return;
 
     if (config.gateway) {
-      if (typeof config.gateway.port === 'string' && /^\d+$/.test(config.gateway.port)) {
-        config.gateway.port = parseInt(config.gateway.port, 10);
-      }
-      if (typeof config.gateway.global_retry_limit === 'string' && /^\d+$/.test(config.gateway.global_retry_limit)) {
-        config.gateway.global_retry_limit = parseInt(config.gateway.global_retry_limit, 10);
-      }
+      coerceToInt(config.gateway, 'port');
+      coerceToInt(config.gateway, 'global_retry_limit');
       if (config.gateway.cooldown) {
-        if (typeof config.gateway.cooldown.base_seconds === 'string' && /^\d+$/.test(config.gateway.cooldown.base_seconds)) {
-          config.gateway.cooldown.base_seconds = parseInt(config.gateway.cooldown.base_seconds, 10);
-        }
-        if (typeof config.gateway.cooldown.max_seconds === 'string' && /^\d+$/.test(config.gateway.cooldown.max_seconds)) {
-          config.gateway.cooldown.max_seconds = parseInt(config.gateway.cooldown.max_seconds, 10);
-        }
+        coerceToInt(config.gateway.cooldown, 'base_seconds');
+        coerceToInt(config.gateway.cooldown, 'max_seconds');
       }
     }
 
     if (Array.isArray(config.clients)) {
       for (const client of config.clients) {
         if (client && client.rate_limit) {
-          if (typeof client.rate_limit.window_ms === 'string' && /^\d+$/.test(client.rate_limit.window_ms)) {
-            client.rate_limit.window_ms = parseInt(client.rate_limit.window_ms, 10);
-          }
-          if (typeof client.rate_limit.max === 'string' && /^\d+$/.test(client.rate_limit.max)) {
-            client.rate_limit.max = parseInt(client.rate_limit.max, 10);
-          }
+          coerceToInt(client.rate_limit, 'window_ms');
+          coerceToInt(client.rate_limit, 'max');
         }
       }
     }
@@ -438,9 +499,7 @@ export class ConfigLoader {
       for (const providerConf of Object.values(config.providers)) {
         if (providerConf && Array.isArray(providerConf.models)) {
           for (const model of providerConf.models) {
-            if (model && typeof model.default_thinking_budget === 'string' && /^\d+$/.test(model.default_thinking_budget)) {
-              model.default_thinking_budget = parseInt(model.default_thinking_budget, 10);
-            }
+            coerceToInt(model, 'default_thinking_budget');
           }
         }
       }
@@ -467,35 +526,14 @@ export class ConfigLoader {
           }
 
           if (typeof item === 'string') {
-            const varRegex = /\$\{([A-Za-z0-9_]+)\}/g;
-            const matches = [...item.matchAll(varRegex)];
-
-            if (matches.length > 0) {
-              let hasMissing = false;
-              let missingVar = '';
-
-              // Validate all environment variables in the key token.
-              for (const match of matches) {
-                const varName = match[1];
-                const envVal = process.env[varName];
-                if (envVal === undefined || envVal === null || envVal.trim() === '') {
-                  hasMissing = true;
-                  missingVar = varName;
-                  break;
-                }
-              }
-
-              if (hasMissing) {
-                // Degraded mode: log warning, omit the key, but do not exit yet.
-                console.warn(`WARNING: Missing or empty environment variable ${missingVar} for key at path ${path.join('.')}[${i}]. Skipping key.`);
-              } else {
-                // Replace variable tokens with their corresponding environment values.
-                const interpolatedVal = item.replace(varRegex, (m, varName) => process.env[varName]);
-                activeKeys.push(interpolatedVal);
-              }
+            const missingVar = getMissingEnvVar(item);
+            if (missingVar) {
+              // Degraded mode: log warning, omit the key, but do not exit yet.
+              console.warn(`WARNING: Missing or empty environment variable ${missingVar} for key at path ${path.join('.')}[${i}]. Skipping key.`);
             } else {
-              // Key is a literal value (no interpolation needed).
-              activeKeys.push(item);
+              // Replace variable tokens with their corresponding environment values.
+              const interpolatedVal = item.replace(VAR_REGEX, (m, varName) => process.env[varName]);
+              activeKeys.push(interpolatedVal);
             }
           } else {
             activeKeys.push(String(item));
@@ -519,32 +557,12 @@ export class ConfigLoader {
 
     // If the node is a string, perform regex scanning for environment variable tokens.
     else if (typeof val === 'string') {
-      const varRegex = /\$\{([A-Za-z0-9_]+)\}/g;
-      const matches = [...val.matchAll(varRegex)];
-
-      if (matches.length > 0) {
-        let hasMissing = false;
-        let missingVar = '';
-
-        for (const match of matches) {
-          const varName = match[1];
-          const envVal = process.env[varName];
-          if (envVal === undefined || envVal === null || envVal.trim() === '') {
-            hasMissing = true;
-            missingVar = varName;
-            break;
-          }
-        }
-
-        if (hasMissing) {
-          // Structural or non-key config variable is missing: throw an error for the caller to handle.
-          throw new Error(`Missing or empty environment variable ${missingVar} at configuration path ${path.join('.')}`);
-        }
-
-        // Perform token substitution.
-        return val.replace(varRegex, (m, varName) => process.env[varName]);
+      const missingVar = getMissingEnvVar(val);
+      if (missingVar) {
+        // Structural or non-key config variable is missing: throw an error for the caller to handle.
+        throw new Error(`Missing or empty environment variable ${missingVar} at configuration path ${path.join('.')}`);
       }
-      return val;
+      return val.replace(VAR_REGEX, (m, varName) => process.env[varName]);
     }
 
     return val;
@@ -555,14 +573,13 @@ export class ConfigLoader {
    * Handles 'rename' event by closing the old watcher and re-initializing to address atomic saves.
    */
   startWatcher(configPath, reservedProviders = RESERVED_PROVIDERS) {
-    if (this.isWatching && !this.watcher) {
-      // Re-initializing
-    } else if (this.isWatching) {
+    if (this.isWatching) {
       return;
     }
     this.isWatching = true;
     this.currentConfigPath = configPath;
 
+    let retryCount = 0;
     const setupWatch = () => {
       if (this.watcher) {
         try {
@@ -587,7 +604,14 @@ export class ConfigLoader {
             this.handleConfigChange(configPath, reservedProviders);
           }
         });
+        retryCount = 0;
       } catch (err) {
+        retryCount++;
+        if (retryCount >= 5) {
+          console.warn(`WARNING: Stopped watching configuration file after 5 failed attempts.`);
+          this.stopWatcher();
+          return;
+        }
         // If file is temporarily missing or locked during rename, retry after a delay.
         setTimeout(setupWatch, 100);
       }

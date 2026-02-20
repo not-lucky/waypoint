@@ -319,10 +319,80 @@ describe('Configuration Validation Tests', () => {
       models: [{ id: 'gpt-4o', aliases: ['gpt4'], actual_model_id: 'gpt-4o-actual' }]
     };
     validConfig.providers.gemini.models[0].fallback_model = 'openai/gpt4';
-
     expect(() => {
       validateConfig(validConfig);
     }).not.toThrow();
+  });
+
+  it('should call process.exit(1) when global_retry_limit is not a positive integer', () => {
+    const invalidConfig = getBaseValidConfig();
+    invalidConfig.gateway.global_retry_limit = -5;
+
+    expect(() => {
+      validateConfig(invalidConfig);
+    }).toThrow('process.exit called');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("FATAL ERROR: Invalid 'gateway.global_retry_limit'. Must be a positive integer.")
+    );
+  });
+
+  it('should call process.exit(1) when base_seconds is not a positive integer', () => {
+    const invalidConfig = getBaseValidConfig();
+    invalidConfig.gateway.cooldown = { base_seconds: 0 };
+
+    expect(() => {
+      validateConfig(invalidConfig);
+    }).toThrow('process.exit called');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("FATAL ERROR: Invalid 'gateway.cooldown.base_seconds'. Must be a positive integer.")
+    );
+  });
+
+  it('should call process.exit(1) when max_seconds is not a positive integer', () => {
+    const invalidConfig = getBaseValidConfig();
+    invalidConfig.gateway.cooldown = { max_seconds: -10 };
+
+    expect(() => {
+      validateConfig(invalidConfig);
+    }).toThrow('process.exit called');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("FATAL ERROR: Invalid 'gateway.cooldown.max_seconds'. Must be a positive integer.")
+    );
+  });
+
+  it('should call process.exit(1) when fallback_model is self-referential', () => {
+    const invalidConfig = getBaseValidConfig();
+    invalidConfig.providers.gemini.models[0].fallback_model = 'gemini/gemini-2.5-pro';
+
+    expect(() => {
+      validateConfig(invalidConfig);
+    }).toThrow('process.exit called');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("FATAL ERROR: Invalid 'fallback_model' reference 'gemini/gemini-2.5-pro' at index 0 for provider 'gemini': model cannot fall back to itself.")
+    );
+  });
+
+  it('should call process.exit(1) when fallback_model references self via an alias', () => {
+    const invalidConfig = getBaseValidConfig();
+    invalidConfig.providers.gemini.models[0].aliases = ['pro-alias'];
+    invalidConfig.providers.gemini.models[0].fallback_model = 'gemini/pro-alias';
+
+    expect(() => {
+      validateConfig(invalidConfig);
+    }).toThrow('process.exit called');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("FATAL ERROR: Invalid 'fallback_model' reference 'gemini/pro-alias' at index 0 for provider 'gemini': model cannot fall back to itself.")
+    );
   });
 });
 

@@ -134,18 +134,19 @@ describe('Configuration Validation Tests', () => {
     expect(exitSpy).not.toHaveBeenCalled();
   });
 
-  it('should call process.exit(1) if any provider has zero active keys remaining', () => {
-    const invalidConfig = getBaseValidConfig();
-    invalidConfig.providers.gemini.keys = [];
+  it('should skip provider and not throw/exit if a provider has zero active keys remaining', () => {
+    const config = getBaseValidConfig();
+    config.providers.gemini.keys = [];
 
     expect(() => {
-      validateConfig(invalidConfig);
-    }).toThrow('process.exit called');
+      validateConfig(config);
+    }).not.toThrow();
 
-    expect(exitSpy).toHaveBeenCalledWith(1);
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("FATAL ERROR: Provider 'gemini' has zero active keys")
+    expect(exitSpy).not.toHaveBeenCalled();
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("WARNING: Provider 'gemini' has zero active keys. Skipping provider.")
     );
+    expect(config.providers.gemini).toBeUndefined();
   });
 
   it('should not throw an error if config is frozen', () => {

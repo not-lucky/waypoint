@@ -150,6 +150,26 @@ function logErrorAndExitOrThrow(msg, shouldExit) {
  * @param {boolean} [shouldExit=true] - Whether to call process.exit(1) on failure or throw an Error.
  * @param {Set<string>} [reservedProviders=RESERVED_PROVIDERS] - Set of reserved provider names.
  */
+/**
+ * Checks if a value is a positive integer.
+ * 
+ * @param {*} val - The value to check.
+ * @returns {boolean} True if it is a positive integer.
+ */
+function isPositiveInteger(val) {
+  return Number.isInteger(val) && val > 0;
+}
+
+/**
+ * Checks if a value is a non-empty string.
+ * 
+ * @param {*} val - The value to check.
+ * @returns {boolean} True if it is a non-empty string.
+ */
+function isNonEmptyString(val) {
+  return typeof val === 'string' && val.trim() !== '';
+}
+
 export function validateConfig(config, shouldExit = true, reservedProviders = RESERVED_PROVIDERS) {
   if (!config) {
     logErrorAndExitOrThrow("Configuration object is null or undefined.", shouldExit);
@@ -167,17 +187,14 @@ export function validateConfig(config, shouldExit = true, reservedProviders = RE
     return;
   }
 
-  if (typeof config.gateway.port !== 'number' || config.gateway.port <= 0 || !Number.isInteger(config.gateway.port)) {
+  if (!isPositiveInteger(config.gateway.port)) {
     logErrorAndExitOrThrow("Invalid 'gateway.port'. Must be a positive integer.", shouldExit);
     return;
   }
 
-  if (config.gateway.global_retry_limit !== undefined) {
-    const limit = config.gateway.global_retry_limit;
-    if (typeof limit !== 'number' || limit <= 0 || !Number.isInteger(limit)) {
-      logErrorAndExitOrThrow("Invalid 'gateway.global_retry_limit'. Must be a positive integer.", shouldExit);
-      return;
-    }
+  if (config.gateway.global_retry_limit !== undefined && !isPositiveInteger(config.gateway.global_retry_limit)) {
+    logErrorAndExitOrThrow("Invalid 'gateway.global_retry_limit'. Must be a positive integer.", shouldExit);
+    return;
   }
 
   if (config.gateway.cooldown !== undefined) {
@@ -186,18 +203,14 @@ export function validateConfig(config, shouldExit = true, reservedProviders = RE
       return;
     }
     const base = config.gateway.cooldown.base_seconds;
-    if (base !== undefined) {
-      if (typeof base !== 'number' || base <= 0 || !Number.isInteger(base)) {
-        logErrorAndExitOrThrow("Invalid 'gateway.cooldown.base_seconds'. Must be a positive integer.", shouldExit);
-        return;
-      }
+    if (base !== undefined && !isPositiveInteger(base)) {
+      logErrorAndExitOrThrow("Invalid 'gateway.cooldown.base_seconds'. Must be a positive integer.", shouldExit);
+      return;
     }
     const max = config.gateway.cooldown.max_seconds;
-    if (max !== undefined) {
-      if (typeof max !== 'number' || max <= 0 || !Number.isInteger(max)) {
-        logErrorAndExitOrThrow("Invalid 'gateway.cooldown.max_seconds'. Must be a positive integer.", shouldExit);
-        return;
-      }
+    if (max !== undefined && !isPositiveInteger(max)) {
+      logErrorAndExitOrThrow("Invalid 'gateway.cooldown.max_seconds'. Must be a positive integer.", shouldExit);
+      return;
     }
   }
 
@@ -208,11 +221,9 @@ export function validateConfig(config, shouldExit = true, reservedProviders = RE
       return;
     }
     const strategy = config.gateway.routing.strategy;
-    if (strategy !== undefined) {
-      if (strategy !== 'round-robin' && strategy !== 'fill-first') {
-        logErrorAndExitOrThrow(`Invalid routing strategy '${strategy}'. Supported strategies: 'round-robin', 'fill-first'.`, shouldExit);
-        return;
-      }
+    if (strategy !== undefined && strategy !== 'round-robin' && strategy !== 'fill-first') {
+      logErrorAndExitOrThrow(`Invalid routing strategy '${strategy}'. Supported strategies: 'round-robin', 'fill-first'.`, shouldExit);
+      return;
     }
   }
 
@@ -237,11 +248,11 @@ export function validateConfig(config, shouldExit = true, reservedProviders = RE
       logErrorAndExitOrThrow(`Missing structural field 'rate_limit' for client at index ${i}.`, shouldExit);
       return;
     }
-    if (typeof client.rate_limit.window_ms !== 'number' || client.rate_limit.window_ms <= 0 || !Number.isInteger(client.rate_limit.window_ms)) {
+    if (!isPositiveInteger(client.rate_limit.window_ms)) {
       logErrorAndExitOrThrow(`Invalid or missing 'rate_limit.window_ms' for client at index ${i}. Must be a positive integer.`, shouldExit);
       return;
     }
-    if (typeof client.rate_limit.max !== 'number' || client.rate_limit.max <= 0 || !Number.isInteger(client.rate_limit.max)) {
+    if (!isPositiveInteger(client.rate_limit.max)) {
       logErrorAndExitOrThrow(`Invalid or missing 'rate_limit.max' for client at index ${i}. Must be a positive integer.`, shouldExit);
       return;
     }
@@ -260,11 +271,9 @@ export function validateConfig(config, shouldExit = true, reservedProviders = RE
     logErrorAndExitOrThrow("Invalid or missing 'logging.enable_file'. Must be a boolean.", shouldExit);
     return;
   }
-  if (config.logging.enable_file) {
-    if (typeof config.logging.file_path !== 'string' || config.logging.file_path.trim() === '') {
-      logErrorAndExitOrThrow("Invalid or missing 'logging.file_path'. Must be a non-empty string.", shouldExit);
-      return;
-    }
+  if (config.logging.enable_file && !isNonEmptyString(config.logging.file_path)) {
+    logErrorAndExitOrThrow("Invalid or missing 'logging.file_path'. Must be a non-empty string.", shouldExit);
+    return;
   }
   if (config.logging.format !== 'json' && config.logging.format !== 'text') {
     logErrorAndExitOrThrow("Invalid or missing 'logging.format'. Must be 'json' or 'text'.", shouldExit);
@@ -277,6 +286,8 @@ export function validateConfig(config, shouldExit = true, reservedProviders = RE
     return;
   }
 
+  const originalProviders = new Set(Object.keys(config.providers));
+
   for (const [providerName, providerConf] of Object.entries(config.providers)) {
     if (!providerConf || typeof providerConf !== 'object') {
       logErrorAndExitOrThrow(`Invalid configuration for provider '${providerName}'.`, shouldExit);
@@ -284,17 +295,20 @@ export function validateConfig(config, shouldExit = true, reservedProviders = RE
     }
 
     // SPEC-7: Validate base_url for custom provider
-    if (!reservedProviders.has(providerName)) {
-      if (!providerConf.base_url || typeof providerConf.base_url !== 'string' || providerConf.base_url.trim() === '') {
-        logErrorAndExitOrThrow(`Provider '${providerName}' is a custom provider and must specify a non-empty 'base_url'.`, shouldExit);
-        return;
-      }
+    if (!reservedProviders.has(providerName) && !isNonEmptyString(providerConf.base_url)) {
+      logErrorAndExitOrThrow(`Provider '${providerName}' is a custom provider and must specify a non-empty 'base_url'.`, shouldExit);
+      return;
     }
 
     // Ensure provider has active keys
     if (!providerConf.keys || !Array.isArray(providerConf.keys) || providerConf.keys.length === 0) {
-      logErrorAndExitOrThrow(`Provider '${providerName}' has zero active keys.`, shouldExit);
-      return;
+      console.warn(`WARNING: Provider '${providerName}' has zero active keys. Skipping provider.`);
+      try {
+        delete config.providers[providerName];
+      } catch (e) {
+        // Ignore if frozen
+      }
+      continue;
     }
 
     // SPEC-6: Validate provider models array
@@ -309,11 +323,11 @@ export function validateConfig(config, shouldExit = true, reservedProviders = RE
         logErrorAndExitOrThrow(`Invalid model at index ${j} for provider '${providerName}'.`, shouldExit);
         return;
       }
-      if (typeof model.id !== 'string' || model.id.trim() === '') {
+      if (!isNonEmptyString(model.id)) {
         logErrorAndExitOrThrow(`Missing or empty model 'id' at index ${j} for provider '${providerName}'.`, shouldExit);
         return;
       }
-      if (typeof model.actual_model_id !== 'string' || model.actual_model_id.trim() === '') {
+      if (!isNonEmptyString(model.actual_model_id)) {
         logErrorAndExitOrThrow(`Missing or empty model 'actual_model_id' at index ${j} for provider '${providerName}'.`, shouldExit);
         return;
       }
@@ -325,25 +339,29 @@ export function validateConfig(config, shouldExit = true, reservedProviders = RE
         logErrorAndExitOrThrow(`Invalid 'thinking_supported' at index ${j} for provider '${providerName}'. Must be a boolean.`, shouldExit);
         return;
       }
-      if (model.default_thinking_budget !== undefined && (typeof model.default_thinking_budget !== 'number' || model.default_thinking_budget <= 0 || !Number.isInteger(model.default_thinking_budget))) {
+      if (model.default_thinking_budget !== undefined && !isPositiveInteger(model.default_thinking_budget)) {
         logErrorAndExitOrThrow(`Invalid 'default_thinking_budget' at index ${j} for provider '${providerName}'. Must be a positive integer.`, shouldExit);
         return;
       }
 
       // fallback_model referential integrity check
       if (model.fallback_model !== undefined) {
-        if (typeof model.fallback_model !== 'string' || model.fallback_model.trim() === '') {
+        if (!isNonEmptyString(model.fallback_model)) {
           logErrorAndExitOrThrow(`Invalid 'fallback_model' at index ${j} for provider '${providerName}'. Must be a non-empty string.`, shouldExit);
           return;
         }
         const parts = model.fallback_model.split('/');
-        if (parts.length !== 2 || parts[0].trim() === '' || parts[1].trim() === '') {
+        if (parts.length !== 2 || !parts[0].trim() || !parts[1].trim()) {
           logErrorAndExitOrThrow(`Invalid 'fallback_model' format '${model.fallback_model}' at index ${j} for provider '${providerName}'. Must be in 'provider/model-id' format.`, shouldExit);
           return;
         }
         const [fallbackProvider, fallbackModel] = parts;
         const targetProvider = config.providers[fallbackProvider];
         if (!targetProvider) {
+          if (originalProviders.has(fallbackProvider)) {
+            // Target provider was skipped because it has zero keys. Bypass further checks.
+            continue;
+          }
           logErrorAndExitOrThrow(`Invalid 'fallback_model' reference '${model.fallback_model}' at index ${j} for provider '${providerName}': provider '${fallbackProvider}' does not exist in configuration.`, shouldExit);
           return;
         }

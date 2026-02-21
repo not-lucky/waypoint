@@ -144,28 +144,52 @@ describe('Configuration Loader Tests', () => {
       consoleWarnSpy.mockRestore();
     });
 
-    it('should exit with error if all keys for a provider are missing', () => {
+    it('should skip provider and load successfully if all keys for a provider are missing but other providers have keys', () => {
       const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
         throw new Error('process.exit called');
       });
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
       // Simulate complete key exhaustion for the Gemini provider.
       delete process.env.GEMINI_API_KEY_1;
       delete process.env.GEMINI_API_KEY_2;
 
-      // Assertion: Startup must fail since active keys are zero.
-      expect(() => {
-        configLoader.loadConfig('config/config.yaml');
-      }).toThrow('process.exit called');
+      const config = configLoader.loadConfig('config/config.yaml');
 
-      expect(exitSpy).toHaveBeenCalledWith(1);
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Provider 'gemini' has zero active keys")
-      );
+      expect(exitSpy).not.toHaveBeenCalled();
+      // gemini should be skipped/omitted from providers
+      expect(config.providers.gemini).toBeUndefined();
+      // anthropic and openai should still be present
+      expect(config.providers.anthropic).toBeDefined();
+      expect(config.providers.openai).toBeDefined();
 
       exitSpy.mockRestore();
-      consoleErrorSpy.mockRestore();
+      consoleWarnSpy.mockRestore();
+    });
+
+    it('should not fatal error even if all providers are skipped (have zero active keys)', () => {
+      const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
+        throw new Error('process.exit called');
+      });
+      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      // Simulate complete key exhaustion for all providers.
+      delete process.env.GEMINI_API_KEY_1;
+      delete process.env.GEMINI_API_KEY_2;
+      delete process.env.ANTHROPIC_API_KEY_1;
+      delete process.env.OPENAI_API_KEY_1;
+
+      expect(() => {
+        configLoader.loadConfig('config/config.yaml');
+      }).not.toThrow();
+
+      expect(exitSpy).not.toHaveBeenCalled();
+
+      const config = configLoader.currentConfig;
+      expect(config.providers).toEqual({}); // All providers skipped!
+
+      exitSpy.mockRestore();
+      consoleWarnSpy.mockRestore();
     });
 
     it('should exit with error if a custom provider lacks a base_url', () => {
@@ -424,10 +448,10 @@ providers:
           reject(new Error('onConfigChange listener should not have been called for invalid config'));
         });
 
-        // Trigger change with an invalid config (missing keys for Gemini)
+        // Trigger change with an invalid config (invalid port)
         writeTempConfig(`
 gateway:
-  port: 20128
+  port: -1
   routing:
     strategy: "round-robin"
 providers:

@@ -6,6 +6,11 @@ export class KeyObject {
     this.consecutiveFailures = 0;
     this.exhausted = false;
   }
+
+  isAvailable() {
+    const isCooling = this.cooldownUntil !== null && this.cooldownUntil > Date.now();
+    return this.active && !isCooling && !this.exhausted;
+  }
 }
 
 export class ProviderKeyPool {
@@ -16,16 +21,14 @@ export class ProviderKeyPool {
 }
 
 export class KeyRegistry {
-  constructor(config) {
-    this.config = config || {};
-    this.pools = {};
+  constructor(config = {}) {
+    this.config = config;
     this.timers = new Set();
+    this.pools = {};
 
-    if (this.config.providers) {
-      for (const [providerName, providerConfig] of Object.entries(this.config.providers)) {
-        const keys = providerConfig.keys || [];
-        this.pools[providerName] = new ProviderKeyPool(keys);
-      }
+    const providers = config.providers || {};
+    for (const [name, providerConfig] of Object.entries(providers)) {
+      this.pools[name] = new ProviderKeyPool(providerConfig?.keys);
     }
   }
 
@@ -39,30 +42,30 @@ export class KeyRegistry {
     const n = pool.keys.length;
 
     if (strategy === 'fill-first') {
-      for (let i = 0; i < n; i++) {
-        const key = pool.keys[i];
-        const isCooling = key.cooldownUntil !== null && key.cooldownUntil > Date.now();
-        if (key.active !== false && !isCooling && !key.exhausted) {
-          return key.keyStr;
-        }
-      }
-      return null;
+      const availableKey = pool.keys.find(key => key.isAvailable());
+      return availableKey ? availableKey.keyStr : null;
     }
 
     // Default to 'round-robin'
     for (let i = 0; i < n; i++) {
       const idx = pool.roundRobinIndex;
       const key = pool.keys[idx];
-      // Advance index and wrap
       pool.roundRobinIndex = (idx + 1) % n;
 
-      const isCooling = key.cooldownUntil !== null && key.cooldownUntil > Date.now();
-      if (key.active !== false && !isCooling && !key.exhausted) {
+      if (key.isAvailable()) {
         return key.keyStr;
       }
     }
 
     return null;
+  }
+
+  startCooldownTimer(durationMs, callback) {
+    const timer = setTimeout(() => {
+      callback();
+      this.timers.delete(timer);
+    }, durationMs);
+    this.timers.add(timer);
   }
 
   flagFailure(provider, keyStr, statusCode) {
@@ -81,13 +84,12 @@ export class KeyRegistry {
       key.active = false;
       key.cooldownUntil = Date.now() + cooldownSeconds * 1000;
 
-      const timer = setTimeout(() => {
-        key.active = true;
-        key.cooldownUntil = null;
-        this.timers.delete(timer);
-      }, cooldownSeconds * 1000);
-      
-      this.timers.add(timer);
+      this.startCooldownTimer(cooldownSeconds * 1000, () => {
+        if (key.cooldownUntil !== null && key.cooldownUntil <= Date.now()) {
+          key.active = true;
+          key.cooldownUntil = null;
+        }
+      });
     } else if (statusCode === 402 || statusCode === 403) {
       key.exhausted = true;
       key.active = false;
@@ -95,14 +97,11 @@ export class KeyRegistry {
       // Other 4xx/5xx: Applies a single-cycle cooldown (5000ms)
       key.cooldownUntil = Date.now() + 5000;
       
-      const timer = setTimeout(() => {
+      this.startCooldownTimer(5000, () => {
         if (key.cooldownUntil !== null && key.cooldownUntil <= Date.now()) {
           key.cooldownUntil = null;
         }
-        this.timers.delete(timer);
-      }, 5000);
-      
-      this.timers.add(timer);
+      });
     }
   }
 

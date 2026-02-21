@@ -80,7 +80,7 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("FATAL ERROR: Missing structural field 'gateway.port'")
+      expect.stringContaining("FATAL ERROR: Missing or invalid 'gateway.port'")
     );
   });
 
@@ -108,7 +108,7 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("FATAL ERROR: Missing structural field 'token' for client at index 0")
+      expect.stringContaining("FATAL ERROR: Missing or empty 'token' for client at index 0")
     );
   });
 

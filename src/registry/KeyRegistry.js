@@ -1,3 +1,5 @@
+const GENERIC_FAILURE_COOLDOWN_MS = 5000;
+
 export class KeyObject {
   constructor(keyStr) {
     this.keyStr = keyStr;
@@ -8,8 +10,8 @@ export class KeyObject {
   }
 
   isAvailable() {
-    const isCooling = this.cooldownUntil !== null && this.cooldownUntil > Date.now();
-    return this.active && !isCooling && !this.exhausted;
+    const cooledDown = this.cooldownUntil === null || this.cooldownUntil <= Date.now();
+    return this.active && !this.exhausted && cooledDown;
   }
 }
 
@@ -34,7 +36,7 @@ export class KeyRegistry {
 
   getKey(provider) {
     const pool = this.pools[provider];
-    if (!pool || !pool.keys || pool.keys.length === 0) {
+    if (!pool || pool.keys.length === 0) {
       return null;
     }
 
@@ -68,48 +70,45 @@ export class KeyRegistry {
     this.timers.add(timer);
   }
 
-  flagFailure(provider, keyStr, statusCode) {
+  _findKey(provider, keyStr) {
     const pool = this.pools[provider];
-    if (!pool) return;
+    if (!pool) return null;
+    return pool.keys.find(k => k.keyStr === keyStr) ?? null;
+  }
 
-    const key = pool.keys.find(k => k.keyStr === keyStr);
+  flagFailure(provider, keyStr, statusCode) {
+    const key = this._findKey(provider, keyStr);
     if (!key) return;
 
     if (statusCode === 429) {
       key.consecutiveFailures++;
       const baseSeconds = this.config.gateway?.cooldown?.base_seconds ?? 30;
       const maxSeconds = this.config.gateway?.cooldown?.max_seconds ?? 3600;
-      const cooldownSeconds = Math.min(baseSeconds * Math.pow(2, key.consecutiveFailures - 1), maxSeconds);
-      
-      key.active = false;
-      key.cooldownUntil = Date.now() + cooldownSeconds * 1000;
+      const backoffSeconds = baseSeconds * Math.pow(2, key.consecutiveFailures - 1);
+      const clampedSeconds = Math.min(backoffSeconds, maxSeconds);
+      const cooldownMs = clampedSeconds * 1000;
 
-      this.startCooldownTimer(cooldownSeconds * 1000, () => {
-        if (key.cooldownUntil !== null && key.cooldownUntil <= Date.now()) {
-          key.active = true;
-          key.cooldownUntil = null;
-        }
+      key.active = false;
+      key.cooldownUntil = Date.now() + cooldownMs;
+
+      this.startCooldownTimer(cooldownMs, () => {
+        key.active = true;
+        key.cooldownUntil = null;
       });
     } else if (statusCode === 402 || statusCode === 403) {
       key.exhausted = true;
       key.active = false;
     } else {
-      // Other 4xx/5xx: Applies a single-cycle cooldown (5000ms)
-      key.cooldownUntil = Date.now() + 5000;
-      
-      this.startCooldownTimer(5000, () => {
-        if (key.cooldownUntil !== null && key.cooldownUntil <= Date.now()) {
-          key.cooldownUntil = null;
-        }
+      key.cooldownUntil = Date.now() + GENERIC_FAILURE_COOLDOWN_MS;
+
+      this.startCooldownTimer(GENERIC_FAILURE_COOLDOWN_MS, () => {
+        key.cooldownUntil = null;
       });
     }
   }
 
   flagSuccess(provider, keyStr) {
-    const pool = this.pools[provider];
-    if (!pool) return;
-
-    const key = pool.keys.find(k => k.keyStr === keyStr);
+    const key = this._findKey(provider, keyStr);
     if (!key) return;
 
     key.consecutiveFailures = 0;

@@ -12,6 +12,16 @@ export { isDeepStrictEqual as isDeepEqual };
 const VAR_REGEX = /\$\{([A-Za-z0-9_]+)\}/g;
 
 /**
+ * Replaces all ${VAR} placeholders in a string with their process.env values.
+ *
+ * @param {string} str - The string containing placeholders.
+ * @returns {string} The string with all placeholders resolved.
+ */
+function replaceEnvVars(str) {
+  return str.replace(VAR_REGEX, (_, varName) => process.env[varName]);
+}
+
+/**
  * Scans a string for environment variable placeholders and returns the name of
  * the first one that is missing or empty in the environment.
  * 
@@ -42,14 +52,6 @@ function coerceToInt(obj, key) {
   }
 }
 
-/**
- * Recursively deep-freezes an object to make it completely immutable.
- * Prevents runtime state corruption and request processing race conditions.
- * Supports Map, Set, and Date.
- * 
- * @param {object} obj - Object to deep freeze.
- * @returns {object} The frozen object.
- */
 export function deepFreeze(obj) {
   if (obj === null || typeof obj !== 'object') {
     return obj;
@@ -95,11 +97,9 @@ export function deepFreeze(obj) {
   }
 
   Object.freeze(obj);
-
   for (const key of Object.keys(obj)) {
     deepFreeze(obj[key]);
   }
-
   return obj;
 }
 
@@ -120,10 +120,6 @@ function checkStructuralChanges(oldConf, newConf) {
   );
 }
 
-/**
- * Helper to log fatal error and exit process, or throw an error.
- * Handles single logging of fatal configuration errors.
- */
 function logErrorAndExitOrThrow(msg, shouldExit) {
   if (shouldExit) {
     console.error(`FATAL ERROR: ${msg}`);
@@ -132,77 +128,45 @@ function logErrorAndExitOrThrow(msg, shouldExit) {
   throw new Error(msg);
 }
 
-
-/**
- * Checks if a value is a positive integer.
- * 
- * @param {*} val - The value to check.
- * @returns {boolean} True if it is a positive integer.
- */
 function isPositiveInteger(val) {
   return Number.isInteger(val) && val > 0;
 }
 
-/**
- * Checks if a value is a non-empty string.
- * 
- * @param {*} val - The value to check.
- * @returns {boolean} True if it is a non-empty string.
- */
 function isNonEmptyString(val) {
   return typeof val === 'string' && val.trim() !== '';
 }
 
-/**
- * Validates a model's fallback_model reference for format and referential integrity.
- * Returns true if the calling loop should skip to the next model (e.g. target provider was pruned).
- *
- * @param {object} model - The model object containing the fallback_model field.
- * @param {number} modelIndex - Index of this model in the provider's models array.
- * @param {string} providerName - Name of the provider owning this model.
- * @param {object} providers - The full providers map from the config.
- * @param {Set} originalProviders - Set of provider names before any pruning.
- * @param {boolean} shouldExit - Whether to exit on error or throw.
- * @returns {boolean} True if the caller should skip further processing for this model.
- */
+function matchesModelId(model, fallbackModelId) {
+  return model.id === fallbackModelId || (Array.isArray(model.aliases) && model.aliases.includes(fallbackModelId));
+}
+
 function validateFallbackModel(model, modelIndex, providerName, providers, originalProviders, shouldExit) {
   const fallbackRef = model.fallback_model;
 
   if (!isNonEmptyString(fallbackRef)) {
     logErrorAndExitOrThrow(`Invalid 'fallback_model' at index ${modelIndex} for provider '${providerName}'. Must be a non-empty string.`, shouldExit);
-    return false;
   }
 
   const [fallbackProvider, fallbackModelId, ...rest] = fallbackRef.split('/');
   if (!fallbackProvider?.trim() || !fallbackModelId?.trim() || rest.length > 0) {
     logErrorAndExitOrThrow(`Invalid 'fallback_model' format '${fallbackRef}' at index ${modelIndex} for provider '${providerName}'. Must be in 'provider/model-id' format.`, shouldExit);
-    return false;
   }
 
   const targetProvider = providers[fallbackProvider];
   if (!targetProvider) {
     if (originalProviders.has(fallbackProvider)) {
-      // Target provider was pruned (zero active keys). Skip further checks.
       return true;
     }
     logErrorAndExitOrThrow(`Invalid 'fallback_model' reference '${fallbackRef}' at index ${modelIndex} for provider '${providerName}': provider '${fallbackProvider}' does not exist in configuration.`, shouldExit);
-    return false;
   }
 
-  const hasMatchingModel = Array.isArray(targetProvider.models) && targetProvider.models.some(m =>
-    m.id === fallbackModelId || (Array.isArray(m.aliases) && m.aliases.includes(fallbackModelId))
-  );
+  const hasMatchingModel = Array.isArray(targetProvider.models) && targetProvider.models.some(m => matchesModelId(m, fallbackModelId));
   if (!hasMatchingModel) {
     logErrorAndExitOrThrow(`Invalid 'fallback_model' reference '${fallbackRef}' at index ${modelIndex} for provider '${providerName}': model ID or alias '${fallbackModelId}' does not exist in provider '${fallbackProvider}'.`, shouldExit);
-    return false;
   }
 
-  if (fallbackProvider === providerName) {
-    const isSelf = fallbackModelId === model.id || (Array.isArray(model.aliases) && model.aliases.includes(fallbackModelId));
-    if (isSelf) {
-      logErrorAndExitOrThrow(`Invalid 'fallback_model' reference '${fallbackRef}' at index ${modelIndex} for provider '${providerName}': model cannot fall back to itself.`, shouldExit);
-      return false;
-    }
+  if (fallbackProvider === providerName && matchesModelId(model, fallbackModelId)) {
+    logErrorAndExitOrThrow(`Invalid 'fallback_model' reference '${fallbackRef}' at index ${modelIndex} for provider '${providerName}': model cannot fall back to itself.`, shouldExit);
   }
 
   return false;
@@ -211,112 +175,85 @@ function validateFallbackModel(model, modelIndex, providerName, providers, origi
 export function validateConfig(config, shouldExit = true, reservedProviders = RESERVED_PROVIDERS) {
   if (!config) {
     logErrorAndExitOrThrow("Configuration object is null or undefined.", shouldExit);
-    return;
   }
 
-  // 1. Validate gateway structure
   if (!config.gateway || typeof config.gateway !== 'object') {
     logErrorAndExitOrThrow("Missing structural field 'gateway'.", shouldExit);
-    return;
   }
 
   if (!isPositiveInteger(config.gateway.port)) {
     logErrorAndExitOrThrow("Missing or invalid 'gateway.port'. Must be a positive integer.", shouldExit);
-    return;
   }
 
   if (config.gateway.global_retry_limit !== undefined && !isPositiveInteger(config.gateway.global_retry_limit)) {
     logErrorAndExitOrThrow("Invalid 'gateway.global_retry_limit'. Must be a positive integer.", shouldExit);
-    return;
   }
 
   if (config.gateway.cooldown !== undefined) {
     if (typeof config.gateway.cooldown !== 'object' || config.gateway.cooldown === null) {
       logErrorAndExitOrThrow("Invalid 'gateway.cooldown'. Must be an object.", shouldExit);
-      return;
     }
-    const base = config.gateway.cooldown.base_seconds;
-    if (base !== undefined && !isPositiveInteger(base)) {
+
+    const { base_seconds, max_seconds } = config.gateway.cooldown;
+    if (base_seconds !== undefined && !isPositiveInteger(base_seconds)) {
       logErrorAndExitOrThrow("Invalid 'gateway.cooldown.base_seconds'. Must be a positive integer.", shouldExit);
-      return;
     }
-    const max = config.gateway.cooldown.max_seconds;
-    if (max !== undefined && !isPositiveInteger(max)) {
+    if (max_seconds !== undefined && !isPositiveInteger(max_seconds)) {
       logErrorAndExitOrThrow("Invalid 'gateway.cooldown.max_seconds'. Must be a positive integer.", shouldExit);
-      return;
     }
   }
 
-  // Validate gateway.routing.strategy (SPEC-3)
   if (config.gateway.routing !== undefined) {
     if (typeof config.gateway.routing !== 'object' || config.gateway.routing === null) {
       logErrorAndExitOrThrow("Invalid structural field 'gateway.routing'. Must be an object.", shouldExit);
-      return;
     }
     const strategy = config.gateway.routing.strategy;
     if (strategy !== undefined && strategy !== 'round-robin' && strategy !== 'fill-first') {
       logErrorAndExitOrThrow(`Invalid routing strategy '${strategy}'. Supported strategies: 'round-robin', 'fill-first'.`, shouldExit);
-      return;
     }
   }
 
-  // 2. Validate clients structure (SPEC-5)
   if (!config.clients || !Array.isArray(config.clients)) {
     logErrorAndExitOrThrow("Missing structural field 'clients'.", shouldExit);
-    return;
   }
 
   for (let i = 0; i < config.clients.length; i++) {
     const client = config.clients[i];
     if (!client || typeof client !== 'object') {
       logErrorAndExitOrThrow(`Invalid client configuration at index ${i}.`, shouldExit);
-      return;
     }
     if (!isNonEmptyString(client.token)) {
       logErrorAndExitOrThrow(`Missing or empty 'token' for client at index ${i}.`, shouldExit);
-      return;
     }
-
     if (!client.rate_limit || typeof client.rate_limit !== 'object') {
       logErrorAndExitOrThrow(`Missing structural field 'rate_limit' for client at index ${i}.`, shouldExit);
-      return;
     }
     if (!isPositiveInteger(client.rate_limit.window_ms)) {
       logErrorAndExitOrThrow(`Invalid or missing 'rate_limit.window_ms' for client at index ${i}. Must be a positive integer.`, shouldExit);
-      return;
     }
     if (!isPositiveInteger(client.rate_limit.max)) {
       logErrorAndExitOrThrow(`Invalid or missing 'rate_limit.max' for client at index ${i}. Must be a positive integer.`, shouldExit);
-      return;
     }
   }
 
-  // 3. Validate logging block structure (SPEC-4)
   if (!config.logging || typeof config.logging !== 'object') {
     logErrorAndExitOrThrow("Missing structural field 'logging'.", shouldExit);
-    return;
   }
   if (typeof config.logging.enable_console !== 'boolean') {
     logErrorAndExitOrThrow("Invalid or missing 'logging.enable_console'. Must be a boolean.", shouldExit);
-    return;
   }
   if (typeof config.logging.enable_file !== 'boolean') {
     logErrorAndExitOrThrow("Invalid or missing 'logging.enable_file'. Must be a boolean.", shouldExit);
-    return;
   }
   if (config.logging.enable_file && !isNonEmptyString(config.logging.file_path)) {
     logErrorAndExitOrThrow("Invalid or missing 'logging.file_path'. Must be a non-empty string.", shouldExit);
-    return;
   }
   if (config.logging.format !== 'json' && config.logging.format !== 'text') {
     logErrorAndExitOrThrow("Invalid or missing 'logging.format'. Must be 'json' or 'text'.", shouldExit);
-    return;
   }
 
-  // 4. Validate providers and models structure (SPEC-6, SPEC-7, fallback_model integrity)
   if (!config.providers || typeof config.providers !== 'object' || Object.keys(config.providers).length === 0) {
     logErrorAndExitOrThrow("Configuration must define at least one provider under 'providers'.", shouldExit);
-    return;
   }
 
   const originalProviders = new Set(Object.keys(config.providers));
@@ -324,59 +261,45 @@ export function validateConfig(config, shouldExit = true, reservedProviders = RE
   for (const [providerName, providerConf] of Object.entries(config.providers)) {
     if (!providerConf || typeof providerConf !== 'object') {
       logErrorAndExitOrThrow(`Invalid configuration for provider '${providerName}'.`, shouldExit);
-      return;
     }
 
-    // SPEC-7: Validate base_url for custom provider
     if (!reservedProviders.has(providerName) && !isNonEmptyString(providerConf.base_url)) {
       logErrorAndExitOrThrow(`Provider '${providerName}' is a custom provider and must specify a non-empty 'base_url'.`, shouldExit);
-      return;
     }
 
-    // Ensure provider has active keys
-    if (!providerConf.keys || !Array.isArray(providerConf.keys) || providerConf.keys.length === 0) {
+    if (!Array.isArray(providerConf.keys) || providerConf.keys.length === 0) {
       console.warn(`WARNING: Provider '${providerName}' has zero active keys. Skipping provider.`);
       delete config.providers[providerName];
       continue;
     }
 
-    // SPEC-6: Validate provider models array
     if (!providerConf.models || !Array.isArray(providerConf.models) || providerConf.models.length === 0) {
       logErrorAndExitOrThrow(`Provider '${providerName}' must have a non-empty 'models' array.`, shouldExit);
-      return;
     }
 
     for (let j = 0; j < providerConf.models.length; j++) {
       const model = providerConf.models[j];
       if (!model || typeof model !== 'object') {
         logErrorAndExitOrThrow(`Invalid model at index ${j} for provider '${providerName}'.`, shouldExit);
-        return;
       }
       if (!isNonEmptyString(model.id)) {
         logErrorAndExitOrThrow(`Missing or empty model 'id' at index ${j} for provider '${providerName}'.`, shouldExit);
-        return;
       }
       if (!isNonEmptyString(model.actual_model_id)) {
         logErrorAndExitOrThrow(`Missing or empty model 'actual_model_id' at index ${j} for provider '${providerName}'.`, shouldExit);
-        return;
       }
       if (model.aliases !== undefined && !Array.isArray(model.aliases)) {
         logErrorAndExitOrThrow(`Invalid 'aliases' at index ${j} for provider '${providerName}'. Must be an array.`, shouldExit);
-        return;
       }
       if (model.thinking_supported !== undefined && typeof model.thinking_supported !== 'boolean') {
         logErrorAndExitOrThrow(`Invalid 'thinking_supported' at index ${j} for provider '${providerName}'. Must be a boolean.`, shouldExit);
-        return;
       }
       if (model.default_thinking_budget !== undefined && !isPositiveInteger(model.default_thinking_budget)) {
         logErrorAndExitOrThrow(`Invalid 'default_thinking_budget' at index ${j} for provider '${providerName}'. Must be a positive integer.`, shouldExit);
-        return;
       }
 
-      // fallback_model referential integrity check
       if (model.fallback_model !== undefined) {
-        const shouldSkip = validateFallbackModel(model, j, providerName, config.providers, originalProviders, shouldExit);
-        if (shouldSkip) continue;
+        validateFallbackModel(model, j, providerName, config.providers, originalProviders, shouldExit);
       }
     }
   }
@@ -549,7 +472,7 @@ export class ConfigLoader {
             continue;
           }
 
-          activeKeys.push(item.replace(VAR_REGEX, (m, varName) => process.env[varName]));
+          activeKeys.push(replaceEnvVars(item));
         }
         return activeKeys;
       }
@@ -567,7 +490,7 @@ export class ConfigLoader {
       if (missingVar) {
         throw new Error(`Missing or empty environment variable ${missingVar} at configuration path ${path.join('.')}`);
       }
-      return val.replace(VAR_REGEX, (m, varName) => process.env[varName]);
+      return replaceEnvVars(val);
     }
 
     return val;

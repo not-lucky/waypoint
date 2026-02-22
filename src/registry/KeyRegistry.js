@@ -1,6 +1,7 @@
 const GENERIC_FAILURE_COOLDOWN_MS = 5000;
+const DEFAULT_ROUTING_STRATEGY = 'round-robin';
 
-export class KeyObject {
+class KeyObject {
   constructor(keyStr) {
     this.keyStr = keyStr;
     this.active = true;
@@ -15,11 +16,11 @@ export class KeyObject {
   }
 }
 
-export class ProviderKeyPool {
-  constructor(keys = []) {
-    this.keys = keys.map(k => new KeyObject(k));
-    this.roundRobinIndex = 0;
-  }
+function createKeyPool(keys = []) {
+  return {
+    keys: keys.map(k => new KeyObject(k)),
+    roundRobinIndex: 0
+  };
 }
 
 export class KeyRegistry {
@@ -30,7 +31,7 @@ export class KeyRegistry {
 
     const providers = config.providers || {};
     for (const [name, providerConfig] of Object.entries(providers)) {
-      this.pools[name] = new ProviderKeyPool(providerConfig?.keys);
+      this.pools[name] = createKeyPool(providerConfig?.keys);
     }
   }
 
@@ -40,12 +41,12 @@ export class KeyRegistry {
       return null;
     }
 
-    const strategy = this.config.gateway?.routing?.strategy || 'round-robin';
+    const strategy = this.config.gateway?.routing?.strategy || DEFAULT_ROUTING_STRATEGY;
     const n = pool.keys.length;
 
     if (strategy === 'fill-first') {
       const availableKey = pool.keys.find(key => key.isAvailable());
-      return availableKey ? availableKey.keyStr : null;
+      return availableKey?.keyStr ?? null;
     }
 
     // Default to 'round-robin'
@@ -62,48 +63,53 @@ export class KeyRegistry {
     return null;
   }
 
-  startCooldownTimer(durationMs, callback) {
-    const timer = setTimeout(() => {
-      callback();
-      this.timers.delete(timer);
-    }, durationMs);
-    this.timers.add(timer);
-  }
-
   _findKey(provider, keyStr) {
     const pool = this.pools[provider];
     if (!pool) return null;
     return pool.keys.find(k => k.keyStr === keyStr) ?? null;
   }
 
+  _setCooldown(key, durationMs, reactivate = false) {
+    key.cooldownUntil = Date.now() + durationMs;
+    
+    const timer = setTimeout(() => {
+      if (reactivate) {
+        key.active = true;
+      }
+      key.cooldownUntil = null;
+      this.timers.delete(timer);
+    }, durationMs);
+    
+    this.timers.add(timer);
+  }
+
   flagFailure(provider, keyStr, statusCode) {
     const key = this._findKey(provider, keyStr);
     if (!key) return;
 
-    if (statusCode === 429) {
-      key.consecutiveFailures++;
-      const baseSeconds = this.config.gateway?.cooldown?.base_seconds ?? 30;
-      const maxSeconds = this.config.gateway?.cooldown?.max_seconds ?? 3600;
-      const backoffSeconds = baseSeconds * Math.pow(2, key.consecutiveFailures - 1);
-      const clampedSeconds = Math.min(backoffSeconds, maxSeconds);
-      const cooldownMs = clampedSeconds * 1000;
+    switch (statusCode) {
+      case 429: {
+        key.consecutiveFailures++;
 
-      key.active = false;
-      key.cooldownUntil = Date.now() + cooldownMs;
+        const baseSeconds = this.config.gateway?.cooldown?.base_seconds ?? 30;
+        const maxSeconds = this.config.gateway?.cooldown?.max_seconds ?? 3600;
+        const exponent = key.consecutiveFailures - 1;
+        const backoffSeconds = Math.min(baseSeconds * Math.pow(2, exponent), maxSeconds);
 
-      this.startCooldownTimer(cooldownMs, () => {
-        key.active = true;
-        key.cooldownUntil = null;
-      });
-    } else if (statusCode === 402 || statusCode === 403) {
-      key.exhausted = true;
-      key.active = false;
-    } else {
-      key.cooldownUntil = Date.now() + GENERIC_FAILURE_COOLDOWN_MS;
-
-      this.startCooldownTimer(GENERIC_FAILURE_COOLDOWN_MS, () => {
-        key.cooldownUntil = null;
-      });
+        key.active = false;
+        this._setCooldown(key, backoffSeconds * 1000, true);
+        break;
+      }
+      case 402:
+      case 403: {
+        key.exhausted = true;
+        key.active = false;
+        break;
+      }
+      default: {
+        this._setCooldown(key, GENERIC_FAILURE_COOLDOWN_MS, false);
+        break;
+      }
     }
   }
 

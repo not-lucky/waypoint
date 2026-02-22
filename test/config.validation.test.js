@@ -1,5 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { validateConfig, ConfigLoader } from '../src/config/loader.js';
+import {
+  describe, it, expect, beforeEach, afterEach, vi,
+} from 'vitest';
+import { validateConfig, ConfigLoader } from '../src/config/loader';
 
 describe('Configuration Validation Tests', () => {
   let consoleErrorSpy;
@@ -23,28 +25,28 @@ describe('Configuration Validation Tests', () => {
     return {
       gateway: {
         port: 20128,
-        routing: { strategy: 'round-robin' }
+        routing: { strategy: 'round-robin' },
       },
       logging: {
         enable_console: true,
         enable_file: false,
-        format: 'json'
+        format: 'json',
       },
       clients: [
         {
           name: 'open-webui',
           token: 'some-token',
-          rate_limit: { window_ms: 60000, max: 100 }
-        }
+          rate_limit: { window_ms: 60000, max: 100 },
+        },
       ],
       providers: {
         gemini: {
           keys: ['gemini-key-1'],
           models: [
-            { id: 'gemini-2.5-pro', actual_model_id: 'gemini-2.5-pro-preview-05-06' }
-          ]
-        }
-      }
+            { id: 'gemini-2.5-pro', actual_model_id: 'gemini-2.5-pro-preview-05-06' },
+          ],
+        },
+      },
     };
   }
 
@@ -66,7 +68,7 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('FATAL ERROR: Configuration object is null or undefined')
+      expect.stringContaining('FATAL ERROR: Configuration object is null or undefined'),
     );
   });
 
@@ -80,7 +82,7 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("FATAL ERROR: Missing or invalid 'gateway.port'")
+      expect.stringContaining("FATAL ERROR: Missing or invalid 'gateway.port'"),
     );
   });
 
@@ -94,7 +96,7 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("FATAL ERROR: Missing structural field 'clients'")
+      expect.stringContaining("FATAL ERROR: Missing structural field 'clients'"),
     );
   });
 
@@ -108,7 +110,7 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("FATAL ERROR: Missing or empty 'token' for client at index 0")
+      expect.stringContaining("FATAL ERROR: Missing or empty 'token' for client at index 0"),
     );
   });
 
@@ -122,11 +124,11 @@ describe('Configuration Validation Tests', () => {
     expect(consoleWarnSpy).toHaveBeenCalledTimes(2);
     expect(consoleWarnSpy).toHaveBeenNthCalledWith(
       1,
-      expect.stringContaining("WARNING: Skipping undefined or empty key for provider 'gemini' at index 1")
+      expect.stringContaining("WARNING: Skipping undefined or empty key for provider 'gemini' at index 1"),
     );
     expect(consoleWarnSpy).toHaveBeenNthCalledWith(
       2,
-      expect.stringContaining("WARNING: Skipping undefined or empty key for provider 'gemini' at index 2")
+      expect.stringContaining("WARNING: Skipping undefined or empty key for provider 'gemini' at index 2"),
     );
 
     // Verify key pool filtering
@@ -144,7 +146,7 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).not.toHaveBeenCalled();
     expect(consoleWarnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("WARNING: Provider 'gemini' has zero active keys. Skipping provider.")
+      expect.stringContaining("WARNING: Provider 'gemini' has zero active keys. Skipping provider."),
     );
     expect(config.providers.gemini).toBeUndefined();
   });
@@ -179,7 +181,7 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("FATAL ERROR: Invalid routing strategy 'random'")
+      expect.stringContaining("FATAL ERROR: Invalid routing strategy 'random'"),
     );
   });
 
@@ -193,7 +195,7 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("FATAL ERROR: Invalid or missing 'logging.format'")
+      expect.stringContaining("FATAL ERROR: Invalid or missing 'logging.format'"),
     );
   });
 
@@ -207,7 +209,7 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("FATAL ERROR: Invalid or missing 'rate_limit.window_ms'")
+      expect.stringContaining("FATAL ERROR: Invalid or missing 'rate_limit.window_ms'"),
     );
   });
 
@@ -221,7 +223,7 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("FATAL ERROR: Invalid or missing 'rate_limit.max'")
+      expect.stringContaining("FATAL ERROR: Invalid or missing 'rate_limit.max'"),
     );
   });
 
@@ -235,7 +237,7 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("FATAL ERROR: Provider 'gemini' must have a non-empty 'models' array")
+      expect.stringContaining("FATAL ERROR: Provider 'gemini' must have a non-empty 'models' array"),
     );
   });
 
@@ -249,7 +251,7 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("FATAL ERROR: Missing or empty model 'id' at index 0 for provider 'gemini'")
+      expect.stringContaining("FATAL ERROR: Missing or empty model 'id' at index 0 for provider 'gemini'"),
     );
   });
 
@@ -263,7 +265,7 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("FATAL ERROR: Missing or empty model 'actual_model_id' at index 0 for provider 'gemini'")
+      expect.stringContaining("FATAL ERROR: Missing or empty model 'actual_model_id' at index 0 for provider 'gemini'"),
     );
   });
 
@@ -277,7 +279,7 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("FATAL ERROR: Invalid 'fallback_model' format 'openai-gpt-4o'")
+      expect.stringContaining("FATAL ERROR: Invalid 'fallback_model' format 'openai-gpt-4o'"),
     );
   });
 
@@ -291,7 +293,7 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("FATAL ERROR: Invalid 'fallback_model' reference 'nonexistent/model'")
+      expect.stringContaining("FATAL ERROR: Invalid 'fallback_model' reference 'nonexistent/model'"),
     );
   });
 
@@ -299,7 +301,7 @@ describe('Configuration Validation Tests', () => {
     const invalidConfig = getBaseValidConfig();
     invalidConfig.providers.openai = {
       keys: ['openai-key'],
-      models: [{ id: 'gpt-3.5', actual_model_id: 'gpt-3.5' }]
+      models: [{ id: 'gpt-3.5', actual_model_id: 'gpt-3.5' }],
     };
     invalidConfig.providers.gemini.models[0].fallback_model = 'openai/gpt-4o';
 
@@ -309,7 +311,7 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("model ID or alias 'gpt-4o' does not exist in provider 'openai'")
+      expect.stringContaining("model ID or alias 'gpt-4o' does not exist in provider 'openai'"),
     );
   });
 
@@ -317,7 +319,7 @@ describe('Configuration Validation Tests', () => {
     const validConfig = getBaseValidConfig();
     validConfig.providers.openai = {
       keys: ['openai-key'],
-      models: [{ id: 'gpt-4o', aliases: ['gpt4'], actual_model_id: 'gpt-4o-actual' }]
+      models: [{ id: 'gpt-4o', aliases: ['gpt4'], actual_model_id: 'gpt-4o-actual' }],
     };
     validConfig.providers.gemini.models[0].fallback_model = 'openai/gpt4';
     expect(() => {
@@ -335,7 +337,7 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("FATAL ERROR: Invalid 'gateway.global_retry_limit'. Must be a positive integer.")
+      expect.stringContaining("FATAL ERROR: Invalid 'gateway.global_retry_limit'. Must be a positive integer."),
     );
   });
 
@@ -349,7 +351,7 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("FATAL ERROR: Invalid 'gateway.cooldown.base_seconds'. Must be a positive integer.")
+      expect.stringContaining("FATAL ERROR: Invalid 'gateway.cooldown.base_seconds'. Must be a positive integer."),
     );
   });
 
@@ -363,7 +365,7 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("FATAL ERROR: Invalid 'gateway.cooldown.max_seconds'. Must be a positive integer.")
+      expect.stringContaining("FATAL ERROR: Invalid 'gateway.cooldown.max_seconds'. Must be a positive integer."),
     );
   });
 
@@ -377,7 +379,7 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("FATAL ERROR: Invalid 'fallback_model' reference 'gemini/gemini-2.5-pro' at index 0 for provider 'gemini': model cannot fall back to itself.")
+      expect.stringContaining("FATAL ERROR: Invalid 'fallback_model' reference 'gemini/gemini-2.5-pro' at index 0 for provider 'gemini': model cannot fall back to itself."),
     );
   });
 
@@ -392,8 +394,7 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("FATAL ERROR: Invalid 'fallback_model' reference 'gemini/pro-alias' at index 0 for provider 'gemini': model cannot fall back to itself.")
+      expect.stringContaining("FATAL ERROR: Invalid 'fallback_model' reference 'gemini/pro-alias' at index 0 for provider 'gemini': model cannot fall back to itself."),
     );
   });
 });
-

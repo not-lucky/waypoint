@@ -1,12 +1,12 @@
 import express from 'express';
-import { ConfigLoader } from './config/loader.js';
+import { ConfigLoader } from './config/loader';
 
 // Load configuration
 const configLoader = new ConfigLoader();
 const config = configLoader.loadConfig();
 
 const app = express();
-const port = config.gateway.port;
+const { port } = config.gateway;
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });

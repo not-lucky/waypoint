@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deepFreeze, isDeepEqual, ConfigLoader } from '../src/config/loader.js';
+import { deepFreeze, isDeepEqual, ConfigLoader } from '../src/config/loader';
 
 describe('Critique Fixes Verification', () => {
   describe('deepFreeze with Map, Set, and Date', () => {
@@ -32,7 +32,7 @@ describe('Critique Fixes Verification', () => {
       const nested = {
         map: new Map([['a', 1]]),
         set: new Set([2]),
-        date: new Date()
+        date: new Date(),
       };
       deepFreeze(nested);
       expect(Object.isFrozen(nested.map)).toBe(true);

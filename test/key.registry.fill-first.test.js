@@ -1,5 +1,7 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { KeyRegistry } from '../src/registry/KeyRegistry.js';
+import {
+  describe, it, expect, vi, beforeEach, afterEach,
+} from 'vitest';
+import { KeyRegistry } from '../src/registry/KeyRegistry';
 
 describe('Key Registry Fill-First Strategy Tests', () => {
   beforeEach(() => {
@@ -14,14 +16,14 @@ describe('Key Registry Fill-First Strategy Tests', () => {
     const config = {
       gateway: {
         routing: {
-          strategy: 'fill-first'
-        }
+          strategy: 'fill-first',
+        },
       },
       providers: {
         gemini: {
-          keys: ['Key_A', 'Key_B', 'Key_C']
-        }
-      }
+          keys: ['Key_A', 'Key_B', 'Key_C'],
+        },
+      },
     };
 
     const registry = new KeyRegistry(config);
@@ -35,14 +37,14 @@ describe('Key Registry Fill-First Strategy Tests', () => {
     const config = {
       gateway: {
         routing: {
-          strategy: 'fill-first'
-        }
+          strategy: 'fill-first',
+        },
       },
       providers: {
         gemini: {
-          keys: ['Key_A', 'Key_B', 'Key_C']
-        }
-      }
+          keys: ['Key_A', 'Key_B', 'Key_C'],
+        },
+      },
     };
 
     const registry = new KeyRegistry(config);

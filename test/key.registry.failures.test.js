@@ -1,5 +1,7 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { KeyRegistry } from '../src/registry/KeyRegistry.js';
+import {
+  describe, it, expect, vi, beforeEach, afterEach,
+} from 'vitest';
+import { KeyRegistry } from '../src/registry/KeyRegistry';
 
 describe('Key Registry Failures & Cooldowns', () => {
   beforeEach(() => {
@@ -13,12 +15,12 @@ describe('Key Registry Failures & Cooldowns', () => {
   it('429 -> key inactive + cooldownUntil set; vi.runAllTimers() -> key active again', () => {
     const config = {
       gateway: {
-        cooldown: { base_seconds: 30, max_seconds: 3600 }
+        cooldown: { base_seconds: 30, max_seconds: 3600 },
       },
-      providers: { gemini: { keys: ['Key_A'] } }
+      providers: { gemini: { keys: ['Key_A'] } },
     };
     const registry = new KeyRegistry(config);
-    const key = registry.pools['gemini'].keys[0];
+    const key = registry.pools.gemini.keys[0];
 
     // Assert initial state
     expect(key.active).toBe(true);
@@ -41,10 +43,10 @@ describe('Key Registry Failures & Cooldowns', () => {
 
   it('402 -> exhausted:true; timer advance does not restore it', () => {
     const config = {
-      providers: { gemini: { keys: ['Key_A'] } }
+      providers: { gemini: { keys: ['Key_A'] } },
     };
     const registry = new KeyRegistry(config);
-    const key = registry.pools['gemini'].keys[0];
+    const key = registry.pools.gemini.keys[0];
 
     // Flag failure 402
     registry.flagFailure('gemini', 'Key_A', 402);
@@ -60,12 +62,12 @@ describe('Key Registry Failures & Cooldowns', () => {
   it('three consecutive 429s -> backoff is 30 s, 60 s, 120 s (base=30)', () => {
     const config = {
       gateway: {
-        cooldown: { base_seconds: 30, max_seconds: 3600 }
+        cooldown: { base_seconds: 30, max_seconds: 3600 },
       },
-      providers: { gemini: { keys: ['Key_A'] } }
+      providers: { gemini: { keys: ['Key_A'] } },
     };
     const registry = new KeyRegistry(config);
-    const key = registry.pools['gemini'].keys[0];
+    const key = registry.pools.gemini.keys[0];
     const startTime = Date.now();
 
     // 1st failure (429) -> base * 2^0 = 30s
@@ -101,12 +103,12 @@ describe('Key Registry Failures & Cooldowns', () => {
   it('flagSuccess -> consecutiveFailures===0, active===true, cooldownUntil===null', () => {
     const config = {
       gateway: {
-        cooldown: { base_seconds: 30, max_seconds: 3600 }
+        cooldown: { base_seconds: 30, max_seconds: 3600 },
       },
-      providers: { gemini: { keys: ['Key_A'] } }
+      providers: { gemini: { keys: ['Key_A'] } },
     };
     const registry = new KeyRegistry(config);
-    const key = registry.pools['gemini'].keys[0];
+    const key = registry.pools.gemini.keys[0];
 
     // Trigger failure first to set consecutiveFailures and cooldown
     registry.flagFailure('gemini', 'Key_A', 429);
@@ -126,9 +128,9 @@ describe('Key Registry Failures & Cooldowns', () => {
   it('cleanup() clears all timeout handles in the Set', () => {
     const config = {
       gateway: {
-        cooldown: { base_seconds: 30, max_seconds: 3600 }
+        cooldown: { base_seconds: 30, max_seconds: 3600 },
       },
-      providers: { gemini: { keys: ['Key_A'] } }
+      providers: { gemini: { keys: ['Key_A'] } },
     };
     const registry = new KeyRegistry(config);
 

@@ -1,7 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import {
+  describe, it, expect, beforeEach, afterEach, vi,
+} from 'vitest';
 import fs from 'fs';
 import path from 'path';
-import { ConfigLoader } from '../src/config/loader.js';
+import { ConfigLoader } from '../src/config/loader';
 
 // Resolve the absolute path for a temporary configuration file used during tests.
 const tempConfigPath = path.resolve('test/temp_config.yaml');
@@ -9,7 +11,7 @@ const tempConfigPath = path.resolve('test/temp_config.yaml');
 /**
  * Utility function to write string content to the temporary test configuration file.
  * Automatically appends missing required structural fields like logging and clients.
- * 
+ *
  * @param {string} content - YAML content string.
  */
 function writeTempConfig(content) {
@@ -56,7 +58,7 @@ describe('Configuration Loader Tests', () => {
   beforeEach(() => {
     configLoader = new ConfigLoader();
     originalEnv = { ...process.env };
-    
+
     // Set standard mock environment variables for the gateway configuration.
     process.env.OPEN_WEBUI_TOKEN = 'mock-webui-token';
     process.env.CODEX_AGENT_TOKEN = 'mock-codex-token';
@@ -77,13 +79,13 @@ describe('Configuration Loader Tests', () => {
   describe('Standard Config Loading', () => {
     it('should parse standard config.yaml and correctly interpolate env vars', () => {
       const config = configLoader.loadConfig('config/config.yaml');
-      
+
       // Verify that structural scalar configurations match.
       expect(config.gateway.port).toBe(20128);
-      
+
       // Verify that non-key variables are correctly replaced.
       expect(config.clients[0].token).toBe('mock-webui-token');
-      
+
       // Verify that all keys in the providers are resolved.
       expect(config.providers.gemini.keys).toContain('gemini-key-1');
       expect(config.providers.gemini.keys).toContain('gemini-key-2');
@@ -116,7 +118,7 @@ describe('Configuration Loader Tests', () => {
 
       expect(exitSpy).toHaveBeenCalledWith(1);
       expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Missing or empty environment variable OPEN_WEBUI_TOKEN')
+        expect.stringContaining('Missing or empty environment variable OPEN_WEBUI_TOKEN'),
       );
 
       exitSpy.mockRestore();
@@ -138,7 +140,7 @@ describe('Configuration Loader Tests', () => {
 
       // Warning should be logged to alert the degraded startup mode.
       expect(consoleWarnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Missing or empty environment variable GEMINI_API_KEY_1')
+        expect.stringContaining('Missing or empty environment variable GEMINI_API_KEY_1'),
       );
 
       consoleWarnSpy.mockRestore();
@@ -220,7 +222,7 @@ providers:
 
       expect(exitSpy).toHaveBeenCalledWith(1);
       expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Provider 'my-ollama' is a custom provider and must specify a non-empty 'base_url'")
+        expect.stringContaining("Provider 'my-ollama' is a custom provider and must specify a non-empty 'base_url'"),
       );
 
       exitSpy.mockRestore();
@@ -245,7 +247,7 @@ providers:
 `);
 
       const config = configLoader.loadConfig(tempConfigPath);
-      
+
       // Assertion: Validation passes.
       expect(config.providers['my-ollama'].base_url).toBe('http://localhost:11434/v1');
       expect(config.providers['my-ollama'].keys).toContain('ollama-key');
@@ -269,8 +271,8 @@ providers:
 
       const customReserved = new Set(['cohere']);
       const config = configLoader.loadConfig(tempConfigPath, customReserved);
-      
-      // Assertion: Cohere did not crash validation despite not having a base_url because it was injected as reserved.
+
+      // Cohere must not crash validation (no base_url needed) because it was injected as reserved.
       expect(config.providers.cohere.keys).toContain('cohere-key');
     });
 
@@ -302,9 +304,8 @@ providers:
   });
 
   describe('Hot-Reload & Watcher', () => {
-    it('should watch the configuration file and update by returning a new frozen snapshot', () => {
-      return new Promise((resolve, reject) => {
-        writeTempConfig(`
+    it('should watch the configuration file and update by returning a new frozen snapshot', () => new Promise((resolve, reject) => {
+      writeTempConfig(`
 gateway:
   port: 20128
   routing:
@@ -318,35 +319,36 @@ providers:
         actual_model_id: "gemini-2.5-pro"
 `);
 
-        const config = configLoader.loadConfig(tempConfigPath);
-        expect(config.providers.gemini.keys).toContain('key-1');
-        expect(Object.isFrozen(config)).toBe(true);
+      const config = configLoader.loadConfig(tempConfigPath);
+      expect(config.providers.gemini.keys).toContain('key-1');
+      expect(Object.isFrozen(config)).toBe(true);
 
-        // Subscribe to configuration changes.
-        const unsubscribe = configLoader.onConfigChange((newConfig, oldConfig) => {
-          try {
-            // Verify that the new config contains the updated value and is frozen.
-            expect(newConfig.providers.gemini.keys).toContain('key-2');
-            expect(Object.isFrozen(newConfig)).toBe(true);
+      // Subscribe to configuration changes.
+      const unsubscribe = configLoader.onConfigChange((newConfig, oldConfig) => {
+        try {
+          // Verify that the new config contains the updated value and is frozen.
+          expect(newConfig.providers.gemini.keys).toContain('key-2');
+          expect(Object.isFrozen(newConfig)).toBe(true);
 
-            // Verify that the old config contains the old value, is frozen, and remains unchanged.
-            expect(oldConfig.providers.gemini.keys).toContain('key-1');
-            expect(Object.isFrozen(oldConfig)).toBe(true);
-            
-            // Verify that references are different (immutable snapshots) and oldConfig matches the initial config.
-            expect(config).toBe(oldConfig); 
-            expect(config).not.toBe(newConfig);
-            
-            unsubscribe();
-            resolve();
-          } catch (err) {
-            unsubscribe();
-            reject(err);
-          }
-        });
+          // Verify that the old config contains the old value, is frozen, and remains unchanged.
+          expect(oldConfig.providers.gemini.keys).toContain('key-1');
+          expect(Object.isFrozen(oldConfig)).toBe(true);
 
-        // Trigger change by writing to file.
-        writeTempConfig(`
+          // References must differ (immutable snapshots); oldConfig matches the initial config.
+          expect(config).toBe(oldConfig);
+          // newConfig is a different frozen snapshot from oldConfig
+          expect(config).not.toBe(newConfig);
+
+          unsubscribe();
+          resolve();
+        } catch (err) {
+          unsubscribe();
+          reject(err);
+        }
+      });
+
+      // Trigger change by writing to file.
+      writeTempConfig(`
 gateway:
   port: 20128
   routing:
@@ -359,12 +361,10 @@ providers:
       - id: "gemini-2.5-pro"
         actual_model_id: "gemini-2.5-pro"
 `);
-      });
-    });
+    }));
 
-    it('should warn when structural configuration changes during watch', () => {
-      return new Promise((resolve, reject) => {
-        writeTempConfig(`
+    it('should warn when structural configuration changes during watch', () => new Promise((resolve, reject) => {
+      writeTempConfig(`
 gateway:
   port: 20128
   routing:
@@ -378,28 +378,29 @@ providers:
         actual_model_id: "gemini-2.5-pro"
 `);
 
-        const config = configLoader.loadConfig(tempConfigPath);
-        const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      configLoader.loadConfig(tempConfigPath);
+      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-        // Subscribe to configuration changes.
-        const unsubscribe = configLoader.onConfigChange((newConfig) => {
-          try {
-            // Assertion: Warning should be emitted when structural configuration (e.g. gateway port) is modified.
-            expect(consoleWarnSpy).toHaveBeenCalledWith(
-              expect.stringContaining('Structural configuration changed. A process restart is required')
-            );
-            consoleWarnSpy.mockRestore();
-            unsubscribe();
-            resolve();
-          } catch (err) {
-            consoleWarnSpy.mockRestore();
-            unsubscribe();
-            reject(err);
-          }
-        });
+      // Subscribe to configuration changes.
+      const unsubscribe = configLoader.onConfigChange(() => {
+        try {
+          // Assertion: Warning emitted when structural config (e.g. gateway port) is modified.
+          expect(consoleWarnSpy).toHaveBeenCalledWith(
+            // eslint-disable-next-line max-len
+            expect.stringContaining('Structural configuration changed. A process restart is required'),
+          );
+          consoleWarnSpy.mockRestore();
+          unsubscribe();
+          resolve();
+        } catch (err) {
+          consoleWarnSpy.mockRestore();
+          unsubscribe();
+          reject(err);
+        }
+      });
 
-        // Trigger structural change (port changed from 20128 to 30000).
-        writeTempConfig(`
+      // Trigger structural change (port changed from 20128 to 30000).
+      writeTempConfig(`
 gateway:
   port: 30000
   routing:
@@ -412,13 +413,11 @@ providers:
       - id: "gemini-2.5-pro"
         actual_model_id: "gemini-2.5-pro"
 `);
-      });
-    });
+    }));
 
-    it('should not exit the process and log an error when configuration reload fails due to validation errors', () => {
-      return new Promise((resolve, reject) => {
-        // Write standard valid temp config
-        writeTempConfig(`
+    it('should not exit the process and log an error when configuration reload fails due to validation errors', () => new Promise((resolve, reject) => {
+      // Write standard valid temp config
+      writeTempConfig(`
 gateway:
   port: 20128
   routing:
@@ -432,24 +431,24 @@ providers:
         actual_model_id: "gemini-2.5-pro"
 `);
 
-        const config = configLoader.loadConfig(tempConfigPath);
-        
-        // Spy on process.exit and console.error
-        const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
-          throw new Error('process.exit called');
-        });
-        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      configLoader.loadConfig(tempConfigPath);
 
-        // Setup a listener that shouldn't fire because the reload is invalid
-        const unsubscribe = configLoader.onConfigChange(() => {
-          unsubscribe();
-          exitSpy.mockRestore();
-          consoleErrorSpy.mockRestore();
-          reject(new Error('onConfigChange listener should not have been called for invalid config'));
-        });
+      // Spy on process.exit and console.error
+      const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
+        throw new Error('process.exit called');
+      });
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-        // Trigger change with an invalid config (invalid port)
-        writeTempConfig(`
+      // Setup a listener that shouldn't fire because the reload is invalid
+      const unsubscribe = configLoader.onConfigChange(() => {
+        unsubscribe();
+        exitSpy.mockRestore();
+        consoleErrorSpy.mockRestore();
+        reject(new Error('onConfigChange listener should not have been called for invalid config'));
+      });
+
+      // Trigger change with an invalid config (invalid port)
+      writeTempConfig(`
 gateway:
   port: -1
   routing:
@@ -462,26 +461,25 @@ providers:
         actual_model_id: "gemini-2.5-pro"
 `);
 
-        // Wait a short time to verify process.exit is not called and the error is logged
-        setTimeout(() => {
-          try {
-            expect(exitSpy).not.toHaveBeenCalled();
-            expect(consoleErrorSpy).toHaveBeenCalledWith(
-              expect.stringContaining('Error reloading configuration file on change')
-            );
-            unsubscribe();
-            exitSpy.mockRestore();
-            consoleErrorSpy.mockRestore();
-            resolve();
-          } catch (err) {
-            unsubscribe();
-            exitSpy.mockRestore();
-            consoleErrorSpy.mockRestore();
-            reject(err);
-          }
-        }, 200);
-      });
-    });
+      // Wait a short time to verify process.exit is not called and the error is logged
+      setTimeout(() => {
+        try {
+          expect(exitSpy).not.toHaveBeenCalled();
+          expect(consoleErrorSpy).toHaveBeenCalledWith(
+            expect.stringContaining('Error reloading configuration file on change'),
+          );
+          unsubscribe();
+          exitSpy.mockRestore();
+          consoleErrorSpy.mockRestore();
+          resolve();
+        } catch (err) {
+          unsubscribe();
+          exitSpy.mockRestore();
+          consoleErrorSpy.mockRestore();
+          reject(err);
+        }
+      }, 200);
+    }));
   });
 
   describe('Extended Loader Features', () => {
@@ -527,9 +525,8 @@ providers:
       expect(config.clients[0].rate_limit.window_ms).toBe(30000);
     });
 
-    it('should handle rename event (atomic save) by closing the old watcher and re-initializing the new watcher', () => {
-      return new Promise((resolve, reject) => {
-        writeTempConfig(`
+    it('should handle rename event (atomic save) by closing the old watcher and re-initializing the new watcher', () => new Promise((resolve, reject) => {
+      writeTempConfig(`
 gateway:
   port: 20128
   routing:
@@ -543,21 +540,20 @@ providers:
         actual_model_id: "gemini-2.5-pro"
 `);
 
-        const config = configLoader.loadConfig(tempConfigPath);
-        expect(config.providers.gemini.keys).toContain('key-1');
+      const config = configLoader.loadConfig(tempConfigPath);
+      expect(config.providers.gemini.keys).toContain('key-1');
 
-        let triggerCount = 0;
-        const unsubscribe = configLoader.onConfigChange((newConfig) => {
-          try {
-            triggerCount++;
-            if (triggerCount === 1) {
-              expect(newConfig.providers.gemini.keys).toContain('key-2');
-              
-              // Now trigger a second write (rename/atomic save style again) to verify the new watcher works!
-              if (fs.existsSync(tempConfigPath)) {
-                fs.unlinkSync(tempConfigPath);
-              }
-              writeTempConfig(`
+      let triggerCount = 0;
+      const unsubscribe = configLoader.onConfigChange((newConfig) => {
+        try {
+          triggerCount += 1;
+          if (triggerCount === 1) {
+            expect(newConfig.providers.gemini.keys).toContain('key-2');
+            // Trigger a second write (rename/atomic save style) to verify the new watcher works!
+            if (fs.existsSync(tempConfigPath)) {
+              fs.unlinkSync(tempConfigPath);
+            }
+            writeTempConfig(`
 gateway:
   port: 20128
   routing:
@@ -570,22 +566,22 @@ providers:
       - id: "gemini-2.5-pro"
         actual_model_id: "gemini-2.5-pro"
 `);
-            } else if (triggerCount === 2) {
-              expect(newConfig.providers.gemini.keys).toContain('key-3');
-              unsubscribe();
-              resolve();
-            }
-          } catch (err) {
+          } else if (triggerCount === 2) {
+            expect(newConfig.providers.gemini.keys).toContain('key-3');
             unsubscribe();
-            reject(err);
+            resolve();
           }
-        });
-
-        // Simulate atomic save: unlink then write.
-        if (fs.existsSync(tempConfigPath)) {
-          fs.unlinkSync(tempConfigPath);
+        } catch (err) {
+          unsubscribe();
+          reject(err);
         }
-        writeTempConfig(`
+      });
+
+      // Simulate atomic save: unlink then write.
+      if (fs.existsSync(tempConfigPath)) {
+        fs.unlinkSync(tempConfigPath);
+      }
+      writeTempConfig(`
 gateway:
   port: 20128
   routing:
@@ -598,10 +594,8 @@ providers:
       - id: "gemini-2.5-pro"
         actual_model_id: "gemini-2.5-pro"
 `);
-        // Manually dispatch rename event to watcher to speed up/simulate OS-level unlink watch trigger if needed,
-        // but fs.watch triggers it naturally on Linux when unlinked.
-      });
-    });
+      // fs.watch triggers the rename event naturally on Linux when the file is unlinked.
+    }));
 
     it('should safely handle non-string (e.g. numeric) env variables without throwing trim TypeErrors', () => {
       // Stub process.env to return a number for our placeholder
@@ -657,7 +651,7 @@ providers:
 
       expect(fsWatchSpy).toHaveBeenCalledTimes(5);
       expect(consoleWarnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Stopped watching configuration file after 5 failed attempts')
+        expect.stringContaining('Stopped watching configuration file after 5 failed attempts'),
       );
       expect(configLoader.isWatching).toBe(false);
 
@@ -667,5 +661,3 @@ providers:
     });
   });
 });
-
-

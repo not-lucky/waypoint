@@ -1,27 +1,13 @@
-const GENERIC_FAILURE_COOLDOWN_MS = 5000;
+import { KeyObject, GENERIC_FAILURE_COOLDOWN_MS } from './KeyObject';
+
 const DEFAULT_ROUTING_STRATEGY = 'round-robin';
 
-class KeyObject {
-  constructor(keyStr) {
-    this.keyStr = keyStr;
-    this.active = true;
-    this.cooldownUntil = null;
-    this.consecutiveFailures = 0;
-    this.exhausted = false;
-  }
-
-  isAvailable() {
-    const cooledDown = this.cooldownUntil === null || this.cooldownUntil <= Date.now();
-    return this.active && !this.exhausted && cooledDown;
-  }
-}
-
 const createKeyPool = (keys = []) => ({
-  keys: keys.map(k => new KeyObject(k)),
-  roundRobinIndex: 0
+  keys: keys.map((k) => new KeyObject(k)),
+  roundRobinIndex: 0,
 });
 
-export class KeyRegistry {
+export default class KeyRegistry {
   constructor(config = {}, strategy = null) {
     this.config = config;
     this.strategy = strategy || config?.gateway?.routing?.strategy || DEFAULT_ROUTING_STRATEGY;
@@ -29,8 +15,8 @@ export class KeyRegistry {
     this.pools = Object.fromEntries(
       Object.entries(config.providers || {}).map(([name, providerConfig]) => [
         name,
-        createKeyPool(providerConfig?.keys)
-      ])
+        createKeyPool(providerConfig?.keys),
+      ]),
     );
   }
 
@@ -41,11 +27,11 @@ export class KeyRegistry {
     }
 
     if (this.strategy === 'fill-first') {
-      return pool.keys.find(key => key.isAvailable())?.keyStr ?? null;
+      return pool.keys.find((key) => key.isAvailable())?.keyStr ?? null;
     }
 
     const n = pool.keys.length;
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < n; i += 1) {
       const idx = pool.roundRobinIndex;
       const key = pool.keys[idx];
       pool.roundRobinIndex = (idx + 1) % n;
@@ -58,38 +44,44 @@ export class KeyRegistry {
     return null;
   }
 
-  _findKey(provider, keyStr) {
-    return this.pools[provider]?.keys.find(k => k.keyStr === keyStr) ?? null;
+  findKey(provider, keyStr) {
+    return this.pools[provider]?.keys.find((k) => k.keyStr === keyStr) ?? null;
   }
 
-  _setCooldown(key, durationMs, reactivate = false) {
-    key.cooldownUntil = Date.now() + durationMs;
-    
+  setCooldown(key, durationMs, reactivate = false) {
+    const target = key;
+    target.cooldownUntil = Date.now() + durationMs;
+
     const timer = setTimeout(() => {
       if (reactivate) {
-        key.active = true;
+        target.active = true;
       }
-      key.cooldownUntil = null;
+      target.cooldownUntil = null;
       this.timers.delete(timer);
     }, durationMs);
-    
+
     this.timers.add(timer);
   }
 
   flagFailure(provider, keyStr, statusCode) {
-    const key = this._findKey(provider, keyStr);
+    const key = this.findKey(provider, keyStr);
     if (!key) return;
 
     switch (statusCode) {
       case 429: {
-        key.consecutiveFailures++;
+        key.consecutiveFailures += 1;
 
-        const { base_seconds = 30, max_seconds = 3600 } = this.config.gateway?.cooldown ?? {};
+        const { baseSeconds = 30, maxSeconds = 3600 } = this.config.gateway?.cooldown
+          ? {
+            baseSeconds: this.config.gateway.cooldown.base_seconds ?? 30,
+            maxSeconds: this.config.gateway.cooldown.max_seconds ?? 3600,
+          }
+          : {};
         const exponent = key.consecutiveFailures - 1;
-        const backoffSeconds = Math.min(base_seconds * (2 ** exponent), max_seconds);
+        const backoffSeconds = Math.min(baseSeconds * (2 ** exponent), maxSeconds);
 
         key.active = false;
-        this._setCooldown(key, backoffSeconds * 1000, true);
+        this.setCooldown(key, backoffSeconds * 1000, true);
         break;
       }
       case 402:
@@ -99,14 +91,14 @@ export class KeyRegistry {
         break;
       }
       default: {
-        this._setCooldown(key, GENERIC_FAILURE_COOLDOWN_MS, false);
+        this.setCooldown(key, GENERIC_FAILURE_COOLDOWN_MS, false);
         break;
       }
     }
   }
 
   flagSuccess(provider, keyStr) {
-    const key = this._findKey(provider, keyStr);
+    const key = this.findKey(provider, keyStr);
     if (!key) return;
 
     key.consecutiveFailures = 0;
@@ -119,3 +111,5 @@ export class KeyRegistry {
     this.timers.clear();
   }
 }
+
+export { KeyRegistry };

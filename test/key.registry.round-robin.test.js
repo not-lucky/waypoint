@@ -1,19 +1,19 @@
 import { describe, it, expect } from 'vitest';
-import { KeyRegistry } from '../src/registry/KeyRegistry.js';
+import { KeyRegistry } from '../src/registry/KeyRegistry';
 
 describe('Key Registry Round-Robin Key Rotation Tests', () => {
   it('should cycle through 3 keys sequentially and wrap back to the first key', () => {
     const config = {
       gateway: {
         routing: {
-          strategy: 'round-robin'
-        }
+          strategy: 'round-robin',
+        },
       },
       providers: {
         gemini: {
-          keys: ['Key_A', 'Key_B', 'Key_C']
-        }
-      }
+          keys: ['Key_A', 'Key_B', 'Key_C'],
+        },
+      },
     };
 
     const registry = new KeyRegistry(config);
@@ -31,21 +31,21 @@ describe('Key Registry Round-Robin Key Rotation Tests', () => {
     const config = {
       gateway: {
         routing: {
-          strategy: 'round-robin'
-        }
+          strategy: 'round-robin',
+        },
       },
       providers: {
         gemini: {
-          keys: ['Key_A', 'Key_B', 'Key_C']
-        }
-      }
+          keys: ['Key_A', 'Key_B', 'Key_C'],
+        },
+      },
     };
 
     const registry = new KeyRegistry(config);
 
     // Mark Key_B inactive
-    const pool = registry.pools['gemini'];
-    const keyB = pool.keys.find(k => k.keyStr === 'Key_B');
+    const pool = registry.pools.gemini;
+    const keyB = pool.keys.find((k) => k.keyStr === 'Key_B');
     keyB.active = false;
 
     // Requests should skip Key_B and go from Key_A to Key_C, then wrap back to Key_A
@@ -59,22 +59,21 @@ describe('Key Registry Round-Robin Key Rotation Tests', () => {
     const config = {
       gateway: {
         routing: {
-          strategy: 'round-robin'
-        }
+          strategy: 'round-robin',
+        },
       },
       providers: {
         gemini: {
-          keys: ['Key_A', 'Key_B', 'Key_C']
-        }
-      }
+          keys: ['Key_A', 'Key_B', 'Key_C'],
+        },
+      },
     };
 
     const registry = new KeyRegistry(config);
 
     // Mark all keys inactive
-    for (const key of registry.pools['gemini'].keys) {
-      key.active = false;
-    }
+    // eslint-disable-next-line no-param-reassign
+    registry.pools.gemini.keys.forEach((key) => { key.active = false; });
 
     // getKey should return null
     expect(registry.getKey('gemini')).toBeNull();

@@ -16,23 +16,22 @@ class KeyObject {
   }
 }
 
-function createKeyPool(keys = []) {
-  return {
-    keys: keys.map(k => new KeyObject(k)),
-    roundRobinIndex: 0
-  };
-}
+const createKeyPool = (keys = []) => ({
+  keys: keys.map(k => new KeyObject(k)),
+  roundRobinIndex: 0
+});
 
 export class KeyRegistry {
-  constructor(config = {}) {
+  constructor(config = {}, strategy = null) {
     this.config = config;
+    this.strategy = strategy || config?.gateway?.routing?.strategy || DEFAULT_ROUTING_STRATEGY;
     this.timers = new Set();
-    this.pools = {};
-
-    const providers = config.providers || {};
-    for (const [name, providerConfig] of Object.entries(providers)) {
-      this.pools[name] = createKeyPool(providerConfig?.keys);
-    }
+    this.pools = Object.fromEntries(
+      Object.entries(config.providers || {}).map(([name, providerConfig]) => [
+        name,
+        createKeyPool(providerConfig?.keys)
+      ])
+    );
   }
 
   getKey(provider) {
@@ -41,15 +40,11 @@ export class KeyRegistry {
       return null;
     }
 
-    const strategy = this.config.gateway?.routing?.strategy || DEFAULT_ROUTING_STRATEGY;
-    const n = pool.keys.length;
-
-    if (strategy === 'fill-first') {
-      const availableKey = pool.keys.find(key => key.isAvailable());
-      return availableKey?.keyStr ?? null;
+    if (this.strategy === 'fill-first') {
+      return pool.keys.find(key => key.isAvailable())?.keyStr ?? null;
     }
 
-    // Default to 'round-robin'
+    const n = pool.keys.length;
     for (let i = 0; i < n; i++) {
       const idx = pool.roundRobinIndex;
       const key = pool.keys[idx];
@@ -64,9 +59,7 @@ export class KeyRegistry {
   }
 
   _findKey(provider, keyStr) {
-    const pool = this.pools[provider];
-    if (!pool) return null;
-    return pool.keys.find(k => k.keyStr === keyStr) ?? null;
+    return this.pools[provider]?.keys.find(k => k.keyStr === keyStr) ?? null;
   }
 
   _setCooldown(key, durationMs, reactivate = false) {
@@ -91,10 +84,9 @@ export class KeyRegistry {
       case 429: {
         key.consecutiveFailures++;
 
-        const baseSeconds = this.config.gateway?.cooldown?.base_seconds ?? 30;
-        const maxSeconds = this.config.gateway?.cooldown?.max_seconds ?? 3600;
+        const { base_seconds = 30, max_seconds = 3600 } = this.config.gateway?.cooldown ?? {};
         const exponent = key.consecutiveFailures - 1;
-        const backoffSeconds = Math.min(baseSeconds * Math.pow(2, exponent), maxSeconds);
+        const backoffSeconds = Math.min(base_seconds * (2 ** exponent), max_seconds);
 
         key.active = false;
         this._setCooldown(key, backoffSeconds * 1000, true);
@@ -123,9 +115,7 @@ export class KeyRegistry {
   }
 
   cleanup() {
-    for (const timer of this.timers) {
-      clearTimeout(timer);
-    }
+    this.timers.forEach(clearTimeout);
     this.timers.clear();
   }
 }

@@ -1,4 +1,4 @@
-import fs from 'fs';
+import fs from 'node:fs';
 import yaml from 'js-yaml';
 import { isDeepStrictEqual } from 'node:util';
 
@@ -17,9 +17,9 @@ const VAR_REGEX = /\$\{([A-Za-z0-9_]+)\}/g;
  * @param {string} str - The string containing placeholders.
  * @returns {string} The string with all placeholders resolved.
  */
-function replaceEnvVars(str) {
+const replaceEnvVars = (str) => {
   return str.replace(VAR_REGEX, (_, varName) => process.env[varName]);
-}
+};
 
 /**
  * Scans a string for environment variable placeholders and returns the name of
@@ -28,17 +28,20 @@ function replaceEnvVars(str) {
  * @param {string} str - The string to check.
  * @returns {string|null} The name of the missing env var, or null if all exist.
  */
-function getMissingEnvVar(str) {
+const getMissingEnvVar = (str) => {
   const matches = [...str.matchAll(VAR_REGEX)];
   for (const match of matches) {
     const varName = match[1];
     const envVal = process.env[varName];
+    // Do not change to `!envVal?.trim()`. 
+    // In test environments, process.env values are sometimes mocked as numbers or other 
+    // non-string types. Calling .trim() directly on them will throw a TypeError.
     if (envVal === undefined || String(envVal).trim() === '') {
       return varName;
     }
   }
   return null;
-}
+};
 
 /**
  * Coerces a specific property of an object to an integer if it's a string of digits.
@@ -46,13 +49,13 @@ function getMissingEnvVar(str) {
  * @param {object} obj - The target object.
  * @param {string} key - The property key.
  */
-function coerceToInt(obj, key) {
+const coerceToInt = (obj, key) => {
   if (obj && typeof obj[key] === 'string' && /^\d+$/.test(obj[key])) {
     obj[key] = parseInt(obj[key], 10);
   }
-}
+};
 
-export function deepFreeze(obj) {
+export const deepFreeze = (obj) => {
   if (obj === null || typeof obj !== 'object') {
     return obj;
   }
@@ -110,7 +113,7 @@ export function deepFreeze(obj) {
  * @param {object} newConf - New configuration state.
  * @returns {boolean} True if structural fields changed, otherwise false.
  */
-function checkStructuralChanges(oldConf, newConf) {
+const checkStructuralChanges = (oldConf, newConf) => {
   if (!oldConf || !newConf) return false;
   return (
     oldConf.gateway?.port !== newConf.gateway?.port ||
@@ -118,29 +121,23 @@ function checkStructuralChanges(oldConf, newConf) {
     !isDeepStrictEqual(oldConf.gateway?.cors, newConf.gateway?.cors) ||
     !isDeepStrictEqual(oldConf.logging, newConf.logging)
   );
-}
+};
 
-function logErrorAndExitOrThrow(msg, shouldExit) {
+const logErrorAndExitOrThrow = (msg, shouldExit) => {
   if (shouldExit) {
     console.error(`FATAL ERROR: ${msg}`);
     process.exit(1);
   }
   throw new Error(msg);
-}
+};
 
-function isPositiveInteger(val) {
-  return Number.isInteger(val) && val > 0;
-}
+const isPositiveInteger = (val) => Number.isInteger(val) && val > 0;
 
-function isNonEmptyString(val) {
-  return typeof val === 'string' && val.trim() !== '';
-}
+const isNonEmptyString = (val) => typeof val === 'string' && val.trim() !== '';
 
-function matchesModelId(model, fallbackModelId) {
-  return model.id === fallbackModelId || (Array.isArray(model.aliases) && model.aliases.includes(fallbackModelId));
-}
+const matchesModelId = (model, fallbackModelId) => model.id === fallbackModelId || (Array.isArray(model.aliases) && model.aliases.includes(fallbackModelId));
 
-function validateFallbackModel(model, modelIndex, providerName, providers, originalProviders, shouldExit) {
+const validateFallbackModel = (model, modelIndex, providerName, providers, originalProviders, shouldExit) => {
   const fallbackRef = model.fallback_model;
 
   if (!isNonEmptyString(fallbackRef)) {
@@ -172,7 +169,7 @@ function validateFallbackModel(model, modelIndex, providerName, providers, origi
   return false;
 }
 
-export function validateConfig(config, shouldExit = true, reservedProviders = RESERVED_PROVIDERS) {
+export const validateConfig = (config, shouldExit = true, reservedProviders = RESERVED_PROVIDERS) => {
   if (!config) {
     logErrorAndExitOrThrow("Configuration object is null or undefined.", shouldExit);
   }
@@ -258,7 +255,7 @@ export function validateConfig(config, shouldExit = true, reservedProviders = RE
 
   const originalProviders = new Set(Object.keys(config.providers));
 
-  for (const [providerName, providerConf] of Object.entries(config.providers)) {
+  Object.entries(config.providers).forEach(([providerName, providerConf]) => {
     if (!providerConf || typeof providerConf !== 'object') {
       logErrorAndExitOrThrow(`Invalid configuration for provider '${providerName}'.`, shouldExit);
     }
@@ -270,15 +267,14 @@ export function validateConfig(config, shouldExit = true, reservedProviders = RE
     if (!Array.isArray(providerConf.keys) || providerConf.keys.length === 0) {
       console.warn(`WARNING: Provider '${providerName}' has zero active keys. Skipping provider.`);
       delete config.providers[providerName];
-      continue;
+      return;
     }
 
     if (!providerConf.models || !Array.isArray(providerConf.models) || providerConf.models.length === 0) {
       logErrorAndExitOrThrow(`Provider '${providerName}' must have a non-empty 'models' array.`, shouldExit);
     }
 
-    for (let j = 0; j < providerConf.models.length; j++) {
-      const model = providerConf.models[j];
+    providerConf.models.forEach((model, j) => {
       if (!model || typeof model !== 'object') {
         logErrorAndExitOrThrow(`Invalid model at index ${j} for provider '${providerName}'.`, shouldExit);
       }
@@ -301,8 +297,8 @@ export function validateConfig(config, shouldExit = true, reservedProviders = RE
       if (model.fallback_model !== undefined) {
         validateFallbackModel(model, j, providerName, config.providers, originalProviders, shouldExit);
       }
-    }
-  }
+    });
+  });
 }
 
 /**
@@ -351,10 +347,7 @@ export class ConfigLoader {
   onConfigChange(callback) {
     this.listeners.push(callback);
     return () => {
-      const idx = this.listeners.indexOf(callback);
-      if (idx !== -1) {
-        this.listeners.splice(idx, 1);
-      }
+      this.listeners = this.listeners.filter(listener => listener !== callback);
     };
   }
 
@@ -397,7 +390,7 @@ export class ConfigLoader {
     }
 
     // Deep clone to avoid mutating the original parsed object directly before validation.
-    const workingConfig = JSON.parse(JSON.stringify(parsedYaml));
+    const workingConfig = structuredClone(parsedYaml);
     const interpolated = this.interpolate(workingConfig);
 
     // Coerce numeric properties from environment variables
@@ -418,29 +411,25 @@ export class ConfigLoader {
     if (config.gateway) {
       coerceToInt(config.gateway, 'port');
       coerceToInt(config.gateway, 'global_retry_limit');
-      if (config.gateway.cooldown) {
-        coerceToInt(config.gateway.cooldown, 'base_seconds');
-        coerceToInt(config.gateway.cooldown, 'max_seconds');
-      }
+      coerceToInt(config.gateway.cooldown, 'base_seconds');
+      coerceToInt(config.gateway.cooldown, 'max_seconds');
     }
 
     if (Array.isArray(config.clients)) {
-      for (const client of config.clients) {
-        if (client && client.rate_limit) {
-          coerceToInt(client.rate_limit, 'window_ms');
-          coerceToInt(client.rate_limit, 'max');
-        }
-      }
+      config.clients.forEach(client => {
+        coerceToInt(client?.rate_limit, 'window_ms');
+        coerceToInt(client?.rate_limit, 'max');
+      });
     }
 
     if (config.providers && typeof config.providers === 'object') {
-      for (const providerConf of Object.values(config.providers)) {
-        if (providerConf && Array.isArray(providerConf.models)) {
-          for (const model of providerConf.models) {
+      Object.values(config.providers).forEach(providerConf => {
+        if (Array.isArray(providerConf?.models)) {
+          providerConf.models.forEach(model => {
             coerceToInt(model, 'default_thinking_budget');
-          }
+          });
         }
-      }
+      });
     }
   }
 
@@ -450,31 +439,26 @@ export class ConfigLoader {
    */
   interpolate(val, path = []) {
     if (Array.isArray(val)) {
-      if (path[path.length - 1] === 'keys') {
-        const activeKeys = [];
-        const providerName = path[path.length - 2];
-        for (let i = 0; i < val.length; i++) {
-          const item = val[i];
-
-          if (item === undefined || item === null || (typeof item === 'string' && item.trim() === '')) {
+      if (path.at(-1) === 'keys') {
+        const providerName = path.at(-2);
+        return val.flatMap((item, i) => {
+          if (item == null || (typeof item === 'string' && item.trim() === '')) {
             console.warn(`WARNING: Skipping undefined or empty key for provider '${providerName}' at index ${i}.`);
-            continue;
+            return [];
           }
 
           if (typeof item !== 'string') {
-            activeKeys.push(String(item));
-            continue;
+            return [String(item)];
           }
 
           const missingVar = getMissingEnvVar(item);
           if (missingVar) {
             console.warn(`WARNING: Missing or empty environment variable ${missingVar} for key at path ${path.join('.')}[${i}]. Skipping key.`);
-            continue;
+            return [];
           }
 
-          activeKeys.push(replaceEnvVars(item));
-        }
-        return activeKeys;
+          return [replaceEnvVars(item)];
+        });
       }
       return val.map((item, index) => this.interpolate(item, [...path, index]));
     }

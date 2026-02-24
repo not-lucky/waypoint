@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { KeyRegistry } from '../src/registry/KeyRegistry';
+import { KeyRegistry } from '../src/registry/KeyRegistry.js';
 
 describe('Key Registry Round-Robin Key Rotation Tests', () => {
   it('should cycle through 3 keys sequentially and wrap back to the first key', () => {

@@ -28,18 +28,14 @@ const replaceEnvVars = (str) => str.replace(VAR_REGEX, (_, varName) => process.e
  */
 const getMissingEnvVar = (str) => {
   const matches = [...str.matchAll(VAR_REGEX)];
-  return matches.reduce((found, match) => {
-    if (found) return found;
-    const varName = match[1];
-    const envVal = process.env[varName];
+  const missing = matches.find((match) => {
+    const envVal = process.env[match[1]];
     // Do not change to `!envVal?.trim()`.
     // In test environments, process.env values are sometimes mocked as numbers or other
     // non-string types. Calling .trim() directly on them will throw a TypeError.
-    if (envVal === undefined || String(envVal).trim() === '') {
-      return varName;
-    }
-    return null;
-  }, null);
+    return envVal === undefined || String(envVal).trim() === '';
+  });
+  return missing ? missing[1] : null;
 };
 
 /**
@@ -87,10 +83,10 @@ export const deepFreeze = (obj) => {
     // eslint-disable-next-line no-param-reassign
     obj.clear = throwFrozen;
     Object.freeze(obj);
-    obj.entries().forEach(([key, val]) => {
+    for (const [key, val] of obj) {
       deepFreeze(key);
       deepFreeze(val);
-    });
+    }
     return obj;
   }
 
@@ -103,15 +99,15 @@ export const deepFreeze = (obj) => {
     // eslint-disable-next-line no-param-reassign
     obj.clear = throwFrozen;
     Object.freeze(obj);
-    obj.values().forEach((val) => {
+    for (const val of obj) {
       deepFreeze(val);
-    });
+    }
     return obj;
   }
 
   Object.freeze(obj);
-  Object.keys(obj).forEach((key) => {
-    deepFreeze(obj[key]);
+  Object.values(obj).forEach((val) => {
+    deepFreeze(val);
   });
   return obj;
 };
@@ -259,8 +255,7 @@ export const validateConfig = (
     logErrorAndExitOrThrow("Missing structural field 'clients'.", shouldExit);
   }
 
-  for (let i = 0; i < config.clients.length; i += 1) {
-    const client = config.clients[i];
+  config.clients.forEach((client, i) => {
     if (!client || typeof client !== 'object') {
       logErrorAndExitOrThrow(`Invalid client configuration at index ${i}.`, shouldExit);
     }
@@ -282,7 +277,7 @@ export const validateConfig = (
         shouldExit,
       );
     }
-  }
+  });
 
   if (!config.logging || typeof config.logging !== 'object') {
     logErrorAndExitOrThrow("Missing structural field 'logging'.", shouldExit);
@@ -315,18 +310,57 @@ export const validateConfig = (
       logErrorAndExitOrThrow(`Invalid configuration for provider '${providerName}'.`, shouldExit);
     }
 
+    // --- type field validation ---
+    // Reserved providers must never carry a type field; it is ignored with a warning.
+    if (reservedProviders.has(providerName)) {
+      if (providerConf.type !== undefined) {
+        // eslint-disable-next-line no-console
+        console.warn(`WARNING: Reserved provider '${providerName}' does not accept a 'type' field. It will be ignored.`);
+        // eslint-disable-next-line no-param-reassign
+        delete providerConf.type;
+      }
+    } else {
+      // Custom providers: validate type if present, default to 'openai-compatible' if omitted.
+      const VALID_TYPES = ['openai-compatible', 'anthropic-compatible'];
+      if (providerConf.type === undefined) {
+        // eslint-disable-next-line no-param-reassign
+        providerConf.type = 'openai-compatible';
+      } else if (!VALID_TYPES.includes(providerConf.type)) {
+        logErrorAndExitOrThrow(
+          `Invalid 'type' value '${providerConf.type}' for custom provider '${providerName}'. unknown provider type.`,
+          shouldExit,
+        );
+      }
+    }
+
     if (!reservedProviders.has(providerName) && !isNonEmptyString(providerConf.base_url)) {
       logErrorAndExitOrThrow(
-        `Provider '${providerName}' is a custom provider and must specify a non-empty 'base_url'.`,
+        `Provider '${providerName}' is a custom provider and must specify a non-empty 'base_url'. custom provider requires base_url.`,
         shouldExit,
       );
     }
 
+    if (Array.isArray(providerConf.keys)) {
+      const originalLength = providerConf.keys.length;
+      const validKeys = providerConf.keys.filter((key, index) => {
+        if (key == null || (typeof key === 'string' && key.trim() === '')) {
+          // eslint-disable-next-line no-console
+          console.warn(`WARNING: Skipping undefined or empty key for provider '${providerName}' at index ${index}.`);
+          return false;
+        }
+        return true;
+      });
+      if (validKeys.length !== originalLength && !Object.isFrozen(providerConf)) {
+        // eslint-disable-next-line no-param-reassign
+        providerConf.keys = validKeys;
+      }
+    }
+
     if (!Array.isArray(providerConf.keys) || providerConf.keys.length === 0) {
-      // eslint-disable-next-line no-console
-      console.warn(`WARNING: Provider '${providerName}' has zero active keys. Skipping provider.`);
-      // eslint-disable-next-line no-param-reassign
-      delete config.providers[providerName];
+      logErrorAndExitOrThrow(
+        `Provider '${providerName}' has zero active keys remaining in the pool.`,
+        shouldExit,
+      );
       return;
     }
 

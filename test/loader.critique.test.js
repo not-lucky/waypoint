@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deepFreeze, isDeepEqual, ConfigLoader } from '../src/config/loader';
+import { deepFreeze, isDeepEqual, ConfigLoader } from '../src/config/loader.js';
 
 describe('Critique Fixes Verification', () => {
   describe('deepFreeze with Map, Set, and Date', () => {

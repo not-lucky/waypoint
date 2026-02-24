@@ -1,7 +1,7 @@
 import {
   describe, it, expect, beforeEach, afterEach, vi,
 } from 'vitest';
-import { validateConfig, ConfigLoader } from '../src/config/loader';
+import { validateConfig, ConfigLoader } from '../src/config/loader.js';
 
 describe('Configuration Validation Tests', () => {
   let consoleErrorSpy;
@@ -136,19 +136,18 @@ describe('Configuration Validation Tests', () => {
     expect(exitSpy).not.toHaveBeenCalled();
   });
 
-  it('should skip provider and not throw/exit if a provider has zero active keys remaining', () => {
+  it('should call process.exit(1) if a provider has zero active keys remaining', () => {
     const config = getBaseValidConfig();
     config.providers.gemini.keys = [];
 
     expect(() => {
       validateConfig(config);
-    }).not.toThrow();
+    }).toThrow('process.exit called');
 
-    expect(exitSpy).not.toHaveBeenCalled();
-    expect(consoleWarnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("WARNING: Provider 'gemini' has zero active keys. Skipping provider."),
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Provider 'gemini' has zero active keys remaining in the pool"),
     );
-    expect(config.providers.gemini).toBeUndefined();
   });
 
   it('should not throw an error if config is frozen', () => {
@@ -395,6 +394,60 @@ describe('Configuration Validation Tests', () => {
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       expect.stringContaining("FATAL ERROR: Invalid 'fallback_model' reference 'gemini/pro-alias' at index 0 for provider 'gemini': model cannot fall back to itself."),
+    );
+  });
+
+  it('should call process.exit(1) when a custom provider is missing base_url', () => {
+    const config = getBaseValidConfig();
+    config.providers['custom-provider'] = {
+      keys: ['custom-key'],
+      models: [{ id: 'custom-model', actual_model_id: 'custom-model-actual' }],
+    };
+
+    expect(() => {
+      validateConfig(config);
+    }).toThrow('process.exit called');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('custom provider requires base_url'),
+    );
+  });
+
+  it('should call process.exit(1) when custom provider has type: "anthropic-compatible" but is missing base_url', () => {
+    const config = getBaseValidConfig();
+    config.providers['custom-anthropic'] = {
+      type: 'anthropic-compatible',
+      keys: ['custom-key'],
+      models: [{ id: 'custom-model', actual_model_id: 'custom-model-actual' }],
+    };
+
+    expect(() => {
+      validateConfig(config);
+    }).toThrow('process.exit called');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('custom provider requires base_url'),
+    );
+  });
+
+  it('should call process.exit(1) when custom provider has unrecognized type', () => {
+    const config = getBaseValidConfig();
+    config.providers['custom-provider'] = {
+      type: 'llm-compatible',
+      base_url: 'http://localhost:8080',
+      keys: ['custom-key'],
+      models: [{ id: 'custom-model', actual_model_id: 'custom-model-actual' }],
+    };
+
+    expect(() => {
+      validateConfig(config);
+    }).toThrow('process.exit called');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('unknown provider type'),
     );
   });
 });

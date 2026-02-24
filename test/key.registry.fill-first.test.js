@@ -1,7 +1,7 @@
 import {
   describe, it, expect, vi, beforeEach, afterEach,
 } from 'vitest';
-import { KeyRegistry } from '../src/registry/KeyRegistry';
+import { KeyRegistry } from '../src/registry/KeyRegistry.js';
 
 describe('Key Registry Fill-First Strategy Tests', () => {
   beforeEach(() => {

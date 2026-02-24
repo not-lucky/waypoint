@@ -1,4 +1,4 @@
-import { KeyObject, GENERIC_FAILURE_COOLDOWN_MS } from './KeyObject';
+import { KeyObject, GENERIC_FAILURE_COOLDOWN_MS } from './KeyObject.js';
 
 const DEFAULT_ROUTING_STRATEGY = 'round-robin';
 
@@ -22,7 +22,7 @@ export default class KeyRegistry {
 
   getKey(provider) {
     const pool = this.pools[provider];
-    if (!pool || pool.keys.length === 0) {
+    if (!pool?.keys?.length) {
       return null;
     }
 
@@ -71,12 +71,9 @@ export default class KeyRegistry {
       case 429: {
         key.consecutiveFailures += 1;
 
-        const { baseSeconds = 30, maxSeconds = 3600 } = this.config.gateway?.cooldown
-          ? {
-            baseSeconds: this.config.gateway.cooldown.base_seconds ?? 30,
-            maxSeconds: this.config.gateway.cooldown.max_seconds ?? 3600,
-          }
-          : {};
+        const cooldown = this.config.gateway?.cooldown;
+        const baseSeconds = cooldown?.base_seconds ?? 30;
+        const maxSeconds = cooldown?.max_seconds ?? 3600;
         const exponent = key.consecutiveFailures - 1;
         const backoffSeconds = Math.min(baseSeconds * (2 ** exponent), maxSeconds);
 

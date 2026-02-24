@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ProviderFactory } from '../src/adapters/ProviderFactory';
+import { ProviderFactory } from '../src/adapters/ProviderFactory.js';
 
 describe('ProviderFactory Tests', () => {
   it('should register a stub, get returns same instance', () => {

@@ -21,7 +21,7 @@ describe('Server Port Resolution', () => {
     process.env.PORT = '30005';
 
     // Dynamically import index.js so it executes under the set environment
-    const mod = await import('../src/index');
+    const mod = await import('../src/index.js');
     server = mod.server;
   });
 

@@ -12,9 +12,9 @@ module.exports = {
   },
   rules: {
     'import/extensions': ['error', 'ignorePackages', {
-      js: 'never',
-      mjs: 'never',
-      cjs: 'never',
+      js: 'always',
+      mjs: 'always',
+      cjs: 'always',
     }],
     'no-console': 'off',
   },

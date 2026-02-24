@@ -3,7 +3,7 @@ import {
 } from 'vitest';
 import fs from 'fs';
 import path from 'path';
-import { ConfigLoader } from '../src/config/loader';
+import { ConfigLoader } from '../src/config/loader.js';
 
 // Resolve the absolute path for a temporary configuration file used during tests.
 const tempConfigPath = path.resolve('test/temp_config.yaml');
@@ -146,34 +146,34 @@ describe('Configuration Loader Tests', () => {
       consoleWarnSpy.mockRestore();
     });
 
-    it('should skip provider and load successfully if all keys for a provider are missing but other providers have keys', () => {
+    it('should exit with FATAL error if all keys for a provider are missing even if other providers have keys', () => {
       const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
         throw new Error('process.exit called');
       });
-      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
       // Simulate complete key exhaustion for the Gemini provider.
       delete process.env.GEMINI_API_KEY_1;
       delete process.env.GEMINI_API_KEY_2;
 
-      const config = configLoader.loadConfig('config/config.yaml');
+      expect(() => {
+        configLoader.loadConfig('config/config.yaml');
+      }).toThrow('process.exit called');
 
-      expect(exitSpy).not.toHaveBeenCalled();
-      // gemini should be skipped/omitted from providers
-      expect(config.providers.gemini).toBeUndefined();
-      // anthropic and openai should still be present
-      expect(config.providers.anthropic).toBeDefined();
-      expect(config.providers.openai).toBeDefined();
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Provider 'gemini' has zero active keys remaining in the pool"),
+      );
 
       exitSpy.mockRestore();
-      consoleWarnSpy.mockRestore();
+      consoleErrorSpy.mockRestore();
     });
 
-    it('should not fatal error even if all providers are skipped (have zero active keys)', () => {
+    it('should fatal error if all providers have zero active keys', () => {
       const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
         throw new Error('process.exit called');
       });
-      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
       // Simulate complete key exhaustion for all providers.
       delete process.env.GEMINI_API_KEY_1;
@@ -183,15 +183,15 @@ describe('Configuration Loader Tests', () => {
 
       expect(() => {
         configLoader.loadConfig('config/config.yaml');
-      }).not.toThrow();
+      }).toThrow('process.exit called');
 
-      expect(exitSpy).not.toHaveBeenCalled();
-
-      const config = configLoader.currentConfig;
-      expect(config.providers).toEqual({}); // All providers skipped!
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('has zero active keys remaining in the pool'),
+      );
 
       exitSpy.mockRestore();
-      consoleWarnSpy.mockRestore();
+      consoleErrorSpy.mockRestore();
     });
 
     it('should exit with error if a custom provider lacks a base_url', () => {
@@ -300,6 +300,140 @@ providers:
       expect(config.providers.gemini.keys).toEqual(['key-1', 'key-2']);
       expect(consoleWarnSpy).toHaveBeenCalledTimes(2);
       consoleWarnSpy.mockRestore();
+    });
+  });
+
+  describe('Custom Provider type Field', () => {
+    it('should default type to "openai-compatible" when omitted on custom provider', () => {
+      writeTempConfig(`
+gateway:
+  port: 20128
+  routing:
+    strategy: "round-robin"
+providers:
+  my-ollama:
+    base_url: "http://localhost:11434/v1"
+    keys:
+      - "ollama-key"
+    models:
+      - id: "llama3"
+        actual_model_id: "llama3:70b"
+`);
+
+      const config = configLoader.loadConfig(tempConfigPath);
+
+      expect(config.providers['my-ollama'].type).toBe('openai-compatible');
+      expect(config.providers['my-ollama'].keys).toContain('ollama-key');
+    });
+
+    it('should preserve type "openai-compatible" when explicitly set on custom provider', () => {
+      writeTempConfig(`
+gateway:
+  port: 20128
+  routing:
+    strategy: "round-robin"
+providers:
+  my-ollama:
+    type: "openai-compatible"
+    base_url: "http://localhost:11434/v1"
+    keys:
+      - "ollama-key"
+    models:
+      - id: "llama3"
+        actual_model_id: "llama3:70b"
+`);
+
+      const config = configLoader.loadConfig(tempConfigPath);
+
+      expect(config.providers['my-ollama'].type).toBe('openai-compatible');
+    });
+
+    it('should preserve type "anthropic-compatible" when set on custom provider', () => {
+      writeTempConfig(`
+gateway:
+  port: 20128
+  routing:
+    strategy: "round-robin"
+providers:
+  my-proxy:
+    type: "anthropic-compatible"
+    base_url: "https://my-proxy.example.com/v1"
+    keys:
+      - "proxy-key"
+    models:
+      - id: "claude-proxy"
+        actual_model_id: "claude-sonnet-4-20250514"
+`);
+
+      const config = configLoader.loadConfig(tempConfigPath);
+
+      expect(config.providers['my-proxy'].type).toBe('anthropic-compatible');
+      expect(config.providers['my-proxy'].keys).toContain('proxy-key');
+    });
+
+    it('should warn and strip type field from reserved providers', () => {
+      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      writeTempConfig(`
+gateway:
+  port: 20128
+  routing:
+    strategy: "round-robin"
+providers:
+  gemini:
+    type: "openai-compatible"
+    keys:
+      - "gemini-key"
+    models:
+      - id: "gemini-2.5-pro"
+        actual_model_id: "gemini-2.5-pro"
+`);
+
+      const config = configLoader.loadConfig(tempConfigPath);
+
+      // type field should be stripped from reserved providers
+      expect(config.providers.gemini.type).toBeUndefined();
+      // Warning should be logged
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Reserved provider 'gemini' does not accept a 'type' field"),
+      );
+
+      consoleWarnSpy.mockRestore();
+    });
+
+    it('should exit with error if custom provider has invalid type value', () => {
+      const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
+        throw new Error('process.exit called');
+      });
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      writeTempConfig(`
+gateway:
+  port: 20128
+  routing:
+    strategy: "round-robin"
+providers:
+  my-provider:
+    type: "invalid-type"
+    base_url: "http://localhost:8080/v1"
+    keys:
+      - "some-key"
+    models:
+      - id: "model-1"
+        actual_model_id: "model-1"
+`);
+
+      expect(() => {
+        configLoader.loadConfig(tempConfigPath);
+      }).toThrow('process.exit called');
+
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Invalid 'type' value 'invalid-type' for custom provider 'my-provider'"),
+      );
+
+      exitSpy.mockRestore();
+      consoleErrorSpy.mockRestore();
     });
   });
 

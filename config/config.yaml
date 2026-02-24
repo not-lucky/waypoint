@@ -34,8 +34,13 @@ clients:
       max: 30
 
 # Reserved provider names: gemini, anthropic, openai
-# These use official SDKs and do NOT require a base_url.
+# These use Vercel AI SDK provider packages and do NOT require a base_url.
+# Reserved providers must NOT carry a 'type' field — it is ignored with a warning if present.
+#
 # Custom providers MUST specify a base_url.
+# Custom providers support an optional 'type' field:
+#   - Omitting 'type' is identical to type: "openai-compatible" (the default).
+#   - The only other accepted value is "anthropic-compatible".
 providers:
   gemini:
     keys:
@@ -72,3 +77,26 @@ providers:
         aliases: ["gpt4"]
         actual_model_id: "gpt-4o"
         thinking_supported: false
+
+  # Example custom provider (type defaults to "openai-compatible" when omitted):
+  # my-ollama:
+  #   base_url: "http://localhost:11434/v1"
+  #   keys:
+  #     - "ollama"   # Ollama doesn't need real keys, but the field is required
+  #   models:
+  #     - id: "llama3"
+  #       actual_model_id: "llama3:70b"
+  #       thinking_supported: false
+
+  # Example custom provider with explicit type: "anthropic-compatible":
+  # my-anthropic-proxy:
+  #   type: "anthropic-compatible"
+  #   base_url: "https://my-proxy.example.com/v1"
+  #   keys:
+  #     - "${MY_PROXY_KEY}"
+  #   models:
+  #     - id: "claude-proxy"
+  #       actual_model_id: "claude-sonnet-4-20250514"
+  #       thinking_supported: true
+  #       default_thinking_budget: 4096
+

@@ -1,5 +1,5 @@
 import express from 'express';
-import { ConfigLoader, validateConfig } from './config/loader.js';
+import { ConfigLoader } from './config/loader.js';
 
 // Load configuration
 const configLoader = new ConfigLoader();
@@ -11,8 +11,6 @@ const { port } = config.gateway;
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
-
-validateConfig(config);
 
 const server = app.listen(port, () => {
   console.log(`Waypoint listening on port ${port}`);

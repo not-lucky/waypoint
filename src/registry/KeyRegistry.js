@@ -27,7 +27,8 @@ export default class KeyRegistry {
     }
 
     if (this.strategy === 'fill-first') {
-      return pool.keys.find((key) => key.isAvailable())?.keyStr ?? null;
+      const activeKey = pool.keys.find((key) => key.isAvailable());
+      return activeKey?.keyStr ?? null;
     }
 
     const n = pool.keys.length;

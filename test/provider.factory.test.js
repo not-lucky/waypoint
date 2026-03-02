@@ -1,13 +1,77 @@
 import { describe, it, expect } from 'vitest';
 import { ProviderFactory } from '../src/adapters/ProviderFactory.js';
+import { OpenAICompatibleAdapter } from '../src/adapters/OpenAICompatibleAdapter.js';
+import { AnthropicAdapter } from '../src/adapters/AnthropicAdapter.js';
 
 describe('ProviderFactory Tests', () => {
-  it('should register a stub, get returns same instance', () => {
+  it("assert: 'openai' (no base_url) -> OpenAICompatibleAdapter whose baseUrl is 'https://api.openai.com/v1'", () => {
+    const config = {
+      providers: {
+        openai: {
+          keys: ['test-key-openai'],
+        },
+      },
+    };
+    const factory = new ProviderFactory(config);
+    const adapter = factory.get('openai');
+    expect(adapter).toBeInstanceOf(OpenAICompatibleAdapter);
+    expect(adapter.baseUrl).toBe('https://api.openai.com/v1');
+    expect(adapter.providerName).toBe('openai');
+  });
+
+  it('assert: custom provider, no type field -> OpenAICompatibleAdapter(base_url)', () => {
+    const config = {
+      providers: {
+        'custom-no-type': {
+          base_url: 'https://my-custom.api/v1',
+          keys: ['test-key-custom'],
+        },
+      },
+    };
+    const factory = new ProviderFactory(config);
+    const adapter = factory.get('custom-no-type');
+    expect(adapter).toBeInstanceOf(OpenAICompatibleAdapter);
+    expect(adapter.baseUrl).toBe('https://my-custom.api/v1');
+    expect(adapter.providerName).toBe('custom-no-type');
+  });
+
+  it("assert: custom provider, type:'openai-compatible' -> OpenAICompatibleAdapter(base_url) — same result", () => {
+    const config = {
+      providers: {
+        'custom-openai': {
+          type: 'openai-compatible',
+          base_url: 'https://my-custom-openai.api/v1',
+          keys: ['test-key-custom-openai'],
+        },
+      },
+    };
+    const factory = new ProviderFactory(config);
+    const adapter = factory.get('custom-openai');
+    expect(adapter).toBeInstanceOf(OpenAICompatibleAdapter);
+    expect(adapter.baseUrl).toBe('https://my-custom-openai.api/v1');
+    expect(adapter.providerName).toBe('custom-openai');
+  });
+
+  it("assert: custom provider, type:'anthropic-compatible' -> AnthropicAdapter instance constructed with base_url", () => {
+    const config = {
+      providers: {
+        'custom-anthropic': {
+          type: 'anthropic-compatible',
+          base_url: 'https://my-custom-anthropic.api/v1',
+          keys: ['test-key-custom-anthropic'],
+        },
+      },
+    };
+    const factory = new ProviderFactory(config);
+    const adapter = factory.get('custom-anthropic');
+    expect(adapter).toBeInstanceOf(AnthropicAdapter);
+    expect(adapter.baseUrl).toBe('https://my-custom-anthropic.api/v1');
+  });
+
+  it('assert: register() a stub, get() returns that same instance (manual override still works)', () => {
     const factory = new ProviderFactory();
     const stubAdapter = { name: 'stub-adapter' };
-
     factory.register('stub', stubAdapter);
-
     expect(factory.get('stub')).toBe(stubAdapter);
   });
 });

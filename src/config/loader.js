@@ -35,7 +35,7 @@ const getMissingEnvVar = (str) => {
     // non-string types. Calling .trim() directly on them will throw a TypeError.
     return envVal === undefined || String(envVal).trim() === '';
   });
-  return missing ? missing[1] : null;
+  return missing?.[1] ?? null;
 };
 
 /**
@@ -46,7 +46,7 @@ const getMissingEnvVar = (str) => {
  * @returns {object} A new object with the coerced property, or the original if unchanged.
  */
 const coerceToInt = (obj, key) => {
-  if (obj && typeof obj[key] === 'string' && /^\d+$/.test(obj[key])) {
+  if (typeof obj?.[key] === 'string' && /^\d+$/.test(obj[key])) {
     return { ...obj, [key]: parseInt(obj[key], 10) };
   }
   return obj;
@@ -83,10 +83,10 @@ export const deepFreeze = (obj) => {
     // eslint-disable-next-line no-param-reassign
     obj.clear = throwFrozen;
     Object.freeze(obj);
-    for (const [key, val] of obj) {
+    obj.forEach((val, key) => {
       deepFreeze(key);
       deepFreeze(val);
-    }
+    });
     return obj;
   }
 
@@ -99,9 +99,9 @@ export const deepFreeze = (obj) => {
     // eslint-disable-next-line no-param-reassign
     obj.clear = throwFrozen;
     Object.freeze(obj);
-    for (const val of obj) {
+    obj.forEach((val) => {
       deepFreeze(val);
-    }
+    });
     return obj;
   }
 

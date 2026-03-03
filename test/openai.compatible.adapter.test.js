@@ -328,4 +328,73 @@ describe('OpenAICompatibleAdapter Tests', () => {
       },
     }));
   });
+
+  it('assert: custom providerName sets reasoningEffort under correct dynamic key', async () => {
+    const adapter = new OpenAICompatibleAdapter('https://my-custom.api/v1', 'my-custom-provider');
+
+    generateText.mockResolvedValue({
+      text: 'hello',
+      finishReason: 'stop',
+      usage: {},
+    });
+
+    await adapter.generateCompletion({
+      actualModelId: 'custom-model',
+      messages: [],
+      thinkingLevel: 'low',
+    }, 'test-api-key');
+
+    expect(generateText).toHaveBeenLastCalledWith(expect.objectContaining({
+      providerOptions: {
+        'my-custom-provider': { reasoningEffort: 'low' },
+      },
+    }));
+  });
+
+  it('assert: omitting optional temperature and maxTokens does not pass them in options', async () => {
+    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+
+    generateText.mockResolvedValue({
+      text: 'hello',
+      finishReason: 'stop',
+      usage: {},
+    });
+
+    await adapter.generateCompletion({
+      actualModelId: 'gpt-4o',
+      messages: [],
+    }, 'test-api-key');
+
+    const lastCallArgs = generateText.mock.calls[generateText.mock.calls.length - 1][0];
+    expect(lastCallArgs.temperature).toBeUndefined();
+    expect(lastCallArgs.maxTokens).toBeUndefined();
+    expect(lastCallArgs.providerOptions).toBeUndefined();
+  });
+
+  it('assert: generateStream omits reasoningEffort when thinking is disabled or not provided', async () => {
+    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+
+    const mockFullStream = {
+      async *[Symbol.asyncIterator]() {
+        yield { type: 'finish', finishReason: 'stop' };
+      },
+    };
+
+    streamText.mockReturnValue({
+      fullStream: mockFullStream,
+    });
+
+    // explicitly false
+    for await (const chunk of adapter.generateStream({
+      actualModelId: 'gpt-4o',
+      messages: [],
+      thinkingEnabled: false,
+    }, 'test-api-key', new AbortController().signal)) {
+      // consume stream
+      expect(chunk).toBeDefined();
+    }
+
+    const lastCallArgs = streamText.mock.calls[streamText.mock.calls.length - 1][0];
+    expect(lastCallArgs.providerOptions).toBeUndefined();
+  });
 });

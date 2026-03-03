@@ -20,6 +20,36 @@ const getReasoningEffort = (req) => {
   return effort;
 };
 
+const prepareOptions = (adapter, req, apiKey, extraOptions = {}) => {
+  const model = adapter.provider.chatModel(req.actualModelId);
+  const options = {
+    model,
+    messages: req.messages,
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+    ...extraOptions,
+  };
+
+  if (req.temperature !== undefined) {
+    options.temperature = req.temperature;
+  }
+  if (req.maxTokens !== undefined) {
+    options.maxTokens = req.maxTokens;
+  }
+
+  const effort = getReasoningEffort(req);
+  if (effort) {
+    options.providerOptions = {
+      [adapter.providerName]: {
+        reasoningEffort: effort,
+      },
+    };
+  }
+
+  return options;
+};
+
 export class OpenAICompatibleAdapter extends BaseProvider {
   constructor(baseUrl, providerName) {
     super();
@@ -32,31 +62,7 @@ export class OpenAICompatibleAdapter extends BaseProvider {
   }
 
   async generateCompletion(req, apiKey) {
-    const model = this.provider.chatModel(req.actualModelId);
-    const options = {
-      model,
-      messages: req.messages,
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
-    };
-
-    if (req.temperature !== undefined) {
-      options.temperature = req.temperature;
-    }
-    if (req.maxTokens !== undefined) {
-      options.maxTokens = req.maxTokens;
-    }
-
-    const effort = getReasoningEffort(req);
-    if (effort) {
-      options.providerOptions = {
-        [this.providerName]: {
-          reasoningEffort: effort,
-        },
-      };
-    }
-
+    const options = prepareOptions(this, req, apiKey);
     const result = await generateText(options);
     const created = Math.floor(Date.now() / 1000);
 
@@ -85,32 +91,7 @@ export class OpenAICompatibleAdapter extends BaseProvider {
   }
 
   async *generateStream(req, apiKey, signal) {
-    const model = this.provider.chatModel(req.actualModelId);
-    const options = {
-      model,
-      messages: req.messages,
-      abortSignal: signal,
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
-    };
-
-    if (req.temperature !== undefined) {
-      options.temperature = req.temperature;
-    }
-    if (req.maxTokens !== undefined) {
-      options.maxTokens = req.maxTokens;
-    }
-
-    const effort = getReasoningEffort(req);
-    if (effort) {
-      options.providerOptions = {
-        [this.providerName]: {
-          reasoningEffort: effort,
-        },
-      };
-    }
-
+    const options = prepareOptions(this, req, apiKey, { abortSignal: signal });
     const result = streamText(options);
     const chunkId = `waypoint-chunk-${Date.now()}`;
 

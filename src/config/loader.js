@@ -511,53 +511,53 @@ export class ConfigLoader {
     const workingConfig = structuredClone(parsedYaml);
     const interpolated = this.interpolate(workingConfig);
 
-    // Coerce numeric properties from environment variables
-    ConfigLoader.coerceNumericProperties(interpolated);
+    // Coerce numeric properties immutably
+    const coerced = ConfigLoader.coerceNumericProperties(interpolated);
 
     // Call validateConfig with shouldExit = false
-    validateConfig(interpolated, false, reservedProviders);
+    validateConfig(coerced, false, reservedProviders);
 
-    return interpolated;
+    return coerced;
   }
 
   /**
-   * Coerces numeric properties that might have been interpolated as strings.
+   * Coerces numeric properties immutably.
    */
   static coerceNumericProperties(config) {
-    if (!config) return;
+    if (!config) return config;
 
-    if (config.gateway) {
-      /* eslint-disable no-param-reassign */
-      config.gateway = coerceToInt(config.gateway, 'port');
-      config.gateway = coerceToInt(config.gateway, 'global_retry_limit');
-      if (config.gateway.cooldown) {
-        config.gateway.cooldown = coerceToInt(config.gateway.cooldown, 'base_seconds');
-        config.gateway.cooldown = coerceToInt(config.gateway.cooldown, 'max_seconds');
-      }
-      /* eslint-enable no-param-reassign */
-    }
-
-    if (Array.isArray(config.clients)) {
-      config.clients.forEach((client) => {
-        if (client?.rate_limit) {
-          // eslint-disable-next-line no-param-reassign
-          client.rate_limit = coerceToInt(client.rate_limit, 'window_ms');
-          // eslint-disable-next-line no-param-reassign
-          client.rate_limit = coerceToInt(client.rate_limit, 'max');
-        }
-      });
-    }
-
-    if (config.providers && typeof config.providers === 'object') {
-      Object.values(config.providers).forEach((providerConf) => {
-        if (Array.isArray(providerConf?.models)) {
-          providerConf.models.forEach((model) => {
-            // eslint-disable-next-line no-param-reassign
-            Object.assign(model, coerceToInt(model, 'default_thinking_budget'));
-          });
-        }
-      });
-    }
+    return {
+      ...config,
+      ...(config.gateway && {
+        gateway: [
+          (g) => coerceToInt(g, 'port'),
+          (g) => coerceToInt(g, 'global_retry_limit'),
+          (g) => (g.cooldown ? {
+            ...g,
+            cooldown: coerceToInt(coerceToInt(g.cooldown, 'base_seconds'), 'max_seconds'),
+          } : g),
+        ].reduce((acc, fn) => fn(acc), config.gateway),
+      }),
+      ...(Array.isArray(config.clients) && {
+        clients: config.clients.map((client) => (client?.rate_limit ? {
+          ...client,
+          rate_limit: coerceToInt(coerceToInt(client.rate_limit, 'window_ms'), 'max'),
+        } : client)),
+      }),
+      ...(config.providers && typeof config.providers === 'object' && {
+        providers: Object.fromEntries(
+          Object.entries(config.providers).map(([name, providerConf]) => [
+            name,
+            {
+              ...providerConf,
+              ...(Array.isArray(providerConf?.models) && {
+                models: providerConf.models.map((model) => coerceToInt(model, 'default_thinking_budget')),
+              }),
+            },
+          ]),
+        ),
+      }),
+    };
   }
 
   /**

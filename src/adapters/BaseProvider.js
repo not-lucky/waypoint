@@ -1,4 +1,5 @@
 /* eslint-disable max-classes-per-file, class-methods-use-this, no-unused-vars */
+/* eslint-disable no-restricted-syntax, generator-star-spacing, camelcase */
 
 export class NotImplementedError extends Error {
   constructor(message = 'Not implemented') {
@@ -126,5 +127,68 @@ export class BaseProvider {
     throw new NotImplementedError();
   }
 }
+
+export const mapCompletionResult = (req, result) => ({
+  id: `waypoint-${Date.now()}`,
+  object: 'chat.completion',
+  created: Math.floor(Date.now() / 1000),
+  model: req.model,
+  choices: [
+    {
+      index: 0,
+      message: {
+        role: 'assistant',
+        content: result.text || '',
+        reasoning_content: result.reasoning || null,
+      },
+      finish_reason: result.finishReason || 'stop',
+    },
+  ],
+  usage: {
+    prompt_tokens: result.usage?.promptTokens ?? 0,
+    completion_tokens: result.usage?.completionTokens ?? 0,
+    total_tokens: result.usage?.totalTokens ?? 0,
+  },
+});
+
+const chunkMappers = {
+  'text-delta': (part) => ({ content: part.text || null, reasoning_content: null, finish_reason: null }),
+  'reasoning-delta': (part) => ({ content: null, reasoning_content: part.text || null, finish_reason: null }),
+  finish: (part) => ({ content: null, reasoning_content: null, finish_reason: part.finishReason || 'stop' }),
+};
+
+export async function* mapStreamResult(result) {
+  const chunkId = `waypoint-chunk-${Date.now()}`;
+  for await (const part of result.fullStream) {
+    const mapper = chunkMappers[part.type];
+    if (mapper) {
+      const { content, reasoning_content, finish_reason } = mapper(part);
+      yield {
+        id: chunkId,
+        object: 'chat.completion.chunk',
+        choices: [{ index: 0, delta: { content, reasoning_content }, finish_reason }],
+      };
+    }
+  }
+}
+
+const ERROR_MAP = {
+  429: { code: 'upstream_rate_limited', httpStatus: 503 },
+  402: { code: 'quota_exhausted', httpStatus: 503 },
+  403: { code: 'quota_exhausted', httpStatus: 503 },
+};
+
+export const normalizeProviderError = (error, providerName) => {
+  const status = error?.statusCode ?? error?.response?.status;
+  const { code, httpStatus } = ERROR_MAP[status] ?? { code: 'upstream_error', httpStatus: 502 };
+
+  return {
+    code,
+    message: error?.message || String(error),
+    httpStatus,
+    provider: providerName,
+    providerName,
+  };
+};
 
 export default BaseProvider;

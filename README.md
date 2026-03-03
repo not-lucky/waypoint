@@ -18,12 +18,12 @@ Waypoint is a lightweight, opinionated local proxy and gateway designed for deve
 | KeyRegistry — fill-first | ✅ Done | Drains first available key before failing over |
 | Circuit breaking & cooldown | ✅ Done | 429 exponential backoff, 402/403 permanent exhaustion |
 | ProviderFactory | ✅ Done | Adapter registration/retrieval scaffold |
-| HTTP server + `/health` | ✅ Done | Express server on configured port |
+| HTTP server + `/health` | ✅ Done | Express server with graceful shutdown |
 | ESLint (airbnb-base) | ✅ Done | Enforced across all source files |
 | Request routing / proxying | ⬜ Planned | Controllers & middleware not yet implemented |
 | Client authentication | ⬜ Planned | Token validation middleware not yet implemented |
 | Per-client rate limiting | ⬜ Planned | — |
-| Provider adapters (Gemini, OpenAI, …) | ⬜ Planned | Adapter implementations not yet written |
+| Provider adapters (Gemini, Anthropic, OpenAI) | ✅ Done | Implemented with Vercel AI SDK, utilizing Modern JS patterns (pure functions, immutability) |
 | Logging (file + console) | ⬜ Planned | Config schema present; logger not wired up |
 | Model aliasing / fallback routing | ⬜ Planned | Config schema present; routing logic not yet implemented |
 
@@ -80,7 +80,7 @@ pnpm start
 ```
 
 ### Running Tests
-68 unit tests across 9 test files, run via **Vitest**:
+106 unit tests across 12 test files, run via **Vitest**:
 ```bash
 pnpm test
 ```

@@ -11,7 +11,13 @@ export class UnifiedOrchestrator {
     let req = { ...unifiedReq };
     const retryLimit = this.config.gateway?.global_retry_limit ?? 3;
 
-    // Create an abort signal and listen to the request close event
+    // Create an abort signal and listen to the request/response close event.
+    // NOTE: Do NOT listen to rawReq.on('close') directly on POST requests. Express's
+    // body-parser (express.json()) fully reads and ends the request stream, which
+    // causes Node.js to emit 'close' on rawReq immediately after parsing, before
+    // any response is generated.
+    // Instead, check rawReq.res and listen to the response's 'close' event, aborting
+    // only if the response has not successfully finished (i.e. !res.writableEnded).
     const abortController = new AbortController();
     if (rawReq) {
       const target = rawReq.res || rawReq;

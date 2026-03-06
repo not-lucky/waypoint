@@ -17,21 +17,17 @@ export class UnifiedOrchestrator {
         const level = thinkingLevelHeader.toLowerCase();
         req.thinkingLevel = level;
         req.thinkingEnabled = true;
-        if (req.thinkingBudget === undefined) {
-          if (level === 'low') {
-            req.thinkingBudget = 1024;
-          } else if (level === 'medium') {
-            req.thinkingBudget = 2048;
-          } else if (level === 'high') {
-            req.thinkingBudget = 4096;
-          }
+
+        const budgets = { low: 1024, medium: 2048, high: 4096 };
+        if (req.thinkingBudget === undefined && budgets[level]) {
+          req.thinkingBudget = budgets[level];
         }
       }
 
       const tempHeader = rawReq.headers['x-gateway-temperature'];
       if (tempHeader) {
         const parsedTemp = parseFloat(tempHeader);
-        if (!isNaN(parsedTemp)) {
+        if (!Number.isNaN(parsedTemp)) {
           req.temperature = parsedTemp;
         }
       }
@@ -69,35 +65,29 @@ export class UnifiedOrchestrator {
         let resolvedProvider = null;
         let resolvedModelConfig = null;
 
-        const slashIndex = req.model.indexOf('/');
-        if (slashIndex !== -1) {
-          const providerPart = req.model.substring(0, slashIndex).trim();
-          const modelPart = req.model.substring(slashIndex + 1).trim();
+        if (req.model.includes('/')) {
+          const [providerPart, ...rest] = req.model.split('/');
+          const modelPart = rest.join('/').trim();
+          const cleanProvider = providerPart.trim();
 
-          const providerConf = this.config.providers?.[providerPart];
+          const providerConf = this.config.providers?.[cleanProvider];
           if (providerConf) {
-            resolvedProvider = providerPart;
+            resolvedProvider = cleanProvider;
             const models = providerConf.models || [];
             resolvedModelConfig = models.find(
-              (m) => m.id === modelPart || (Array.isArray(m.aliases) && m.aliases.includes(modelPart))
-            );
-            if (!resolvedModelConfig) {
-              resolvedModelConfig = models.find((m) => m.actual_model_id === modelPart);
-            }
-            if (!resolvedModelConfig) {
-              // Custom providers might not have the model pre-registered or it's unlisted,
-              // synthesize a model config where id and actual_model_id are both the modelPart.
-              resolvedModelConfig = { id: modelPart, actual_model_id: modelPart };
-            }
+              (m) => m.id === modelPart || m.aliases?.includes(modelPart),
+            ) || models.find((m) => m.actual_model_id === modelPart)
+              || { id: modelPart, actual_model_id: modelPart };
           }
         }
 
         // If we couldn't resolve it via provider/model-id format, search all providers
         if (!resolvedProvider || !resolvedModelConfig) {
+          const currentModel = req.model;
           for (const [pName, pConf] of Object.entries(this.config.providers || {})) {
             const models = pConf.models || [];
             const match = models.find(
-              (m) => m.id === req.model || (Array.isArray(m.aliases) && m.aliases.includes(req.model))
+              (m) => m.id === currentModel || m.aliases?.includes(currentModel),
             );
             if (match) {
               resolvedProvider = pName;
@@ -117,7 +107,10 @@ export class UnifiedOrchestrator {
 
           if (resolvedModelConfig.thinking_supported) {
             req.thinking_supported = true;
-            if (req.thinkingBudget === undefined && resolvedModelConfig.default_thinking_budget !== undefined) {
+            if (
+              req.thinkingBudget === undefined
+              && resolvedModelConfig.default_thinking_budget !== undefined
+            ) {
               req.thinkingBudget = resolvedModelConfig.default_thinking_budget;
             }
           }
@@ -138,7 +131,6 @@ export class UnifiedOrchestrator {
         };
       }
 
-      let lastError = null;
       let attempt = 0;
 
       // Inner loop for key rotation/retries
@@ -168,14 +160,13 @@ export class UnifiedOrchestrator {
           this.keyRegistry.flagSuccess(provider, apiKey);
           return response;
         } catch (error) {
-          lastError = error;
           const statusCode = error?.status || error?.statusCode || error?.response?.status || 500;
           this.keyRegistry.flagFailure(provider, apiKey, statusCode);
 
           // Log each retry: attempt N of global_retry_limit, provider name, failure reason
           const failureReason = error?.message || String(error);
           console.warn(
-            `Attempt ${attempt} of ${retryLimit} for provider '${provider}' failed. Reason: ${failureReason}`
+            `Attempt ${attempt} of ${retryLimit} for provider '${provider}' failed. Reason: ${failureReason}`,
           );
         }
       }
@@ -195,14 +186,15 @@ export class UnifiedOrchestrator {
         continue;
       }
 
-      // On loop exhaustion: return 503 NormalizedError {code:'all_keys_exhausted', retryAfterSeconds from earliest cooldownUntil}
+      // On loop exhaustion: return 503 NormalizedError {code:'all_keys_exhausted'}
       let retryAfterSeconds = 0;
-      const pool = this.keyRegistry.pools[provider];
-      if (pool && pool.keys) {
+      const keys = this.keyRegistry.pools[provider]?.keys;
+      if (keys) {
         const now = Date.now();
-        const activeCooldowns = pool.keys
+        const activeCooldowns = keys
           .map((k) => k.cooldownUntil)
-          .filter((t) => t !== null && t > now);
+          .filter((t) => t > now);
+
         if (activeCooldowns.length > 0) {
           const earliestCooldownUntil = Math.min(...activeCooldowns);
           retryAfterSeconds = Math.max(0, Math.ceil((earliestCooldownUntil - now) / 1000));

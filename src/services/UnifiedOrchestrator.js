@@ -9,6 +9,34 @@ export class UnifiedOrchestrator {
 
   async executeCompletion(unifiedReq, rawReq) {
     let req = { ...unifiedReq };
+
+    // Apply header-based overrides if rawReq is provided and has headers
+    if (rawReq && rawReq.headers) {
+      const thinkingLevelHeader = rawReq.headers['x-gateway-thinking-level'];
+      if (thinkingLevelHeader) {
+        const level = thinkingLevelHeader.toLowerCase();
+        req.thinkingLevel = level;
+        req.thinkingEnabled = true;
+        if (req.thinkingBudget === undefined) {
+          if (level === 'low') {
+            req.thinkingBudget = 1024;
+          } else if (level === 'medium') {
+            req.thinkingBudget = 2048;
+          } else if (level === 'high') {
+            req.thinkingBudget = 4096;
+          }
+        }
+      }
+
+      const tempHeader = rawReq.headers['x-gateway-temperature'];
+      if (tempHeader) {
+        const parsedTemp = parseFloat(tempHeader);
+        if (!isNaN(parsedTemp)) {
+          req.temperature = parsedTemp;
+        }
+      }
+    }
+
     const retryLimit = this.config.gateway?.global_retry_limit ?? 3;
 
     // Create an abort signal and listen to the request/response close event.
@@ -36,6 +64,66 @@ export class UnifiedOrchestrator {
 
     // Outer loop to handle fallbacks
     while (true) {
+      // Resolve provider and actualModelId from config if model is specified
+      if (req.model) {
+        let resolvedProvider = null;
+        let resolvedModelConfig = null;
+
+        const slashIndex = req.model.indexOf('/');
+        if (slashIndex !== -1) {
+          const providerPart = req.model.substring(0, slashIndex).trim();
+          const modelPart = req.model.substring(slashIndex + 1).trim();
+
+          const providerConf = this.config.providers?.[providerPart];
+          if (providerConf) {
+            resolvedProvider = providerPart;
+            const models = providerConf.models || [];
+            resolvedModelConfig = models.find(
+              (m) => m.id === modelPart || (Array.isArray(m.aliases) && m.aliases.includes(modelPart))
+            );
+            if (!resolvedModelConfig) {
+              resolvedModelConfig = models.find((m) => m.actual_model_id === modelPart);
+            }
+            if (!resolvedModelConfig) {
+              // Custom providers might not have the model pre-registered or it's unlisted,
+              // synthesize a model config where id and actual_model_id are both the modelPart.
+              resolvedModelConfig = { id: modelPart, actual_model_id: modelPart };
+            }
+          }
+        }
+
+        // If we couldn't resolve it via provider/model-id format, search all providers
+        if (!resolvedProvider || !resolvedModelConfig) {
+          for (const [pName, pConf] of Object.entries(this.config.providers || {})) {
+            const models = pConf.models || [];
+            const match = models.find(
+              (m) => m.id === req.model || (Array.isArray(m.aliases) && m.aliases.includes(req.model))
+            );
+            if (match) {
+              resolvedProvider = pName;
+              resolvedModelConfig = match;
+              break;
+            }
+          }
+        }
+
+        if (resolvedProvider && resolvedModelConfig) {
+          req.provider = resolvedProvider;
+          req.actualModelId = resolvedModelConfig.actual_model_id || resolvedModelConfig.id;
+
+          if (resolvedModelConfig.fallback_model && !req.fallbackModel) {
+            req.fallbackModel = resolvedModelConfig.fallback_model;
+          }
+
+          if (resolvedModelConfig.thinking_supported) {
+            req.thinking_supported = true;
+            if (req.thinkingBudget === undefined && resolvedModelConfig.default_thinking_budget !== undefined) {
+              req.thinkingBudget = resolvedModelConfig.default_thinking_budget;
+            }
+          }
+        }
+      }
+
       const { provider } = req;
       const adapter = this.providerFactory.get(provider);
 
@@ -51,9 +139,10 @@ export class UnifiedOrchestrator {
       }
 
       let lastError = null;
+      let attempt = 0;
 
       // Inner loop for key rotation/retries
-      for (let attempt = 0; attempt < retryLimit; attempt += 1) {
+      while (attempt < retryLimit) {
         if (abortController.signal.aborted) {
           return {
             error: {
@@ -72,14 +161,22 @@ export class UnifiedOrchestrator {
           break;
         }
 
+        attempt += 1;
+
         try {
           const response = await adapter.generateCompletion(req, apiKey, abortController.signal);
           this.keyRegistry.flagSuccess(provider, apiKey);
           return response;
         } catch (error) {
           lastError = error;
-          const statusCode = error?.statusCode || error?.response?.status || 500;
+          const statusCode = error?.status || error?.statusCode || error?.response?.status || 500;
           this.keyRegistry.flagFailure(provider, apiKey, statusCode);
+
+          // Log each retry: attempt N of global_retry_limit, provider name, failure reason
+          const failureReason = error?.message || String(error);
+          console.warn(
+            `Attempt ${attempt} of ${retryLimit} for provider '${provider}' failed. Reason: ${failureReason}`
+          );
         }
       }
 
@@ -98,18 +195,25 @@ export class UnifiedOrchestrator {
         continue;
       }
 
-      // If we got here, either fallback is not configured, or fallback also failed,
-      // or we exhausted retries with no active keys available.
-      if (lastError) {
-        const normalized = adapter.normalizeError(lastError);
-        return { error: normalized };
+      // On loop exhaustion: return 503 NormalizedError {code:'all_keys_exhausted', retryAfterSeconds from earliest cooldownUntil}
+      let retryAfterSeconds = 0;
+      const pool = this.keyRegistry.pools[provider];
+      if (pool && pool.keys) {
+        const now = Date.now();
+        const activeCooldowns = pool.keys
+          .map((k) => k.cooldownUntil)
+          .filter((t) => t !== null && t > now);
+        if (activeCooldowns.length > 0) {
+          const earliestCooldownUntil = Math.min(...activeCooldowns);
+          retryAfterSeconds = Math.max(0, Math.ceil((earliestCooldownUntil - now) / 1000));
+        }
       }
 
-      // No key was available and no adapter call was made
       return {
         error: {
-          code: 'upstream_rate_limited',
-          message: `All keys for provider '${provider}' are currently in cooldown.`,
+          code: 'all_keys_exhausted',
+          message: `All keys for provider '${provider}' are currently in cooldown. Retry after ${retryAfterSeconds} seconds.`,
+          retryAfterSeconds,
           provider,
           httpStatus: 503,
         },

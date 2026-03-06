@@ -94,8 +94,9 @@ describe('UnifiedOrchestrator Basic Tests', () => {
 
     expect(res).toEqual({
       error: {
-        code: 'upstream_rate_limited',
+        code: 'all_keys_exhausted',
         message: expect.stringContaining('cooldown'),
+        retryAfterSeconds: expect.any(Number),
         provider: 'mock-provider',
         httpStatus: 503,
       },

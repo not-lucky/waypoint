@@ -81,15 +81,15 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
 
     // Check final error normalized
     expect(res.error).toEqual({
-      code: 'mock_error',
-      message: 'Failure 2',
-      httpStatus: 500,
+      code: 'all_keys_exhausted',
+      message: expect.stringContaining("All keys for provider 'mock-provider' are currently in cooldown."),
+      retryAfterSeconds: expect.any(Number),
       provider: 'mock-provider',
-      providerName: 'mock-provider',
+      httpStatus: 503,
     });
   });
 
-  it('assert: exits early if keys are exhausted mid-loop and returns last error', async () => {
+  it('assert: exits early if keys are exhausted mid-loop and returns standard exhaustion error', async () => {
     const config = {
       gateway: {
         global_retry_limit: 3,
@@ -117,11 +117,11 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
     // Should call adapter exactly once and then stop because no keys are left
     expect(mockAdapter.callCount).toBe(1);
     expect(res.error).toEqual({
-      code: 'mock_error',
-      message: 'Rate Limited',
-      httpStatus: 429,
+      code: 'all_keys_exhausted',
+      message: expect.stringContaining("All keys for provider 'mock-provider' are currently in cooldown."),
+      retryAfterSeconds: expect.any(Number),
       provider: 'mock-provider',
-      providerName: 'mock-provider',
+      httpStatus: 503,
     });
   });
 
@@ -168,13 +168,13 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
     expect(primaryMock.callCount).toBe(1);
     expect(fallbackMock.callCount).toBe(1);
 
-    // Returns normalized error of the fallback provider (since it was the last executed)
+    // Returns exhaustion error of the fallback provider (since fallback provider loop also exhausted)
     expect(res.error).toEqual({
-      code: 'mock_error',
-      message: 'Fallback Error',
-      httpStatus: 500,
-      provider: 'mock-provider',
-      providerName: 'mock-provider',
+      code: 'all_keys_exhausted',
+      message: expect.stringContaining("All keys for provider 'fallback-provider' are currently in cooldown."),
+      retryAfterSeconds: expect.any(Number),
+      provider: 'fallback-provider',
+      httpStatus: 503,
     });
   });
 

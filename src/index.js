@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import { ConfigLoader } from './config/loader.js';
 import { KeyRegistry } from './registry/KeyRegistry.js';

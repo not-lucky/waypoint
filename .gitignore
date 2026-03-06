@@ -16,3 +16,9 @@ coverage/
 *.cert
 credentials.json
 serviceAccountKey.json
+.vscode/
+.idea/
+dist/
+build/
+.next/
+out/

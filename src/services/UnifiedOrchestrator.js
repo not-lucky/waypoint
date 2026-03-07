@@ -1,5 +1,90 @@
 /* eslint-disable no-restricted-syntax, no-constant-condition, no-await-in-loop, no-continue */
 
+/**
+ * Helper to resolve the correct model configuration from the providers configuration object.
+ * Parses modelName (e.g. "openai/gpt-4o" or "gemini-1.5-flash") and matches it against
+ * configured models, aliases, or actual_model_ids.
+ *
+ * @param {string} modelName - The identifier of the model to resolve.
+ * @param {Object} providersConfig - The providers section of the loaded configuration.
+ * @returns {Object|null} Object containing resolved provider name and model config, or null.
+ */
+const resolveModelConfig = (modelName, providersConfig = {}) => {
+  if (!modelName) return null;
+
+  let resolvedProvider = null;
+  let resolvedModelConfig = null;
+
+  // Resolve by provider/model-id prefix format if present (e.g., "openai/gpt-4o")
+  if (modelName.includes('/')) {
+    const [providerPart, ...rest] = modelName.split('/');
+    const modelPart = rest.join('/').trim();
+    const cleanProvider = providerPart.trim();
+
+    const providerConf = providersConfig[cleanProvider];
+    if (providerConf) {
+      resolvedProvider = cleanProvider;
+      const models = providerConf.models || [];
+      resolvedModelConfig = models.find(
+        (m) => m.id === modelPart || m.aliases?.includes(modelPart),
+      ) || models.find((m) => m.actual_model_id === modelPart)
+        || { id: modelPart, actual_model_id: modelPart };
+    }
+  }
+
+  // If we couldn't resolve it via provider/model-id format, search all providers for a match
+  if (!resolvedProvider || !resolvedModelConfig) {
+    for (const [pName, pConf] of Object.entries(providersConfig)) {
+      const models = pConf.models || [];
+      const match = models.find(
+        (m) => m.id === modelName || m.aliases?.includes(modelName),
+      );
+      if (match) {
+        resolvedProvider = pName;
+        resolvedModelConfig = match;
+        break;
+      }
+    }
+  }
+
+  if (resolvedProvider && resolvedModelConfig) {
+    return {
+      provider: resolvedProvider,
+      modelConfig: resolvedModelConfig,
+    };
+  }
+
+  return null;
+};
+
+/**
+ * Helper to parse a fallback model identifier (e.g., "openai/gpt-4o") and retrieve its
+ * corresponding provider name and actual_model_id (checking matching ID or aliases).
+ *
+ * @param {string} fallbackModel - Fallback model string in "provider/model-id" format.
+ * @param {Object} providersConfig - The providers configuration object.
+ * @returns {Object|null} Parsed provider and resolved actualModelId, or null if input is empty.
+ */
+const resolveFallbackModel = (fallbackModel, providersConfig = {}) => {
+  if (!fallbackModel) return null;
+  const [fallbackProvider, ...rest] = fallbackModel.split('/');
+  const fallbackModelId = rest.join('/').trim();
+  const cleanProvider = fallbackProvider.trim();
+
+  let actualModelId = fallbackModelId;
+  const providerConf = providersConfig[cleanProvider];
+  if (providerConf) {
+    const models = providerConf.models || [];
+    const match = models.find(
+      (m) => m.id === fallbackModelId || m.aliases?.includes(fallbackModelId),
+    ) || models.find((m) => m.actual_model_id === fallbackModelId);
+    if (match) {
+      actualModelId = match.actual_model_id || match.id;
+    }
+  }
+  return { provider: cleanProvider, actualModelId };
+};
+
 export class UnifiedOrchestrator {
   constructor(keyRegistry, providerFactory, config = {}) {
     this.keyRegistry = keyRegistry;
@@ -7,8 +92,21 @@ export class UnifiedOrchestrator {
     this.config = config;
   }
 
+  /**
+   * Executes LLM completion by dispatching the request to the configured provider adapter,
+   * handling key rotation, retries, overrides, and automatic fallback routing.
+   *
+   * @param {Object} unifiedReq - The normalized request payload.
+   * @param {Object} rawReq - The raw Express request context.
+   * @returns {Promise<Object>} Normalized completion result or error object.
+   */
   async executeCompletion(unifiedReq, rawReq) {
     let req = { ...unifiedReq };
+
+    // Default fallback status to false if not explicitly provided
+    if (req.isFallback === undefined) {
+      req.isFallback = false;
+    }
 
     // Apply header-based overrides if rawReq is provided and has headers
     if (rawReq && rawReq.headers) {
@@ -62,56 +160,23 @@ export class UnifiedOrchestrator {
     while (true) {
       // Resolve provider and actualModelId from config if model is specified
       if (req.model) {
-        let resolvedProvider = null;
-        let resolvedModelConfig = null;
-
-        if (req.model.includes('/')) {
-          const [providerPart, ...rest] = req.model.split('/');
-          const modelPart = rest.join('/').trim();
-          const cleanProvider = providerPart.trim();
-
-          const providerConf = this.config.providers?.[cleanProvider];
-          if (providerConf) {
-            resolvedProvider = cleanProvider;
-            const models = providerConf.models || [];
-            resolvedModelConfig = models.find(
-              (m) => m.id === modelPart || m.aliases?.includes(modelPart),
-            ) || models.find((m) => m.actual_model_id === modelPart)
-              || { id: modelPart, actual_model_id: modelPart };
-          }
-        }
-
-        // If we couldn't resolve it via provider/model-id format, search all providers
-        if (!resolvedProvider || !resolvedModelConfig) {
-          const currentModel = req.model;
-          for (const [pName, pConf] of Object.entries(this.config.providers || {})) {
-            const models = pConf.models || [];
-            const match = models.find(
-              (m) => m.id === currentModel || m.aliases?.includes(currentModel),
-            );
-            if (match) {
-              resolvedProvider = pName;
-              resolvedModelConfig = match;
-              break;
-            }
-          }
-        }
-
-        if (resolvedProvider && resolvedModelConfig) {
+        const resolved = resolveModelConfig(req.model, this.config.providers);
+        if (resolved) {
+          const { provider: resolvedProvider, modelConfig } = resolved;
           req.provider = resolvedProvider;
-          req.actualModelId = resolvedModelConfig.actual_model_id || resolvedModelConfig.id;
+          req.actualModelId = modelConfig.actual_model_id || modelConfig.id;
 
-          if (resolvedModelConfig.fallback_model && !req.fallbackModel) {
-            req.fallbackModel = resolvedModelConfig.fallback_model;
+          if (modelConfig.fallback_model && !req.fallbackModel) {
+            req.fallbackModel = modelConfig.fallback_model;
           }
 
-          if (resolvedModelConfig.thinking_supported) {
+          if (modelConfig.thinking_supported) {
             req.thinking_supported = true;
             if (
               req.thinkingBudget === undefined
-              && resolvedModelConfig.default_thinking_budget !== undefined
+              && modelConfig.default_thinking_budget !== undefined
             ) {
-              req.thinkingBudget = resolvedModelConfig.default_thinking_budget;
+              req.thinkingBudget = modelConfig.default_thinking_budget;
             }
           }
         }
@@ -132,6 +197,7 @@ export class UnifiedOrchestrator {
       }
 
       let attempt = 0;
+      let triggerFallback = false;
 
       // Inner loop for key rotation/retries
       while (attempt < retryLimit) {
@@ -149,7 +215,27 @@ export class UnifiedOrchestrator {
         const apiKey = this.keyRegistry.getKey(provider);
 
         if (!apiKey) {
-          // No active keys available in the registry for this provider
+          // If no active keys are available:
+          // A. If this is already a fallback dispatch, fail immediately with 503
+          if (req.isFallback) {
+            return this.buildAllKeysExhaustedError(provider);
+          }
+
+          // B. If a fallback model is configured, transition and break to restart the outer loop
+          if (req.fallbackModel) {
+            const resolved = resolveFallbackModel(req.fallbackModel, this.config.providers);
+            req = {
+              ...req,
+              provider: resolved.provider,
+              actualModelId: resolved.actualModelId,
+              model: req.fallbackModel,
+              isFallback: true,
+            };
+            triggerFallback = true;
+            break;
+          }
+
+          // C. If no fallback is configured, break the inner loop and fall through to return 503
           break;
         }
 
@@ -171,15 +257,20 @@ export class UnifiedOrchestrator {
         }
       }
 
-      // Check if fallback is configured and this isn't already a fallback request
-      if (req.fallbackModel && !req.isFallback) {
-        const [fallbackProvider, ...rest] = req.fallbackModel.split('/');
-        const fallbackModelId = rest.join('/');
+      // If we flagged fallback transition inside the retry loop, restart outer loop
+      if (triggerFallback) {
+        continue;
+      }
 
+      // Check if fallback is configured and this isn't already a fallback request
+      // (Handles fallback transition when keys fail/rate limit rather than returning
+      // null initially)
+      if (req.fallbackModel && !req.isFallback) {
+        const resolved = resolveFallbackModel(req.fallbackModel, this.config.providers);
         req = {
           ...req,
-          provider: fallbackProvider,
-          actualModelId: fallbackModelId,
+          provider: resolved.provider,
+          actualModelId: resolved.actualModelId,
           model: req.fallbackModel,
           isFallback: true,
         };
@@ -187,30 +278,43 @@ export class UnifiedOrchestrator {
       }
 
       // On loop exhaustion: return 503 NormalizedError {code:'all_keys_exhausted'}
-      let retryAfterSeconds = 0;
-      const keys = this.keyRegistry.pools[provider]?.keys;
-      if (keys) {
-        const now = Date.now();
-        const activeCooldowns = keys
-          .map((k) => k.cooldownUntil)
-          .filter((t) => t > now);
-
-        if (activeCooldowns.length > 0) {
-          const earliestCooldownUntil = Math.min(...activeCooldowns);
-          retryAfterSeconds = Math.max(0, Math.ceil((earliestCooldownUntil - now) / 1000));
-        }
-      }
-
-      return {
-        error: {
-          code: 'all_keys_exhausted',
-          message: `All keys for provider '${provider}' are currently in cooldown. Retry after ${retryAfterSeconds} seconds.`,
-          retryAfterSeconds,
-          provider,
-          httpStatus: 503,
-        },
-      };
+      return this.buildAllKeysExhaustedError(provider);
     }
+  }
+
+  /**
+   * Helper to build the normalized 503 all_keys_exhausted error payload, calculating
+   * the earliest cooldown remainder across the provider's keys.
+   *
+   * @param {string} provider - The name of the provider whose keys are exhausted.
+   * @returns {Object} Normalized error payload.
+   */
+  buildAllKeysExhaustedError(provider) {
+    let retryAfterSeconds = 0;
+    const keys = this.keyRegistry.pools[provider]?.keys;
+    if (keys) {
+      const now = Date.now();
+      const activeCooldowns = keys
+        .map((k) => k.cooldownUntil)
+        .filter((t) => t > now);
+
+      if (activeCooldowns.length > 0) {
+        const earliestCooldownUntil = Math.min(...activeCooldowns);
+        retryAfterSeconds = Math.max(0, Math.ceil((earliestCooldownUntil - now) / 1000));
+      }
+    }
+
+    return {
+      error: {
+        code: 'all_keys_exhausted',
+        message:
+          `All keys for provider '${provider}' are currently in cooldown. `
+          + `Retry after ${retryAfterSeconds} seconds.`,
+        retryAfterSeconds,
+        provider,
+        httpStatus: 503,
+      },
+    };
   }
 }
 

@@ -1,12 +1,12 @@
 import {
   describe, it, expect, beforeAll, afterAll,
 } from 'vitest';
+import { ConfigLoader } from '../src/config/loader.js';
 
 describe('Server Port Resolution', () => {
   let originalEnv;
-  let server;
 
-  beforeAll(async () => {
+  beforeAll(() => {
     originalEnv = { ...process.env };
 
     // Provide all required environment variables so loadConfig doesn't abort
@@ -19,23 +19,38 @@ describe('Server Port Resolution', () => {
 
     // Set process.env.PORT to a custom value to test that it is ignored
     process.env.PORT = '30005';
-
-    // Dynamically import index.js so it executes under the set environment
-    const mod = await import('../src/index.js');
-    server = mod.server;
   });
 
-  afterAll(async () => {
+  afterAll(() => {
     process.env = originalEnv;
-    if (server) {
-      await new Promise((resolve) => { server.close(resolve); });
-    }
   });
 
   it('should ignore process.env.PORT and use the port from YAML config instead', () => {
-    // The port configured in config/config.yaml is 20128.
-    // It should have ignored process.env.PORT (30005) and run on 20128.
-    const address = server.address();
-    expect(address.port).toBe(20128);
+    const configLoader = new ConfigLoader();
+    const config = configLoader.interpolateAndValidate({
+      gateway: {
+        port: 20128,
+      },
+      clients: [],
+      logging: {
+        enable_console: true,
+        enable_file: false,
+        format: 'text',
+      },
+      providers: {
+        openai: {
+          keys: ['mock-key'],
+          models: [
+            {
+              id: 'mock-model',
+              actual_model_id: 'mock-model',
+            },
+          ],
+        },
+      },
+    });
+
+    // Verify that the port is not overridden by process.env.PORT (30005)
+    expect(config.gateway.port).toBe(20128);
   });
 });

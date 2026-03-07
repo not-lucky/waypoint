@@ -7,7 +7,6 @@ import {
   afterAll,
 } from 'vitest';
 import request from 'supertest';
-import { UnifiedOrchestrator } from '../src/services/UnifiedOrchestrator.js';
 
 describe('Server Route Integration Tests', () => {
   let app;
@@ -26,8 +25,12 @@ describe('Server Route Integration Tests', () => {
     process.env.ANTHROPIC_API_KEY_1 = 'anthropic-key-1';
     process.env.OPENAI_API_KEY_1 = 'openai-key-1';
 
-    // Spy on UnifiedOrchestrator executeCompletion before importing index.js
-    executeCompletionSpy = vi.spyOn(UnifiedOrchestrator.prototype, 'executeCompletion');
+    // Clear module cache to allow fresh execution of index.js
+    vi.resetModules();
+
+    // Dynamically import UnifiedOrchestrator to ensure we get the fresh module definition
+    const { UnifiedOrchestrator: FreshOrchestrator } = await import('../src/services/UnifiedOrchestrator.js');
+    executeCompletionSpy = vi.spyOn(FreshOrchestrator.prototype, 'executeCompletion');
 
     // Dynamically import to start server with process.env mocked
     const mod = await import('../src/index.js');

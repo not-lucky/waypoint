@@ -168,7 +168,8 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
     expect(primaryMock.callCount).toBe(1);
     expect(fallbackMock.callCount).toBe(1);
 
-    // Returns exhaustion error of the fallback provider (since fallback provider loop also exhausted)
+    // Returns exhaustion error of the fallback provider
+    // (since fallback provider loop also exhausted)
     expect(res.error).toEqual({
       code: 'all_keys_exhausted',
       message: expect.stringContaining("All keys for provider 'fallback-provider' are currently in cooldown."),

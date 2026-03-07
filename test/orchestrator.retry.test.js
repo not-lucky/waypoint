@@ -18,7 +18,7 @@ class MockAdapter {
     this.responses.push(responseOrError);
   }
 
-  async generateCompletion(req, apiKey) {
+  async generateCompletion() {
     this.callCount += 1;
     const next = this.responses.shift();
     if (next instanceof Error) throw next;
@@ -26,6 +26,7 @@ class MockAdapter {
     return next;
   }
 
+  /* eslint-disable-next-line class-methods-use-this */
   normalizeError(error) {
     return {
       code: 'mock_error',
@@ -200,10 +201,10 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     // key-1 is permanently exhausted
     keyRegistry.pools['mock-provider'].keys[0].exhausted = true;
     keyRegistry.pools['mock-provider'].keys[0].active = false;
-    
+
     // key-2 has a cooldown in the future
     keyRegistry.pools['mock-provider'].keys[1].cooldownUntil = Date.now() + 60000;
-    
+
     // key-3 has a closer cooldown in the future
     keyRegistry.pools['mock-provider'].keys[2].cooldownUntil = Date.now() + 10000;
 
@@ -235,7 +236,7 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     // key-1 is permanently exhausted
     keyRegistry.pools['mock-provider'].keys[0].exhausted = true;
     keyRegistry.pools['mock-provider'].keys[0].active = false;
-    
+
     // key-2 active is false and its cooldown is in the past
     keyRegistry.pools['mock-provider'].keys[1].active = false;
     keyRegistry.pools['mock-provider'].keys[1].cooldownUntil = Date.now() - 5000;

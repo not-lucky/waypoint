@@ -1,0 +1,438 @@
+import {
+  vi,
+  describe,
+  it,
+  expect,
+  beforeEach,
+} from 'vitest';
+import { AnthropicController } from '../src/controllers/AnthropicController.js';
+
+describe('AnthropicController Edge Case Tests', () => {
+  const testConfig = {
+    providers: {
+      gemini: {
+        keys: ['gemini-key-1'],
+        models: [
+          {
+            id: 'gemini-2.5-pro',
+            aliases: ['gemini-pro', 'pro'],
+            actual_model_id: 'gemini-2.5-pro-preview-05-06',
+            thinking_supported: true,
+            default_thinking_budget: 2048,
+            fallback_model: 'openai/gpt-4o',
+          },
+        ],
+      },
+      openai: {
+        keys: ['openai-key-1'],
+        models: [
+          {
+            id: 'gpt-4o',
+            aliases: ['gpt4'],
+            actual_model_id: 'gpt-4o',
+          },
+        ],
+      },
+    },
+  };
+
+  let mockOrchestrator;
+
+  beforeEach(() => {
+    mockOrchestrator = {
+      config: testConfig,
+      executeCompletion: vi.fn().mockResolvedValue({
+        id: 'waypoint-123',
+        object: 'chat.completion',
+        created: 123456,
+        model: 'gemini/gemini-2.5-pro',
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: 'assistant',
+              content: 'hello from assistant',
+              reasoning_content: 'thinking details',
+            },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 20,
+          total_tokens: 30,
+        },
+      }),
+    };
+  });
+
+  describe('Model Resolution', () => {
+    it('should resolve prefixed model configured in config', async () => {
+      const controller = new AnthropicController(mockOrchestrator);
+      const req = {
+        body: { model: 'gemini/gemini-2.5-pro' },
+        headers: {},
+      };
+      const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+
+      await controller.handleCompletion(req, res);
+
+      expect(mockOrchestrator.executeCompletion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider: 'gemini',
+          actualModelId: 'gemini-2.5-pro-preview-05-06',
+          fallbackModel: 'openai/gpt-4o',
+          thinking_supported: true,
+          thinkingBudget: 2048,
+        }),
+        expect.any(Object),
+      );
+    });
+
+    it('should resolve bare name alias match', async () => {
+      const controller = new AnthropicController(mockOrchestrator);
+      const req = {
+        body: { model: 'pro' },
+        headers: {},
+      };
+      const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+
+      await controller.handleCompletion(req, res);
+
+      expect(mockOrchestrator.executeCompletion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider: 'gemini',
+          actualModelId: 'gemini-2.5-pro-preview-05-06',
+        }),
+        expect.any(Object),
+      );
+    });
+
+    it('should pass unresolved model through without crash', async () => {
+      const controller = new AnthropicController(mockOrchestrator);
+      const req = {
+        body: { model: 'unknown-model-alias' },
+        headers: {},
+      };
+      const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+
+      await controller.handleCompletion(req, res);
+
+      expect(mockOrchestrator.executeCompletion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'unknown-model-alias',
+        }),
+        expect.any(Object),
+      );
+      const callArg = mockOrchestrator.executeCompletion.mock.calls[0][0];
+      expect(callArg.provider).toBeUndefined();
+      expect(callArg.actualModelId).toBeUndefined();
+    });
+  });
+
+  describe('X-Gateway-Thinking-Level Header Overrides', () => {
+    it('should override default thinking budget to 512 for "low"', async () => {
+      const controller = new AnthropicController(mockOrchestrator);
+      const req = {
+        body: { model: 'gemini/gemini-2.5-pro' },
+        headers: { 'x-gateway-thinking-level': 'low' },
+      };
+      const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+
+      await controller.handleCompletion(req, res);
+
+      expect(mockOrchestrator.executeCompletion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          thinkingBudget: 512,
+          thinkingEnabled: true,
+        }),
+        expect.any(Object),
+      );
+    });
+
+    it('should override default thinking budget to 8192 for "high"', async () => {
+      const controller = new AnthropicController(mockOrchestrator);
+      const req = {
+        body: { model: 'gemini/gemini-2.5-pro' },
+        headers: { 'x-gateway-thinking-level': 'high' },
+      };
+      const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+
+      await controller.handleCompletion(req, res);
+
+      expect(mockOrchestrator.executeCompletion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          thinkingBudget: 8192,
+          thinkingEnabled: true,
+        }),
+        expect.any(Object),
+      );
+    });
+
+    it('should ignore invalid thinking level and preserve model defaults', async () => {
+      const controller = new AnthropicController(mockOrchestrator);
+      const req = {
+        body: { model: 'gemini/gemini-2.5-pro' },
+        headers: { 'x-gateway-thinking-level': 'invalid' },
+      };
+      const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+
+      await controller.handleCompletion(req, res);
+
+      expect(mockOrchestrator.executeCompletion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          thinkingBudget: 2048, // stays default
+        }),
+        expect.any(Object),
+      );
+    });
+  });
+
+  describe('X-Gateway-Temperature Header Overrides', () => {
+    it('should override body temperature within range [0.0 - 2.0]', async () => {
+      const controller = new AnthropicController(mockOrchestrator);
+      const req = {
+        body: { model: 'pro', temperature: 0.7 },
+        headers: { 'x-gateway-temperature': '1.5' },
+      };
+      const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+
+      await controller.handleCompletion(req, res);
+
+      expect(mockOrchestrator.executeCompletion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          temperature: 1.5,
+        }),
+        expect.any(Object),
+      );
+    });
+
+    it('should ignore out of range and non-numeric values', async () => {
+      const controller = new AnthropicController(mockOrchestrator);
+      const req = {
+        body: { model: 'pro', temperature: 0.7 },
+        headers: { 'x-gateway-temperature': '2.1' },
+      };
+      const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+
+      await controller.handleCompletion(req, res);
+
+      expect(mockOrchestrator.executeCompletion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          temperature: 0.7,
+        }),
+        expect.any(Object),
+      );
+    });
+  });
+
+  describe('Request Payload / Messages Mapping', () => {
+    it('should prepend system prompt message if string system is provided', async () => {
+      const controller = new AnthropicController(mockOrchestrator);
+      const req = {
+        body: {
+          model: 'pro',
+          system: 'you are a bot',
+          messages: [{ role: 'user', content: 'hi' }],
+        },
+        headers: {},
+      };
+      const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+
+      await controller.handleCompletion(req, res);
+
+      expect(mockOrchestrator.executeCompletion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messages: [
+            { role: 'system', content: 'you are a bot' },
+            { role: 'user', content: 'hi' },
+          ],
+        }),
+        expect.any(Object),
+      );
+    });
+
+    it('should prepend system prompt message if array system is provided', async () => {
+      const controller = new AnthropicController(mockOrchestrator);
+      const req = {
+        body: {
+          model: 'pro',
+          system: [{ type: 'text', text: 'instruction 1' }, { type: 'text', text: 'instruction 2' }],
+          messages: [{ role: 'user', content: 'hi' }],
+        },
+        headers: {},
+      };
+      const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+
+      await controller.handleCompletion(req, res);
+
+      expect(mockOrchestrator.executeCompletion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messages: [
+            { role: 'system', content: 'instruction 1\ninstruction 2' },
+            { role: 'user', content: 'hi' },
+          ],
+        }),
+        expect.any(Object),
+      );
+    });
+
+    it('should not prepend system prompt if system is omitted', async () => {
+      const controller = new AnthropicController(mockOrchestrator);
+      const req = {
+        body: {
+          model: 'pro',
+          messages: [{ role: 'user', content: 'hi' }],
+        },
+        headers: {},
+      };
+      const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+
+      await controller.handleCompletion(req, res);
+
+      expect(mockOrchestrator.executeCompletion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messages: [
+            { role: 'user', content: 'hi' },
+          ],
+        }),
+        expect.any(Object),
+      );
+    });
+
+    it('should map max_tokens_to_sample to maxTokens', async () => {
+      const controller = new AnthropicController(mockOrchestrator);
+      const req = {
+        body: { model: 'pro', max_tokens_to_sample: 100 },
+        headers: {},
+      };
+      const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+
+      await controller.handleCompletion(req, res);
+
+      expect(mockOrchestrator.executeCompletion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          maxTokens: 100,
+        }),
+        expect.any(Object),
+      );
+    });
+  });
+
+  describe('Response Format Translation', () => {
+    it('should translate success response with reasoning_content correctly', async () => {
+      const controller = new AnthropicController(mockOrchestrator);
+      const req = { body: { model: 'gemini/gemini-2.5-pro' }, headers: {} };
+      const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+
+      await controller.handleCompletion(req, res);
+
+      expect(res.json).toHaveBeenCalledWith({
+        id: 'waypoint-123',
+        type: 'message',
+        role: 'assistant',
+        model: 'gemini/gemini-2.5-pro',
+        content: [
+          { type: 'thinking', thinking: 'thinking details' },
+          { type: 'text', text: 'hello from assistant' },
+        ],
+        stop_reason: 'end_turn',
+        stop_sequence: null,
+        usage: {
+          input_tokens: 10,
+          output_tokens: 20,
+        },
+      });
+    });
+
+    it('should translate success response with NO reasoning_content correctly', async () => {
+      mockOrchestrator.executeCompletion.mockResolvedValue({
+        id: 'waypoint-456',
+        object: 'chat.completion',
+        created: 123456,
+        model: 'gemini/gemini-2.5-pro',
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: 'assistant',
+              content: 'just text content',
+              reasoning_content: null,
+            },
+            finish_reason: 'length',
+          },
+        ],
+        usage: {
+          prompt_tokens: 5,
+          completion_tokens: 15,
+          total_tokens: 20,
+        },
+      });
+
+      const controller = new AnthropicController(mockOrchestrator);
+      const req = { body: { model: 'gemini/gemini-2.5-pro' }, headers: {} };
+      const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+
+      await controller.handleCompletion(req, res);
+
+      expect(res.json).toHaveBeenCalledWith({
+        id: 'waypoint-456',
+        type: 'message',
+        role: 'assistant',
+        model: 'gemini/gemini-2.5-pro',
+        content: [
+          { type: 'text', text: 'just text content' },
+        ],
+        stop_reason: 'max_tokens',
+        stop_sequence: null,
+        usage: {
+          input_tokens: 5,
+          output_tokens: 15,
+        },
+      });
+    });
+  });
+
+  describe('Error Propagation', () => {
+    it('should forward normalized error status and response from orchestrator', async () => {
+      mockOrchestrator.executeCompletion.mockResolvedValue({
+        error: {
+          code: 'upstream_rate_limited',
+          message: 'Upstream rate limit reached',
+          httpStatus: 503,
+        },
+      });
+
+      const controller = new AnthropicController(mockOrchestrator);
+      const req = { body: { model: 'pro' }, headers: {} };
+      const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+
+      await controller.handleCompletion(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(503);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+        error: expect.objectContaining({
+          code: 'upstream_rate_limited',
+        }),
+      }));
+    });
+
+    it('should catch unhandled exceptions and respond with 500', async () => {
+      mockOrchestrator.executeCompletion.mockRejectedValue(new Error('Server out of memory'));
+
+      const controller = new AnthropicController(mockOrchestrator);
+      const req = { body: { model: 'pro' }, headers: {} };
+      const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+
+      await controller.handleCompletion(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+        error: expect.objectContaining({
+          code: 'internal_server_error',
+          message: 'Server out of memory',
+        }),
+      }));
+    });
+  });
+});

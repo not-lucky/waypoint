@@ -6,6 +6,7 @@ import { ProviderFactory } from './adapters/ProviderFactory.js';
 import { UnifiedOrchestrator } from './services/UnifiedOrchestrator.js';
 import { OpenAIController } from './controllers/OpenAIController.js';
 import { AnthropicController } from './controllers/AnthropicController.js';
+import { validateCompletionBody } from './middleware/zod.validation.js';
 
 // Load configuration
 const configLoader = new ConfigLoader();
@@ -30,6 +31,7 @@ app.get('/health', (req, res) => {
 app.post(
   ['/openai/chat/completions', '/openai/v1/chat/completions'],
   express.json(),
+  validateCompletionBody,
   (req, res) => openAIController.handleCompletion(req, res),
 );
 
@@ -37,6 +39,7 @@ app.post(
 app.post(
   ['/anthropic/messages', '/anthropic/v1/messages'],
   express.json(),
+  validateCompletionBody,
   (req, res) => anthropicController.handleCompletion(req, res),
 );
 

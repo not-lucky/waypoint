@@ -101,6 +101,7 @@ describe('Server Route Integration Tests', () => {
       .send({
         provider: 'openai',
         model: 'openai/gpt-4o',
+        messages: [{ role: 'user', content: 'hi' }],
       })
       .expect(503);
 
@@ -117,6 +118,7 @@ describe('Server Route Integration Tests', () => {
       .send({
         provider: 'openai',
         model: 'openai/gpt-4o',
+        messages: [{ role: 'user', content: 'hi' }],
       })
       .expect(200);
 

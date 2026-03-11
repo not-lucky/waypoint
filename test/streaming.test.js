@@ -1,0 +1,384 @@
+import {
+  vi,
+  describe,
+  it,
+  expect,
+  beforeEach,
+} from 'vitest';
+import request from 'supertest';
+import express from 'express';
+import { OpenAIController } from '../src/controllers/OpenAIController.js';
+import { AnthropicController } from '../src/controllers/AnthropicController.js';
+import { UnifiedOrchestrator } from '../src/services/UnifiedOrchestrator.js';
+import { KeyRegistry } from '../src/registry/KeyRegistry.js';
+import { ProviderFactory } from '../src/adapters/ProviderFactory.js';
+
+class MockAdapter {
+  constructor() {
+    this.callCount = 0;
+    this.streamChunks = [];
+    this.capturedSignal = null;
+  }
+
+  normalizeError(error) {
+    return {
+      code: 'mock_error',
+      message: error.message,
+      httpStatus: 500,
+      provider: 'mock-provider',
+    };
+  }
+
+  async* generateStream(req, apiKey, signal) {
+    this.callCount += 1;
+    this.capturedSignal = signal;
+    for (const chunk of this.streamChunks) {
+      if (signal.aborted) {
+        break;
+      }
+      yield chunk;
+    }
+  }
+}
+
+describe('Streaming End-to-End Tests', () => {
+  let app;
+  let mockAdapter;
+  let keyRegistry;
+  let orchestrator;
+
+  beforeEach(() => {
+    const config = {
+      providers: {
+        'mock-provider': {
+          keys: ['mock-key-1'],
+          models: [
+            {
+              id: 'test-model',
+              actual_model_id: 'test-model-actual',
+            },
+          ],
+        },
+      },
+    };
+
+    keyRegistry = new KeyRegistry(config);
+    const providerFactory = new ProviderFactory(config);
+    mockAdapter = new MockAdapter();
+    providerFactory.register('mock-provider', mockAdapter);
+
+    orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
+    const openAIController = new OpenAIController(orchestrator);
+    const anthropicController = new AnthropicController(orchestrator);
+
+    app = express();
+    app.use(express.json());
+
+    app.post('/openai/chat/completions', (req, res) => openAIController.handleCompletion(req, res));
+    app.post('/anthropic/messages', (req, res) => anthropicController.handleCompletion(req, res));
+  });
+
+  it('assert: OpenAI endpoint streams chunks matching Section 6C schema', async () => {
+    mockAdapter.streamChunks = [
+      {
+        id: 'chunk-1',
+        object: 'chat.completion.chunk',
+        choices: [{ index: 0, delta: { content: 'hello', reasoning_content: null }, finish_reason: null }],
+      },
+      {
+        id: 'chunk-1',
+        object: 'chat.completion.chunk',
+        choices: [{ index: 0, delta: { content: null, reasoning_content: 'thinking text' }, finish_reason: null }],
+      },
+      {
+        id: 'chunk-1',
+        object: 'chat.completion.chunk',
+        choices: [{ index: 0, delta: { content: null, reasoning_content: null }, finish_reason: 'stop' }],
+      },
+    ];
+
+    const response = await request(app)
+      .post('/openai/chat/completions')
+      .send({
+        model: 'mock-provider/test-model',
+        messages: [{ role: 'user', content: 'hi' }],
+        stream: true,
+      })
+      .expect('Content-Type', /text\/event-stream/)
+      .expect('Cache-Control', 'no-cache')
+      .expect('X-Accel-Buffering', 'no')
+      .expect(200);
+
+    const { text } = response;
+    const lines = text.split('\n\n').filter(Boolean);
+
+    expect(lines).toHaveLength(4); // 3 chunks + [DONE]
+
+    expect(lines[0]).toBe(`data: ${JSON.stringify(mockAdapter.streamChunks[0])}`);
+    expect(lines[1]).toBe(`data: ${JSON.stringify(mockAdapter.streamChunks[1])}`);
+    expect(lines[2]).toBe(`data: ${JSON.stringify(mockAdapter.streamChunks[2])}`);
+    expect(lines[3]).toBe('data: [DONE]');
+
+    const parsedChunk1 = JSON.parse(lines[0].replace('data: ', ''));
+    expect(parsedChunk1.id).toBe('chunk-1');
+    expect(parsedChunk1.choices[0].delta.content).toBe('hello');
+    expect(parsedChunk1.choices[0].delta.reasoning_content).toBeNull();
+  });
+
+  it('assert: Anthropic endpoint streams translated chunks matching Anthropic SSE format', async () => {
+    mockAdapter.streamChunks = [
+      {
+        id: 'chunk-1',
+        object: 'chat.completion.chunk',
+        choices: [{ index: 0, delta: { content: 'hello', reasoning_content: null }, finish_reason: null }],
+      },
+      {
+        id: 'chunk-1',
+        object: 'chat.completion.chunk',
+        choices: [{ index: 0, delta: { content: null, reasoning_content: 'thinking text' }, finish_reason: null }],
+      },
+      {
+        id: 'chunk-1',
+        object: 'chat.completion.chunk',
+        choices: [{ index: 0, delta: { content: null, reasoning_content: null }, finish_reason: 'stop' }],
+      },
+    ];
+
+    const response = await request(app)
+      .post('/anthropic/messages')
+      .send({
+        model: 'mock-provider/test-model',
+        messages: [{ role: 'user', content: 'hi' }],
+        stream: true,
+      })
+      .expect('Content-Type', /text\/event-stream/)
+      .expect('Cache-Control', 'no-cache')
+      .expect('X-Accel-Buffering', 'no')
+      .expect(200);
+
+    const { text } = response;
+    const events = text.split('\n\n').filter(Boolean);
+
+    expect(events.length).toBeGreaterThan(2);
+
+    expect(events[0]).toContain('event: message_start');
+    expect(events[1]).toContain('event: content_block_start');
+    expect(events[2]).toContain('event: content_block_delta');
+  });
+
+  it('assert: client abort propagates signal through to the adapter stream', async () => {
+    const abortController = new AbortController();
+    mockAdapter.streamChunks = [
+      { id: 'chunk-1', choices: [{ index: 0, delta: { content: 'hello' } }] },
+    ];
+
+    let closeCallback = null;
+    const mockRes = {
+      writableEnded: false,
+      setHeader: vi.fn(),
+      write: vi.fn(),
+      end: vi.fn(),
+      on: (event, cb) => {
+        if (event === 'close') closeCallback = cb;
+      },
+    };
+    const mockReq = {
+      body: { model: 'mock-provider/test-model', messages: [{ role: 'user', content: 'hi' }], stream: true },
+      res: mockRes,
+      headers: {},
+    };
+
+    const orchestratorRes = await orchestrator.executeCompletion({
+      model: 'mock-provider/test-model',
+      messages: [{ role: 'user', content: 'hi' }],
+      stream: true,
+    }, mockReq);
+
+    expect(orchestratorRes && typeof orchestratorRes[Symbol.asyncIterator] === 'function').toBe(true);
+
+    const iterator = orchestratorRes[Symbol.asyncIterator]();
+
+    // Read first chunk
+    const firstResult = await iterator.next();
+    expect(firstResult.done).toBe(false);
+
+    // Now simulate client abort
+    if (closeCallback) {
+      closeCallback();
+    }
+
+    // Try to read next chunk, should stop or throw since signal is aborted
+    const secondResult = await iterator.next();
+    expect(secondResult.done).toBe(true);
+    expect(mockAdapter.capturedSignal.aborted).toBe(true);
+  });
+
+  it('assert: orchestrator handles mid-stream errors gracefully', async () => {
+    // Adapter that yields one chunk then throws mid-stream
+    mockAdapter.generateStream = async function* (req, apiKey, signal) {
+      yield { id: 'chunk-1', choices: [{ index: 0, delta: { content: 'chunk1' } }] };
+      throw new Error('Mid-stream failure');
+    };
+
+    const orchestratorRes = await orchestrator.executeCompletion({
+      model: 'mock-provider/test-model',
+      messages: [{ role: 'user', content: 'hi' }],
+      stream: true,
+    }, {});
+
+    const iterator = orchestratorRes[Symbol.asyncIterator]();
+    const firstResult = await iterator.next();
+    expect(firstResult.done).toBe(false);
+    expect(firstResult.value.choices[0].delta.content).toBe('chunk1');
+
+    await expect(iterator.next()).rejects.toThrow('Mid-stream failure');
+  });
+
+  it('assert: orchestrator retries next key if first key fails on first chunk initialization', async () => {
+    // Config with two keys for primary provider
+    const localConfig = {
+      providers: {
+        'mock-provider': {
+          keys: ['key-1', 'key-2'],
+          models: [
+            { id: 'test-model', actual_model_id: 'test-model' },
+          ],
+        },
+      },
+    };
+    const localKeyRegistry = new KeyRegistry(localConfig);
+    const localFactory = new ProviderFactory(localConfig);
+
+    const failingAdapter = {
+      callCount: 0,
+      async* generateStream(req, apiKey, signal) {
+        failingAdapter.callCount += 1;
+        if (apiKey === 'key-1') {
+          throw new Error('Key 1 rate limit');
+        }
+        yield { id: 'success-chunk', choices: [{ index: 0, delta: { content: 'hello' } }] };
+      },
+      normalizeError(error) {
+        return { code: 'rate_limited', httpStatus: 503, provider: 'mock-provider' };
+      },
+    };
+
+    localFactory.register('mock-provider', failingAdapter);
+    const flagFailureSpy = vi.spyOn(localKeyRegistry, 'flagFailure');
+    const flagSuccessSpy = vi.spyOn(localKeyRegistry, 'flagSuccess');
+
+    const localOrchestrator = new UnifiedOrchestrator(localKeyRegistry, localFactory, localConfig);
+
+    const stream = await localOrchestrator.executeCompletion({
+      model: 'mock-provider/test-model',
+      messages: [],
+      stream: true,
+    }, {});
+
+    const iterator = stream[Symbol.asyncIterator]();
+    const firstResult = await iterator.next();
+
+    expect(firstResult.done).toBe(false);
+    expect(firstResult.value.choices[0].delta.content).toBe('hello');
+    expect(failingAdapter.callCount).toBe(2);
+    expect(flagFailureSpy).toHaveBeenCalledWith('mock-provider', 'key-1', 500);
+    expect(flagSuccessSpy).toHaveBeenCalledWith('mock-provider', 'key-2');
+  });
+
+  it('assert: orchestrator fallbacks to configured fallback model if all keys fail during stream start', async () => {
+    const localConfig = {
+      providers: {
+        'primary-provider': {
+          keys: ['primary-key'],
+          models: [
+            { id: 'model-a', actual_model_id: 'model-a', fallback_model: 'fallback-provider/model-b' },
+          ],
+        },
+        'fallback-provider': {
+          keys: ['fallback-key'],
+          models: [
+            { id: 'model-b', actual_model_id: 'model-b' },
+          ],
+        },
+      },
+    };
+    const localKeyRegistry = new KeyRegistry(localConfig);
+    const localFactory = new ProviderFactory(localConfig);
+
+    const primaryAdapter = {
+      async* generateStream(req, apiKey, signal) {
+        throw new Error('Primary key rate limit');
+      },
+      normalizeError(error) {
+        return { code: 'rate_limited', httpStatus: 503, provider: 'primary-provider' };
+      },
+    };
+
+    const fallbackAdapter = {
+      async* generateStream(req, apiKey, signal) {
+        yield { id: 'fallback-chunk', choices: [{ index: 0, delta: { content: 'fallback content' } }] };
+      },
+    };
+
+    localFactory.register('primary-provider', primaryAdapter);
+    localFactory.register('fallback-provider', fallbackAdapter);
+
+    const localOrchestrator = new UnifiedOrchestrator(localKeyRegistry, localFactory, localConfig);
+
+    const stream = await localOrchestrator.executeCompletion({
+      model: 'primary-provider/model-a',
+      messages: [],
+      stream: true,
+    }, {});
+
+    const iterator = stream[Symbol.asyncIterator]();
+    const firstResult = await iterator.next();
+
+    expect(firstResult.done).toBe(false);
+    expect(firstResult.value.choices[0].delta.content).toBe('fallback content');
+  });
+
+  it('assert: handles empty stream correctly', async () => {
+    mockAdapter.streamChunks = []; // Empty stream
+
+    const orchestratorRes = await orchestrator.executeCompletion({
+      model: 'mock-provider/test-model',
+      messages: [],
+      stream: true,
+    }, {});
+
+    const iterator = orchestratorRes[Symbol.asyncIterator]();
+    const firstResult = await iterator.next();
+    expect(firstResult.done).toBe(true);
+  });
+
+  it('assert: header and temperature overrides are passed to the generator', async () => {
+    let capturedReq = null;
+    mockAdapter.generateStream = async function* (req, apiKey, signal) {
+      capturedReq = req;
+      yield { id: 'chunk-1', choices: [{ index: 0, delta: { content: 'ok' } }] };
+    };
+
+    const mockReq = {
+      res: { writableEnded: false, on: () => {} },
+      headers: {
+        'x-gateway-thinking-level': 'high',
+        'x-gateway-temperature': '1.2',
+      },
+    };
+
+    const orchestratorRes = await orchestrator.executeCompletion({
+      model: 'mock-provider/test-model',
+      messages: [],
+      stream: true,
+    }, mockReq);
+
+    const iterator = orchestratorRes[Symbol.asyncIterator]();
+    await iterator.next();
+
+    expect(capturedReq.thinkingLevel).toBe('high');
+    expect(capturedReq.thinkingEnabled).toBe(true);
+    expect(capturedReq.thinkingBudget).toBe(4096);
+    expect(capturedReq.temperature).toBe(1.2);
+  });
+});

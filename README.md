@@ -20,12 +20,13 @@ Waypoint is a lightweight, opinionated local proxy and gateway designed for deve
 | ProviderFactory | ✅ Done | Adapter registration/retrieval scaffold |
 | HTTP server + `/health` | ✅ Done | Express server with graceful shutdown |
 | ESLint (airbnb-base) | ✅ Done | Enforced across all source files |
-| Request routing / proxying | ⬜ Planned | Controllers & middleware not yet implemented |
+| Request routing / proxying | ✅ Done | Ingress controllers translate to unified internal schema, route, and map back responses |
+| Model aliasing / fallback routing | ✅ Done | Resolves prefixes/aliases and automates failover to fallback models on exhaustion |
+| Unified Streaming Support | ✅ Done | Iterates generator, flags success after first chunk, maps SSE formats (OpenAI / Anthropic), aborts early |
+| Provider adapters (Gemini, Anthropic, OpenAI) | ✅ Done | Implemented with Vercel AI SDK, utilizing Modern JS patterns (pure functions, immutability) |
 | Client authentication | ⬜ Planned | Token validation middleware not yet implemented |
 | Per-client rate limiting | ⬜ Planned | — |
-| Provider adapters (Gemini, Anthropic, OpenAI) | ✅ Done | Implemented with Vercel AI SDK, utilizing Modern JS patterns (pure functions, immutability) |
 | Logging (file + console) | ⬜ Planned | Config schema present; logger not wired up |
-| Model aliasing / fallback routing | ⬜ Planned | Config schema present; routing logic not yet implemented |
 
 ---
 
@@ -48,10 +49,21 @@ Waypoint is a lightweight, opinionated local proxy and gateway designed for deve
   - **Other errors**: Brief transient cooldown, key remains inactive for the duration.
 - `flagSuccess` resets consecutive failure counters and reactivates a key.
 
-### 3. ProviderFactory
-- A simple adapter registry — `register(name, adapter)` / `get(name)` — ready to be wired up with provider-specific adapters.
+### 3. Unified Request Routing & Protocol Translation
+- Supports both OpenAI chat completions and Anthropic Messages ingress APIs.
+- Normalizes incoming requests, maps model names/aliases, and routes them to the correct backend provider adapter.
+- Normalizes response shapes, mapping thinking/reasoning blocks and usage data back to the protocol expected by the client.
 
-### 4. HTTP Server
+### 4. Unified Streaming (SSE)
+- Streams response chunks from Google Gemini, Anthropic Claude, and OpenAI models.
+- Provides unified retry/fallback behavior during stream initialization.
+- Converts stream chunks into the correct SSE protocol events (OpenAI or Anthropic Messages SSE).
+- Intercepts connection close events to abort active upstream requests, preserving API key quota.
+
+### 5. ProviderFactory
+- A simple adapter registry — `register(name, adapter)` / `get(name)` — wired up with provider-specific adapters.
+
+### 6. HTTP Server
 - Express server that binds to `config.gateway.port`.
 - Exposes a `GET /health` endpoint returning `{ "status": "ok" }`.
 
@@ -74,13 +86,13 @@ Development mode (file-watch auto-restart):
 pnpm dev
 ```
 
-Production mode:
+### Production mode
 ```bash
 pnpm start
 ```
 
 ### Running Tests
-106 unit tests across 12 test files, run via **Vitest**:
+202 unit/integration tests across 21 test files, run via **Vitest**:
 ```bash
 pnpm test
 ```

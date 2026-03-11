@@ -157,7 +157,7 @@ const chunkMappers = {
   finish: (part) => ({ content: null, reasoning_content: null, finish_reason: part.finishReason || 'stop' }),
 };
 
-export async function* mapStreamResult(result) {
+export const mapStreamResult = async function* mapStreamResult(result) {
   const chunkId = `waypoint-chunk-${Date.now()}`;
   for await (const part of result.fullStream) {
     const mapper = chunkMappers[part.type];
@@ -170,7 +170,7 @@ export async function* mapStreamResult(result) {
       };
     }
   }
-}
+};
 
 const ERROR_MAP = {
   429: { code: 'upstream_rate_limited', httpStatus: 503 },

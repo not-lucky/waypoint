@@ -43,6 +43,31 @@ export class OpenAIController {
         return res.status(response.error.httpStatus || 500).json(response);
       }
 
+      // If the response is a stream (async generator), handle as SSE (Server-Sent Events)
+      if (response && typeof response[Symbol.asyncIterator] === 'function') {
+        // Set standard headers for event streams to disable buffering and allow live streaming
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('X-Accel-Buffering', 'no');
+
+        try {
+          /* eslint-disable no-restricted-syntax */
+          // Iterate over each chunk produced by the orchestrator/adapter stream
+          for await (const chunk of response) {
+            res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+          }
+          /* eslint-enable no-restricted-syntax */
+          // Signal stream termination using standard OpenAI [DONE] indicator
+          res.write('data: [DONE]\n\n');
+        } catch (err) {
+          // Handle client disconnect or unexpected stream errors silently
+        } finally {
+          // Always end the response stream to clean up connection resources
+          res.end();
+        }
+        return res;
+      }
+
       // NormalizedResponse is already OpenAI-shaped — no translation needed
       return res.json(response);
     } catch (err) {

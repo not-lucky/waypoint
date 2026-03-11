@@ -50,10 +50,8 @@ const server = app.listen(port, () => {
 
 // Graceful shutdown
 const shutdown = () => {
-  // eslint-disable-next-line no-console
   console.info('Shutting down gracefully...');
   server.close(() => {
-    // eslint-disable-next-line no-console
     console.info('Closed out remaining connections.');
     configLoader.stopWatcher();
     keyRegistry.cleanup();
@@ -61,7 +59,6 @@ const shutdown = () => {
   });
 
   setTimeout(() => {
-    // eslint-disable-next-line no-console
     console.error('Could not close connections in time, forcefully shutting down');
     process.exit(1);
   }, 10000);

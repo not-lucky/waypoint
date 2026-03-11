@@ -22,24 +22,20 @@ export default class KeyRegistry {
 
   getKey(provider) {
     const pool = this.pools[provider];
-    if (!pool?.keys?.length) {
-      return null;
-    }
+    const keys = pool?.keys;
+    if (!keys?.length) return null;
 
     if (this.strategy === 'fill-first') {
-      const activeKey = pool.keys.find((key) => key.isAvailable());
-      return activeKey?.keyStr ?? null;
+      return keys.find((key) => key.isAvailable())?.keyStr ?? null;
     }
 
-    const n = pool.keys.length;
+    const n = keys.length;
     for (let i = 0; i < n; i += 1) {
       const idx = pool.roundRobinIndex;
-      const key = pool.keys[idx];
+      const key = keys[idx];
       pool.roundRobinIndex = (idx + 1) % n;
 
-      if (key.isAvailable()) {
-        return key.keyStr;
-      }
+      if (key.isAvailable()) return key.keyStr;
     }
 
     return null;

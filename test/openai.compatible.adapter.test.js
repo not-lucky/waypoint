@@ -397,4 +397,24 @@ describe('OpenAICompatibleAdapter Tests', () => {
     const lastCallArgs = streamText.mock.calls[streamText.mock.calls.length - 1][0];
     expect(lastCallArgs.providerOptions).toBeUndefined();
   });
+
+  it('assert: generateCompletion forwards abortSignal correctly', async () => {
+    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+    const controller = new AbortController();
+
+    generateText.mockResolvedValue({
+      text: 'hello',
+      finishReason: 'stop',
+      usage: {},
+    });
+
+    await adapter.generateCompletion({
+      actualModelId: 'gpt-4o',
+      messages: [],
+    }, 'test-api-key', controller.signal);
+
+    expect(generateText).toHaveBeenLastCalledWith(expect.objectContaining({
+      abortSignal: controller.signal,
+    }));
+  });
 });

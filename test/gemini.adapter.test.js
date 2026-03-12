@@ -242,4 +242,20 @@ describe('GeminiAdapter Tests', () => {
       },
     });
   });
+
+  it('assert: generateCompletion forwards abortSignal correctly', async () => {
+    const adapter = new GeminiAdapter();
+    const req = {
+      model: 'gemini/gemini-2.5-pro',
+      actualModelId: 'gemini-2.5-pro',
+      messages: [],
+    };
+    const controller = new AbortController();
+
+    await adapter.generateCompletion(req, 'gemini-key', controller.signal);
+
+    expect(generateText).toHaveBeenLastCalledWith(expect.objectContaining({
+      abortSignal: controller.signal,
+    }));
+  });
 });

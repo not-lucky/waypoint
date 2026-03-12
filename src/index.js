@@ -3,7 +3,7 @@ import express from 'express';
 import { ConfigLoader } from './config/loader.js';
 import { KeyRegistry } from './registry/KeyRegistry.js';
 import { ProviderFactory } from './adapters/ProviderFactory.js';
-import { UnifiedOrchestrator } from './services/UnifiedOrchestrator.js';
+import { UnifiedOrchestrator, activeControllers } from './services/UnifiedOrchestrator.js';
 import { OpenAIController } from './controllers/OpenAIController.js';
 import { AnthropicController } from './controllers/AnthropicController.js';
 import { validateCompletionBody } from './middleware/zod.validation.js';
@@ -57,6 +57,16 @@ const shutdown = () => {
     keyRegistry.cleanup();
     process.exit(0);
   });
+
+  // Abort all active upstream requests immediately to prevent background quota bleed
+  activeControllers.forEach((ctrl) => {
+    try {
+      ctrl.abort();
+    } catch (err) {
+      // Ignore errors during teardown
+    }
+  });
+  activeControllers.clear();
 
   setTimeout(() => {
     console.error('Could not close connections in time, forcefully shutting down');

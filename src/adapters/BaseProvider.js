@@ -98,10 +98,11 @@ export class BaseProvider {
    * Generates a non-streaming completion.
    * @param {UnifiedRequest} req - The normalized internal request.
    * @param {string} apiKey - The upstream provider API key.
+   * @param {AbortSignal} signal - Signal to abort the request.
    * @returns {Promise<NormalizedResponse>}
    * @throws {NotImplementedError}
    */
-  async generateCompletion(req, apiKey) {
+  async generateCompletion(req, apiKey, signal) {
     throw new NotImplementedError();
   }
 

@@ -1,3 +1,5 @@
+/* eslint-disable no-restricted-syntax, no-unused-vars */
+/* eslint-disable class-methods-use-this, func-names, require-yield */
 import {
   vi,
   describe,

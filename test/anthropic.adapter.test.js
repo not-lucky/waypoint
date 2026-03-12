@@ -274,4 +274,20 @@ describe('AnthropicAdapter Tests', () => {
       },
     });
   });
+
+  it('assert: generateCompletion forwards abortSignal correctly', async () => {
+    const adapter = new AnthropicAdapter();
+    const req = {
+      model: 'anthropic/claude-3-5-sonnet',
+      actualModelId: 'claude-3-5-sonnet',
+      messages: [],
+    };
+    const controller = new AbortController();
+
+    await adapter.generateCompletion(req, 'key', controller.signal);
+
+    expect(generateText).toHaveBeenLastCalledWith(expect.objectContaining({
+      abortSignal: controller.signal,
+    }));
+  });
 });

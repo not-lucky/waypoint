@@ -1,6 +1,11 @@
 /* eslint-disable no-restricted-syntax, no-constant-condition, no-await-in-loop, no-continue */
 import { resolveModel, applyModelConfig } from '../utils/modelResolver.js';
 
+// Global registry of all active request AbortControllers.
+// Used during graceful shutdown (in index.js) to cancel all in-flight
+// requests and prevent upstream quota bleed.
+export const activeControllers = new Set();
+
 export class UnifiedOrchestrator {
   constructor(keyRegistry, providerFactory, config = {}) {
     this.keyRegistry = keyRegistry;
@@ -44,11 +49,21 @@ export class UnifiedOrchestrator {
 
     const retryLimit = this.config.gateway?.global_retry_limit ?? 3;
 
-    // Create an abort signal and listen to the request/response close event.
+    // Create an abort signal and listen to the request close event.
     const abortController = new AbortController();
+    activeControllers.add(abortController);
+
     if (rawReq) {
+      // Bind directly to the request close event for actual client disconnects.
+      if (typeof rawReq.on === 'function') {
+        rawReq.on('close', () => {
+          abortController.abort();
+        });
+      }
+      // Bind to the response close event for backward compatibility with existing tests
+      // that mock the close event on rawReq.res instead of rawReq.
       const target = rawReq.res || rawReq;
-      if (typeof target.on === 'function') {
+      if (target && target !== rawReq && typeof target.on === 'function') {
         target.on('close', () => {
           const { res } = rawReq;
           if (res ? !res.writableEnded : true) {
@@ -58,117 +73,157 @@ export class UnifiedOrchestrator {
       }
     }
 
-    // Outer loop to handle fallbacks
-    while (true) {
-      // Resolve provider and actualModelId from config if model is specified
-      if (req.model) {
-        applyModelConfig(req, resolveModel(req.model, this.config.providers));
-      }
+    let isStreamingResponse = false;
 
-      const { provider } = req;
-      const adapter = this.providerFactory.get(provider);
+    try {
+      // Outer loop to handle fallbacks
+      while (true) {
+        // Resolve provider and actualModelId from config if model is specified
+        if (req.model) {
+          applyModelConfig(req, resolveModel(req.model, this.config.providers));
+        }
 
-      if (!adapter) {
-        return {
-          error: {
-            code: 'unsupported_provider',
-            message: `Provider '${provider}' is not supported or configured.`,
-            provider,
-            httpStatus: 400,
-          },
-        };
-      }
+        const { provider } = req;
+        const adapter = this.providerFactory.get(provider);
 
-      let attempt = 0;
-      let triggerFallback = false;
-
-      // Inner loop for key rotation/retries
-      while (attempt < retryLimit) {
-        if (abortController.signal.aborted) {
+        if (!adapter) {
           return {
             error: {
-              code: 'request_cancelled',
-              message: 'Request was cancelled by the client.',
+              code: 'unsupported_provider',
+              message: `Provider '${provider}' is not supported or configured.`,
               provider,
-              httpStatus: 499,
+              httpStatus: 400,
             },
           };
         }
 
-        const apiKey = this.keyRegistry.getKey(provider);
+        let attempt = 0;
+        let triggerFallback = false;
 
-        if (!apiKey) {
-          if (req.isFallback) {
-            return this.buildAllKeysExhaustedError(provider);
+        // Inner loop for key rotation/retries
+        while (attempt < retryLimit) {
+          if (abortController.signal.aborted) {
+            return {
+              error: {
+                code: 'request_cancelled',
+                message: 'Request was cancelled by the client.',
+                provider,
+                httpStatus: 499,
+              },
+            };
           }
 
-          if (req.fallbackModel) {
-            const resolved = resolveModel(req.fallbackModel, this.config.providers);
-            if (resolved) {
-              applyModelConfig(req, resolved);
-            } else if (req.fallbackModel.includes('/')) {
-              const [p, ...rest] = req.fallbackModel.split('/');
-              req.provider = p.trim();
-              req.actualModelId = rest.join('/').trim();
+          const apiKey = this.keyRegistry.getKey(provider);
+
+          if (!apiKey) {
+            if (req.isFallback) {
+              return this.buildAllKeysExhaustedError(provider);
             }
-            req.model = req.fallbackModel;
-            req.isFallback = true;
-            triggerFallback = true;
+
+            if (req.fallbackModel) {
+              const resolved = resolveModel(req.fallbackModel, this.config.providers);
+              if (resolved) {
+                applyModelConfig(req, resolved);
+              } else if (req.fallbackModel.includes('/')) {
+                const [p, ...rest] = req.fallbackModel.split('/');
+                req.provider = p.trim();
+                req.actualModelId = rest.join('/').trim();
+              }
+              req.model = req.fallbackModel;
+              req.isFallback = true;
+              triggerFallback = true;
+              break;
+            }
             break;
           }
-          break;
-        }
 
-        attempt += 1;
+          attempt += 1;
 
-        try {
-          if (req.stream) {
-            const stream = adapter.generateStream(req, apiKey, abortController.signal);
-            const iterator = stream[Symbol.asyncIterator]();
+          try {
+            if (req.stream) {
+              const stream = adapter.generateStream(req, apiKey, abortController.signal);
+              const iterator = stream[Symbol.asyncIterator]();
 
-            const firstResult = await iterator.next();
-            this.keyRegistry.flagSuccess(provider, apiKey);
+              const firstResult = await iterator.next();
+              this.keyRegistry.flagSuccess(provider, apiKey);
 
-            const streamWrapper = async function* streamWrapper() {
-              if (!firstResult.done) {
-                yield firstResult.value;
-                while (!abortController.signal.aborted) {
-                  const nextResult = await iterator.next();
-                  if (nextResult.done) break;
-                  yield nextResult.value;
+              // Flag that we are returning a stream so the outer executeCompletion
+              // finally block does not prematurely delete the controller.
+              isStreamingResponse = true;
+
+              const streamWrapper = async function* streamWrapper() {
+                try {
+                  if (!firstResult.done) {
+                    yield firstResult.value;
+                    while (true) {
+                      // Check abort signal before requesting the next chunk
+                      if (abortController.signal.aborted) {
+                        break;
+                      }
+                      const nextResult = await iterator.next();
+                      if (nextResult.done) break;
+                      // Check abort signal again after receiving the chunk but before yielding it
+                      if (abortController.signal.aborted) {
+                        break;
+                      }
+                      yield nextResult.value;
+                    }
+                  }
+                } finally {
+                  // Clean up the abort controller once the stream terminates or is aborted
+                  activeControllers.delete(abortController);
+                  if (typeof iterator.return === 'function') {
+                    await iterator.return();
+                  }
                 }
-              }
-            };
-            return streamWrapper();
+              };
+              return streamWrapper();
+            }
+
+            const response = await adapter.generateCompletion(req, apiKey, abortController.signal);
+            this.keyRegistry.flagSuccess(provider, apiKey);
+            return response;
+          } catch (error) {
+            if (abortController.signal.aborted) {
+              return {
+                error: {
+                  code: 'request_cancelled',
+                  message: 'Request was cancelled by the client.',
+                  provider,
+                  httpStatus: 499,
+                },
+              };
+            }
+            const statusCode = error?.status || error?.statusCode || error?.response?.status || 500;
+            this.keyRegistry.flagFailure(provider, apiKey, statusCode);
+            console.warn(`Attempt ${attempt} of ${retryLimit} for provider '${provider}' failed. Reason: ${error?.message || error}`);
           }
-
-          const response = await adapter.generateCompletion(req, apiKey, abortController.signal);
-          this.keyRegistry.flagSuccess(provider, apiKey);
-          return response;
-        } catch (error) {
-          const statusCode = error?.status || error?.statusCode || error?.response?.status || 500;
-          this.keyRegistry.flagFailure(provider, apiKey, statusCode);
-          console.warn(`Attempt ${attempt} of ${retryLimit} for provider '${provider}' failed. Reason: ${error?.message || error}`);
         }
-      }
 
-      if (triggerFallback) continue;
+        if (triggerFallback) continue;
 
-      if (req.fallbackModel && !req.isFallback) {
-        const resolved = resolveModel(req.fallbackModel, this.config.providers);
-        if (resolved) {
-          applyModelConfig(req, resolved);
-        } else if (req.fallbackModel.includes('/')) {
-          const [p, ...rest] = req.fallbackModel.split('/');
-          req.provider = p.trim();
-          req.actualModelId = rest.join('/').trim();
+        if (req.fallbackModel && !req.isFallback) {
+          const resolved = resolveModel(req.fallbackModel, this.config.providers);
+          if (resolved) {
+            applyModelConfig(req, resolved);
+          } else if (req.fallbackModel.includes('/')) {
+            const [p, ...rest] = req.fallbackModel.split('/');
+            req.provider = p.trim();
+            req.actualModelId = rest.join('/').trim();
+          }
+          req.model = req.fallbackModel;
+          req.isFallback = true;
+          continue;
         }
-        req.model = req.fallbackModel;
-        req.isFallback = true;
-        continue;
-      }
 
-      return this.buildAllKeysExhaustedError(provider);
+        return this.buildAllKeysExhaustedError(provider);
+      }
+    } finally {
+      // For non-streaming requests, clean up the abort controller immediately
+      // upon completion (whether successful or failed).
+      if (!isStreamingResponse) {
+        activeControllers.delete(abortController);
+      }
     }
   }
 

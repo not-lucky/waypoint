@@ -72,6 +72,7 @@ describe('Server Route Integration Tests', () => {
 
     const res = await request(app)
       .post('/openai/chat/completions')
+      .set('Authorization', 'Bearer mock-webui-token')
       .send({
         provider: 'openai',
         model: 'openai/gpt-4o',
@@ -98,6 +99,7 @@ describe('Server Route Integration Tests', () => {
 
     const res = await request(app)
       .post('/openai/chat/completions')
+      .set('Authorization', 'Bearer mock-webui-token')
       .send({
         provider: 'openai',
         model: 'openai/gpt-4o',
@@ -115,6 +117,7 @@ describe('Server Route Integration Tests', () => {
 
     const res = await request(app)
       .post('/openai/v1/chat/completions')
+      .set('Authorization', 'Bearer mock-webui-token')
       .send({
         provider: 'openai',
         model: 'openai/gpt-4o',
@@ -128,6 +131,7 @@ describe('Server Route Integration Tests', () => {
   it('POST /openai/chat/completions - returns 400 on invalid JSON payload', async () => {
     await request(app)
       .post('/openai/chat/completions')
+      .set('Authorization', 'Bearer mock-webui-token')
       .set('Content-Type', 'application/json')
       .send('{ invalid json')
       .expect(400);

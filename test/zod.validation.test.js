@@ -6,7 +6,14 @@ import {
   beforeAll,
   afterAll,
 } from 'vitest';
-import request from 'supertest';
+import supertest from 'supertest';
+
+const request = (app) => {
+  const req = supertest(app);
+  const originalPost = req.post.bind(req);
+  req.post = (path) => originalPost(path).set('Authorization', 'Bearer mock-webui-token');
+  return req;
+};
 
 /**
  * Integration test suite for the Zod Request Validation Middleware.

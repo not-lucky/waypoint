@@ -11,7 +11,7 @@ import supertest from 'supertest';
 const request = (app) => {
   const req = supertest(app);
   const originalPost = req.post.bind(req);
-  req.post = (path) => originalPost(path).set('Authorization', 'Bearer mock-webui-token');
+  req.post = (urlPath) => originalPost(urlPath).set('Authorization', 'Bearer mock-webui-token');
   return req;
 };
 
@@ -35,6 +35,9 @@ describe('Zod Request Validation Middleware - Edge Case Tests', () => {
     process.env.GEMINI_API_KEY_2 = 'gemini-key-2';
     process.env.ANTHROPIC_API_KEY_1 = 'anthropic-key-1';
     process.env.OPENAI_API_KEY_1 = 'openai-key-1';
+
+    // Point the path environment variable to config.example.yml
+    process.env.WAYPOINT_CONFIG_PATH = 'config.example.yml';
 
     // Clear module cache to allow fresh execution of index.js
     vi.resetModules();

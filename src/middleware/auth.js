@@ -38,9 +38,11 @@ export const authMiddleware = (configLoader) => (req, res, next) => {
   // We dynamically call configLoader.loadConfig() on each request to ensure
   // hot-reloaded configuration updates (such as newly added client tokens)
   // are picked up immediately without requiring a server process restart.
-  const config = configLoader.loadConfig();
-  const clients = config.clients || [];
-  const client = clients.find((c) => c.token === token);
+  const config = configLoader.loadConfig() || {};
+  // Handle case where config.clients is missing or not an array.
+  const clients = Array.isArray(config.clients) ? config.clients : [];
+  // Safeguard against null, undefined, or non-object entries inside config.clients array.
+  const client = clients.find((c) => c && typeof c === 'object' && c.token === token);
 
   if (!client) {
     res.status(401).json({

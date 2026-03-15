@@ -66,6 +66,9 @@ describe('Configuration Loader Tests', () => {
     process.env.GEMINI_API_KEY_2 = 'gemini-key-2';
     process.env.ANTHROPIC_API_KEY_1 = 'anthropic-key-1';
     process.env.OPENAI_API_KEY_1 = 'openai-key-1';
+
+    // Point the path environment variable to config.example.yml
+    process.env.WAYPOINT_CONFIG_PATH = 'config.example.yml';
   });
 
   // Restore the original environment and cleanup files after each test.
@@ -78,7 +81,7 @@ describe('Configuration Loader Tests', () => {
 
   describe('Standard Config Loading', () => {
     it('should parse standard config.yaml and correctly interpolate env vars', () => {
-      const config = configLoader.loadConfig('config/config.yaml');
+      const config = configLoader.loadConfig();
 
       // Verify that structural scalar configurations match.
       expect(config.gateway.port).toBe(20128);
@@ -106,14 +109,14 @@ describe('Configuration Loader Tests', () => {
       const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
         throw new Error('process.exit called');
       });
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
 
       // Simulate a missing client token (non-key environment variable).
       delete process.env.OPEN_WEBUI_TOKEN;
 
       // Assertion: process should fail-fast and abort execution immediately.
       expect(() => {
-        configLoader.loadConfig('config/config.yaml');
+        configLoader.loadConfig('config.example.yml');
       }).toThrow('process.exit called');
 
       expect(exitSpy).toHaveBeenCalledWith(1);
@@ -126,12 +129,12 @@ describe('Configuration Loader Tests', () => {
     });
 
     it('should skip the key and log warning if a key env var is missing but other keys remain', () => {
-      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
 
       // Simulate a single missing Gemini key, keeping the second key active.
       delete process.env.GEMINI_API_KEY_1;
 
-      const config = configLoader.loadConfig('config/config.yaml');
+      const config = configLoader.loadConfig('config.example.yml');
 
       // Assertion: The missing key should be filtered out, leaving the remaining valid key.
       expect(config.providers.gemini.keys).not.toContain('gemini-key-1');
@@ -150,14 +153,14 @@ describe('Configuration Loader Tests', () => {
       const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
         throw new Error('process.exit called');
       });
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
 
       // Simulate complete key exhaustion for the Gemini provider.
       delete process.env.GEMINI_API_KEY_1;
       delete process.env.GEMINI_API_KEY_2;
 
       expect(() => {
-        configLoader.loadConfig('config/config.yaml');
+        configLoader.loadConfig('config.example.yml');
       }).toThrow('process.exit called');
 
       expect(exitSpy).toHaveBeenCalledWith(1);
@@ -173,7 +176,7 @@ describe('Configuration Loader Tests', () => {
       const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
         throw new Error('process.exit called');
       });
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
 
       // Simulate complete key exhaustion for all providers.
       delete process.env.GEMINI_API_KEY_1;
@@ -182,7 +185,7 @@ describe('Configuration Loader Tests', () => {
       delete process.env.OPENAI_API_KEY_1;
 
       expect(() => {
-        configLoader.loadConfig('config/config.yaml');
+        configLoader.loadConfig('config.example.yml');
       }).toThrow('process.exit called');
 
       expect(exitSpy).toHaveBeenCalledWith(1);
@@ -198,7 +201,7 @@ describe('Configuration Loader Tests', () => {
       const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
         throw new Error('process.exit called');
       });
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
 
       // Write a custom provider 'my-ollama' without the required base_url property.
       writeTempConfig(`
@@ -277,7 +280,7 @@ providers:
     });
 
     it('should filter out literal empty string, null, or undefined keys in providers with a warning (BUG-2)', () => {
-      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
 
       writeTempConfig(`
 gateway:
@@ -372,7 +375,7 @@ providers:
     });
 
     it('should warn and strip type field from reserved providers', () => {
-      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
 
       writeTempConfig(`
 gateway:
@@ -405,7 +408,7 @@ providers:
       const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
         throw new Error('process.exit called');
       });
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
 
       writeTempConfig(`
 gateway:
@@ -513,7 +516,7 @@ providers:
 `);
 
       configLoader.loadConfig(tempConfigPath);
-      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
 
       // Subscribe to configuration changes.
       const unsubscribe = configLoader.onConfigChange(() => {
@@ -571,7 +574,7 @@ providers:
       const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
         throw new Error('process.exit called');
       });
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
 
       // Setup a listener that shouldn't fire because the reload is invalid
       const unsubscribe = configLoader.onConfigChange(() => {
@@ -759,7 +762,7 @@ providers:
 
     it('should stop watching and log warning after 5 failed watch attempts (infinite loop prevention)', () => {
       vi.useFakeTimers();
-      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
       const fsWatchSpy = vi.spyOn(fs, 'watch').mockImplementation(() => {
         throw new Error('Watch failed');
       });

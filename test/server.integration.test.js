@@ -25,6 +25,9 @@ describe('Server Route Integration Tests', () => {
     process.env.ANTHROPIC_API_KEY_1 = 'anthropic-key-1';
     process.env.OPENAI_API_KEY_1 = 'openai-key-1';
 
+    // Point the path environment variable to config.example.yml
+    process.env.WAYPOINT_CONFIG_PATH = 'config.example.yml';
+
     // Clear module cache to allow fresh execution of index.js
     vi.resetModules();
 

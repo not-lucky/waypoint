@@ -437,7 +437,7 @@ export class ConfigLoader {
    * and sets up hot-reloading file watch.
    * Fails fast and terminates process if configuration is invalid at startup.
    */
-  loadConfig(configPath = 'config/config.yaml', reservedProviders = RESERVED_PROVIDERS) {
+  loadConfig(configPath = process.env.WAYPOINT_CONFIG_PATH || 'config/config.yaml', reservedProviders = RESERVED_PROVIDERS) {
     if (this.currentConfig) {
       return this.currentConfig;
     }

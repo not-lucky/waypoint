@@ -8,6 +8,7 @@ import { OpenAIController } from './controllers/OpenAIController.js';
 import { AnthropicController } from './controllers/AnthropicController.js';
 import { validateCompletionBody } from './middleware/zod.validation.js';
 import { authMiddleware } from './middleware/auth.js';
+import { rateLimiter } from './middleware/rateLimiter.js';
 
 // Load configuration
 const configLoader = new ConfigLoader();
@@ -59,6 +60,7 @@ const getUniqueModels = () => {
 // OpenAI Router
 const openaiRouter = express.Router();
 openaiRouter.use(auth);
+openaiRouter.use(rateLimiter);
 
 // GET /openai/models lists all configured models and aliases across all providers
 openaiRouter.get('/models', (req, res) => {
@@ -90,6 +92,7 @@ app.use(['/openai/v1', '/openai'], openaiRouter);
 // Anthropic Router
 const anthropicRouter = express.Router();
 anthropicRouter.use(auth);
+anthropicRouter.use(rateLimiter);
 
 // GET /anthropic/models lists all configured models and aliases across all providers
 anthropicRouter.get('/models', (req, res) => {

@@ -361,7 +361,8 @@ describe('rateLimiter middleware', () => {
     expect(clientWindows.get(clientName).length).toBe(3);
     expect(clientWindows.get(clientName)).toEqual([start, start + 200, start + 500]);
 
-    // Advance time to t = start + 1100 (t=start expires, t=start+200 and t=start+500 remain, plus new request)
+    // Advance time to t = start + 1100
+    // (t=start expires, t=start+200 and t=start+500 remain, plus new request)
     vi.advanceTimersByTime(600);
     rateLimiter(req, res, next); // t = start + 1100
 
@@ -398,5 +399,103 @@ describe('rateLimiter middleware', () => {
 
     rateLimiter(reqStringWindow, res, next);
     expect(next).toHaveBeenCalledTimes(2);
+  });
+
+  it('assert: max limit of 1 allows exactly one request and blocks subsequent', () => {
+    const req = {
+      client: {
+        name: 'minimal-limit-client',
+        rate_limit: {
+          window_ms: 1000,
+          max: 1,
+        },
+      },
+    };
+    const res = createMockResponse();
+    const next1 = vi.fn();
+    const next2 = vi.fn();
+
+    // First request should pass
+    rateLimiter(req, res, next1);
+    expect(next1).toHaveBeenCalled();
+
+    // Second request should be blocked
+    rateLimiter(req, res, next2);
+    expect(next2).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(429);
+  });
+
+  it('assert: very large max limit is handled correctly without overflow or delay', () => {
+    const req = {
+      client: {
+        name: 'huge-limit-client',
+        rate_limit: {
+          window_ms: 1000,
+          max: 100000,
+        },
+      },
+    };
+    const res = createMockResponse();
+    const next = vi.fn();
+
+    // Make a few requests, should easily pass
+    for (let i = 0; i < 5; i++) {
+      rateLimiter(req, res, next);
+    }
+    expect(next).toHaveBeenCalledTimes(5);
+  });
+
+  it('assert: resetRateLimiter clears internal maps and is completely idempotent', () => {
+    const req = {
+      client: {
+        name: 'reset-test-client',
+        rate_limit: {
+          window_ms: 1000,
+          max: 1,
+        },
+      },
+    };
+    const res = createMockResponse();
+    const next1 = vi.fn();
+    const next2 = vi.fn();
+
+    // Fill up the rate limiter
+    rateLimiter(req, res, next1);
+    expect(next1).toHaveBeenCalled();
+
+    // Blocked
+    rateLimiter(req, res, next2);
+    expect(next2).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(429);
+
+    // Call reset multiple times rapidly
+    resetRateLimiter();
+    resetRateLimiter();
+    resetRateLimiter();
+
+    // Should accept again
+    const next3 = vi.fn();
+    res.statusCode = 200;
+    rateLimiter(req, res, next3);
+    expect(next3).toHaveBeenCalled();
+  });
+
+  it('assert: client name as an empty string is handled correctly', () => {
+    const req = {
+      client: {
+        name: '',
+        rate_limit: {
+          window_ms: 1000,
+          max: 2,
+        },
+      },
+    };
+    const res = createMockResponse();
+    const next = vi.fn();
+
+    // Since client.name is an empty string, rateLimiter is bypassed
+    // according to the check: if (!client || !client.name || !client.rate_limit)
+    rateLimiter(req, res, next);
+    expect(next).toHaveBeenCalled();
   });
 });

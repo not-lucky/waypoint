@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import cors from 'cors';
 import { ConfigLoader } from './config/loader.js';
 import { KeyRegistry } from './registry/KeyRegistry.js';
 import { ProviderFactory } from './adapters/ProviderFactory.js';
@@ -24,6 +25,27 @@ const anthropicController = new AnthropicController(orchestrator);
 
 const app = express();
 const { port } = config.gateway;
+
+// Retrieve CORS configuration allowed origins.
+// Defaults to ['*'] (allow all) if not configured.
+const allowedOrigins = config.gateway.cors?.allowed_origins || ['*'];
+
+// If the allowed origins list contains the wildcard '*', we pass '*' as a
+// string to the cors middleware. The cors middleware treats a string '*'
+// as a wildcard allowing any request origin.
+// Otherwise, we pass the array of specific allowed origins.
+const corsOrigin = allowedOrigins.includes('*') ? '*' : allowedOrigins;
+
+// Apply global CORS middleware before all routes to ensure preflights
+// and headers are handled uniformly.
+app.use(cors({ origin: corsOrigin }));
+
+// Apply global body parsing middleware before all route handlers and
+// router-level middlewares.
+// The limit constraint is enforced dynamically from the gateway config,
+// defaulting to '10mb'. This ensures that oversized requests are
+// rejected with a 413 error code prior to processing.
+app.use(express.json({ limit: config.gateway.max_payload_size || '10mb' }));
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
@@ -78,7 +100,6 @@ openaiRouter.get('/models', (req, res) => {
 
 openaiRouter.post(
   '/chat/completions',
-  express.json(),
   validateCompletionBody,
   (req, res) => openAIController.handleCompletion(req, res),
 );
@@ -109,7 +130,6 @@ anthropicRouter.get('/models', (req, res) => {
 
 anthropicRouter.post(
   '/messages',
-  express.json(),
   validateCompletionBody,
   (req, res) => anthropicController.handleCompletion(req, res),
 );

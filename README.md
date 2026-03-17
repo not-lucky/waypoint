@@ -24,8 +24,9 @@ Waypoint is a lightweight, opinionated local proxy and gateway designed for deve
 | Model aliasing / fallback routing | ✅ Done | Resolves prefixes/aliases and automates failover to fallback models on exhaustion |
 | Unified Streaming Support | ✅ Done | Iterates generator, flags success after first chunk, maps SSE formats (OpenAI / Anthropic), aborts early |
 | Provider adapters (Gemini, Anthropic, OpenAI) | ✅ Done | Implemented with Vercel AI SDK, utilizing Modern JS patterns (pure functions, immutability) |
-| Client authentication | ⬜ Planned | Token validation middleware not yet implemented |
-| Per-client rate limiting | ⬜ Planned | — |
+| Client authentication | ✅ Done | Bearer token validation middleware |
+| Per-client rate limiting | ✅ Done | In-memory sliding window rate limiter |
+| CORS & payload limits | ✅ Done | Allowed origins list and dynamic request body size constraints |
 | Logging (file + console) | ⬜ Planned | Config schema present; logger not wired up |
 
 ---
@@ -66,6 +67,18 @@ Waypoint is a lightweight, opinionated local proxy and gateway designed for deve
 ### 6. HTTP Server
 - Express server that binds to `config.gateway.port`.
 - Exposes a `GET /health` endpoint returning `{ "status": "ok" }`.
+
+### 7. Client Authentication & Authorization
+- Secures standard endpoints with API token validation.
+- Validates the incoming header `Authorization: Bearer <token>` and maps the request to a configured client profile.
+
+### 8. Sliding-Window Rate Limiting
+- Evaluates per-client API limits dynamically based on the matched client token.
+- Uses an in-memory sliding window to track request timestamps, returning `429 Rate Limit Exceeded` when limits are reached.
+
+### 9. CORS & Dynamic Request Body Size Constraints
+- Dynamically configures allowed origins based on CORS configuration.
+- Enforces request body size limits dynamically (e.g. `'10mb'`), returning a `413 Payload Too Large` to prevent oversized request exploits.
 
 ---
 
@@ -113,11 +126,15 @@ Waypoint reads configuration from `config/config.yaml`. Environment variables in
 gateway:
   port: 20128
   global_retry_limit: 3
+  max_payload_size: "10mb" # Maximum allowed payload size for requests
   cooldown:
     base_seconds: 30
     max_seconds: 3600
   routing:
     strategy: "round-robin" # "round-robin" or "fill-first"
+  cors:
+    allowed_origins:
+      - "*"
 
 logging:
   enable_console: true
@@ -131,6 +148,11 @@ clients:
     rate_limit:
       window_ms: 60000
       max: 100
+  - name: "codex-agent"
+    token: "${CODEX_AGENT_TOKEN}"
+    rate_limit:
+      window_ms: 60000
+      max: 30
 
 providers:
   gemini:

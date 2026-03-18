@@ -439,7 +439,7 @@ describe('rateLimiter middleware', () => {
     const next = vi.fn();
 
     // Make a few requests, should easily pass
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 5; i += 1) {
       rateLimiter(req, res, next);
     }
     expect(next).toHaveBeenCalledTimes(5);

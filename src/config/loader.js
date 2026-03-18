@@ -206,6 +206,7 @@ export const validateConfig = (
   config,
   shouldExit = true,
   reservedProviders = RESERVED_PROVIDERS,
+  logger = null,
 ) => {
   if (!config) {
     logErrorAndExitOrThrow('Configuration object is null or undefined.', shouldExit);
@@ -314,8 +315,12 @@ export const validateConfig = (
     // Reserved providers must never carry a type field; it is ignored with a warning.
     if (reservedProviders.has(providerName)) {
       if (providerConf.type !== undefined) {
-        // eslint-disable-next-line no-console
-        console.warn(`WARNING: Reserved provider '${providerName}' does not accept a 'type' field. It will be ignored.`);
+        const msg = `WARNING: Reserved provider '${providerName}' does not accept a 'type' field. It will be ignored.`;
+        if (logger) {
+          logger.warn(msg);
+        } else {
+          console.warn(msg);
+        }
         // eslint-disable-next-line no-param-reassign
         delete providerConf.type;
       }
@@ -344,8 +349,12 @@ export const validateConfig = (
       const originalLength = providerConf.keys.length;
       const validKeys = providerConf.keys.filter((key, index) => {
         if (key == null || (typeof key === 'string' && key.trim() === '')) {
-          // eslint-disable-next-line no-console
-          console.warn(`WARNING: Skipping undefined or empty key for provider '${providerName}' at index ${index}.`);
+          const msg = `WARNING: Skipping undefined or empty key for provider '${providerName}' at index ${index}.`;
+          if (logger) {
+            logger.warn(msg);
+          } else {
+            console.warn(msg);
+          }
           return false;
         }
         return true;
@@ -430,6 +439,17 @@ export class ConfigLoader {
     this.watcher = null;
     this.listeners = [];
     this.debounceTimeout = null;
+    this.logger = null;
+  }
+
+  /**
+   * Injects the logger instance after initial config load.
+   * The logger cannot be set at construction time because creating it
+   * requires the loaded config, which this class is responsible for loading.
+   * Until setLogger is called, all warnings/errors fall back to console.*.
+   */
+  setLogger(logger) {
+    this.logger = logger;
   }
 
   /**
@@ -515,7 +535,7 @@ export class ConfigLoader {
     const coerced = ConfigLoader.coerceNumericProperties(interpolated);
 
     // Call validateConfig with shouldExit = false
-    validateConfig(coerced, false, reservedProviders);
+    validateConfig(coerced, false, reservedProviders, this.logger);
 
     return coerced;
   }
@@ -570,8 +590,12 @@ export class ConfigLoader {
         const providerName = path.at(-2);
         return val.flatMap((item, i) => {
           if (item == null || (typeof item === 'string' && item.trim() === '')) {
-            // eslint-disable-next-line no-console
-            console.warn(`WARNING: Skipping undefined or empty key for provider '${providerName}' at index ${i}.`);
+            const msg = `WARNING: Skipping undefined or empty key for provider '${providerName}' at index ${i}.`;
+            if (this.logger) {
+              this.logger.warn(msg);
+            } else {
+              console.warn(msg);
+            }
             return [];
           }
 
@@ -581,8 +605,12 @@ export class ConfigLoader {
 
           const missingVar = getMissingEnvVar(item);
           if (missingVar) {
-            // eslint-disable-next-line no-console
-            console.warn(`WARNING: Missing or empty environment variable ${missingVar} for key at path ${path.join('.')}[${i}]. Skipping key.`);
+            const msg = `WARNING: Missing or empty environment variable ${missingVar} for key at path ${path.join('.')}[${i}]. Skipping key.`;
+            if (this.logger) {
+              this.logger.warn(msg);
+            } else {
+              console.warn(msg);
+            }
             return [];
           }
 
@@ -651,8 +679,12 @@ export class ConfigLoader {
       } catch (err) {
         retryCount += 1;
         if (retryCount >= 5) {
-          // eslint-disable-next-line no-console
-          console.warn('WARNING: Stopped watching configuration file after 5 failed attempts.');
+          const msg = 'WARNING: Stopped watching configuration file after 5 failed attempts.';
+          if (this.logger) {
+            this.logger.warn(msg);
+          } else {
+            console.warn(msg);
+          }
           this.stopWatcher();
           return;
         }
@@ -682,8 +714,12 @@ export class ConfigLoader {
         // Warn if port or other structural parameters changed.
         const structuralChanged = checkStructuralChanges(this.currentConfig, newConfig);
         if (structuralChanged) {
-          // eslint-disable-next-line no-console
-          console.warn('WARNING: Structural configuration changed. A process restart is required to apply these changes.');
+          const msg = 'WARNING: Structural configuration changed. A process restart is required to apply these changes.';
+          if (this.logger) {
+            this.logger.warn(msg);
+          } else {
+            console.warn(msg);
+          }
         }
 
         // Swap configuration references atomically to prevent request-processing race conditions.
@@ -695,14 +731,21 @@ export class ConfigLoader {
           try {
             listener(this.currentConfig, oldConfig);
           } catch (err) {
-            // eslint-disable-next-line no-console
-            console.error('Error in config change listener:', err);
+            if (this.logger) {
+              this.logger.error('Error in config change listener:', err);
+            } else {
+              console.error('Error in config change listener:', err);
+            }
           }
         });
       } catch (err) {
         // At runtime, we catch validation errors and keep the server process online.
-        // eslint-disable-next-line no-console
-        console.error(`Error reloading configuration file on change: ${err.message}`);
+        const msg = `Error reloading configuration file on change: ${err.message}`;
+        if (this.logger) {
+          this.logger.error(msg);
+        } else {
+          console.error(msg);
+        }
       }
     }, 100);
   }

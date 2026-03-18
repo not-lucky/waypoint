@@ -10,15 +10,18 @@ import { AnthropicController } from './controllers/AnthropicController.js';
 import { validateCompletionBody } from './middleware/zod.validation.js';
 import { authMiddleware } from './middleware/auth.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
+import createLogger from './utils/logger.js';
 
 // Load configuration
 const configLoader = new ConfigLoader();
 const config = configLoader.loadConfig();
+const logger = createLogger(config);
+configLoader.setLogger(logger);
 
 // Instantiate registry, factory, and orchestrator
 const keyRegistry = new KeyRegistry(config);
 const providerFactory = new ProviderFactory(config);
-const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
+const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config, logger);
 
 const openAIController = new OpenAIController(orchestrator);
 const anthropicController = new AnthropicController(orchestrator);
@@ -137,18 +140,38 @@ anthropicRouter.post(
 // Mount with `/anthropic/v1` first to avoid partial-matching 404 routing bugs
 app.use(['/anthropic/v1', '/anthropic'], anthropicRouter);
 
+// Global fallback error handler to prevent unhandled exceptions from leaking raw HTML
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  logger.error('Unhandled express exception:', err);
+  const status = err.status || err.statusCode || 500;
+  let code = 'internal_server_error';
+  if (status === 413) {
+    code = 'payload_too_large';
+  } else if (status === 400) {
+    code = 'bad_request';
+  }
+  res.status(status).json({
+    error: {
+      code,
+      message: err.message,
+      httpStatus: status,
+    },
+  });
+});
+
 const server = app.listen(port, () => {
-  // eslint-disable-next-line no-console
-  console.info(`Waypoint listening on port ${port}`);
+  logger.info(`Waypoint listening on port ${port}`);
 });
 
 // Graceful shutdown
 const shutdown = () => {
-  console.info('Shutting down gracefully...');
-  server.close(() => {
-    console.info('Closed out remaining connections.');
+  logger.info('Shutting down gracefully...');
+  server.close(async () => {
+    logger.info('Closed out remaining connections.');
     configLoader.stopWatcher();
     keyRegistry.cleanup();
+    await logger.flush();
     process.exit(0);
   });
 
@@ -162,8 +185,9 @@ const shutdown = () => {
   });
   activeControllers.clear();
 
-  setTimeout(() => {
-    console.error('Could not close connections in time, forcefully shutting down');
+  setTimeout(async () => {
+    logger.fatal('Could not close connections in time, forcefully shutting down');
+    await logger.flush();
     process.exit(1);
   }, 10000);
 };

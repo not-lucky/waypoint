@@ -72,6 +72,7 @@ export class OpenAIController {
       return res.json(response);
     } catch (err) {
       // Catch-all for unexpected errors (e.g. orchestrator throws instead of returning error)
+      this.orchestrator.logger?.error('Unexpected completion error:', err);
       return res.status(500).json({
         error: {
           code: 'internal_server_error',

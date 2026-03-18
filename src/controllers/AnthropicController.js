@@ -258,6 +258,7 @@ export class AnthropicController {
       return res.json(translateResponse(response));
     } catch (err) {
       // Catch-all for unexpected errors
+      this.orchestrator.logger?.error('Unexpected completion error:', err);
       return res.status(500).json({
         error: {
           code: 'internal_server_error',

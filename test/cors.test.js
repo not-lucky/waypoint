@@ -375,7 +375,7 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
       // Empty body has length 0, within limit, should bypass parser and hit auth middleware (401)
       await loadServerWithConfig(['*'], '150b');
 
-      const res = await request(app)
+      await request(app)
         .post('/openai/chat/completions')
         .set('Content-Type', 'application/json')
         .send('')
@@ -385,7 +385,7 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
     it('should bypass JSON body-parsing but not crash for non-JSON content types within limit', async () => {
       await loadServerWithConfig(['*'], '150b');
 
-      const res = await request(app)
+      await request(app)
         .post('/openai/chat/completions')
         .set('Content-Type', 'text/plain')
         .send('hello world')

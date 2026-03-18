@@ -7,10 +7,11 @@ import { resolveModel, applyModelConfig } from '../utils/modelResolver.js';
 export const activeControllers = new Set();
 
 export class UnifiedOrchestrator {
-  constructor(keyRegistry, providerFactory, config = {}) {
+  constructor(keyRegistry, providerFactory, config = {}, logger = null) {
     this.keyRegistry = keyRegistry;
     this.providerFactory = providerFactory;
     this.config = config;
+    this.logger = logger;
   }
 
   /**
@@ -196,7 +197,12 @@ export class UnifiedOrchestrator {
             }
             const statusCode = error?.status || error?.statusCode || error?.response?.status || 500;
             this.keyRegistry.flagFailure(provider, apiKey, statusCode);
-            console.warn(`Attempt ${attempt} of ${retryLimit} for provider '${provider}' failed. Reason: ${error?.message || error}`);
+            const msg = `Attempt ${attempt} of ${retryLimit} for provider '${provider}' failed. Reason: ${error?.message || error}`;
+            if (this.logger) {
+              this.logger.warn(msg);
+            } else {
+              console.warn(msg);
+            }
           }
         }
 

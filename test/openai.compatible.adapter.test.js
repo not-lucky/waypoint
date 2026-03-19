@@ -41,6 +41,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
     expect(createOpenAICompatible).toHaveBeenCalledWith({
       baseURL: 'https://api.openai.com/v1',
       name: 'openai',
+      transformRequestBody: expect.any(Function),
     });
   });
 
@@ -54,6 +55,76 @@ describe('OpenAICompatibleAdapter Tests', () => {
     expect(createOpenAICompatible).toHaveBeenCalledWith({
       baseURL: 'https://my-custom.api/v1',
       name: 'custom-provider',
+      transformRequestBody: expect.any(Function),
+    });
+  });
+
+  it('assert: transformRequestBody handles all edge cases of stream parameter correctly', () => {
+    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+    expect(adapter).toBeDefined();
+    const { calls } = createOpenAICompatible.mock;
+    const lastCall = calls[calls.length - 1][0];
+    const transform = lastCall.transformRequestBody;
+
+    expect(transform).toBeTypeOf('function');
+
+    // Case 1: stream parameter is omitted
+    // Intention: Force stream to false if it was not provided at all.
+    expect(transform({ model: 'foo' })).toEqual({ model: 'foo', stream: false });
+
+    // Case 2: stream is explicitly undefined
+    // Intention: Convert undefined stream values to false.
+    expect(transform({ model: 'foo', stream: undefined })).toEqual({
+      model: 'foo',
+      stream: false,
+    });
+
+    // Case 3: stream is explicitly null
+    // Intention: Convert null stream values to false.
+    expect(transform({ model: 'foo', stream: null })).toEqual({
+      model: 'foo',
+      stream: false,
+    });
+
+    // Case 4: stream is explicitly false
+    // Intention: Preserve stream as false when already set to false.
+    expect(transform({ model: 'foo', stream: false })).toEqual({
+      model: 'foo',
+      stream: false,
+    });
+
+    // Case 5: stream is explicitly true
+    // Intention: Preserve stream as true when streaming is requested.
+    expect(transform({ model: 'foo', stream: true })).toEqual({
+      model: 'foo',
+      stream: true,
+    });
+
+    // Case 6: Immutability (non-mutation of input object)
+    // Intention: Verify that the function doesn't mutate the original request object,
+    // which prevents side effects in other parts of the routing/orchestrator layers.
+    const originalBody = { model: 'foo' };
+    const transformedBody = transform(originalBody);
+    expect(transformedBody).not.toBe(originalBody);
+    expect(originalBody.stream).toBeUndefined();
+
+    // Case 7: Preservation of other complex properties (nested structures)
+    // Intention: Ensure nested arrays and objects like messages or tools are not mutated or lost.
+    const messages = [{ role: 'user', content: 'hello' }];
+    const complexBody = {
+      model: 'foo',
+      messages,
+      temperature: 0.5,
+      max_tokens: 100,
+    };
+    const transformedComplex = transform(complexBody);
+    expect(transformedComplex.messages).toBe(messages); // Shallow copy retains array reference
+    expect(transformedComplex).toEqual({
+      model: 'foo',
+      messages,
+      temperature: 0.5,
+      max_tokens: 100,
+      stream: false,
     });
   });
 

@@ -8,7 +8,10 @@
  */
 export const authMiddleware = (configLoader) => (req, res, next) => {
   const authHeader = req.headers.authorization;
-  if (!authHeader) {
+  const xApiKey = req.headers['x-api-key'];
+
+  // Reject immediately if both standard Authorization and Anthropic x-api-key are missing.
+  if (authHeader === undefined && xApiKey === undefined) {
     res.status(401).json({
       error: {
         code: 'unauthorized',
@@ -19,21 +22,38 @@ export const authMiddleware = (configLoader) => (req, res, next) => {
     return;
   }
 
-  // Split by one or more whitespace characters to tolerate multiple spaces gracefully.
-  // RFC 7235 specifies authentication schemes case-insensitively, so "bearer" is acceptable.
-  const parts = authHeader.trim().split(/\s+/);
-  if (parts.length !== 2 || parts[0].toLowerCase() !== 'bearer') {
-    res.status(401).json({
-      error: {
-        code: 'unauthorized',
-        message: 'Unauthorized: Invalid Authorization header format. Expected "Bearer <token>".',
-        httpStatus: 401,
-      },
-    });
-    return;
+  let token;
+  if (authHeader !== undefined) {
+    // Split by one or more whitespace characters to tolerate multiple spaces gracefully.
+    // RFC 7235 specifies authentication schemes case-insensitively, so "bearer" is acceptable.
+    const parts = authHeader.trim().split(/\s+/);
+    if (parts.length !== 2 || parts[0].toLowerCase() !== 'bearer') {
+      res.status(401).json({
+        error: {
+          code: 'unauthorized',
+          message: 'Unauthorized: Invalid Authorization header format. Expected "Bearer <token>".',
+          httpStatus: 401,
+        },
+      });
+      return;
+    }
+    // Destructure the parts array to extract the token and satisfy prefer-destructuring.
+    [, token] = parts;
+  } else {
+    // Extract the client token directly from x-api-key when Authorization is not provided.
+    const trimmedToken = xApiKey.trim();
+    if (!trimmedToken) {
+      res.status(401).json({
+        error: {
+          code: 'unauthorized',
+          message: 'Unauthorized: Empty x-api-key header.',
+          httpStatus: 401,
+        },
+      });
+      return;
+    }
+    token = trimmedToken;
   }
-
-  const token = parts[1];
 
   // We dynamically call configLoader.loadConfig() on each request to ensure
   // hot-reloaded configuration updates (such as newly added client tokens)

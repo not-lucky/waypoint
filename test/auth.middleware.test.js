@@ -345,4 +345,130 @@ describe('authMiddleware', () => {
       }
     });
   });
+
+  // Edge Case: Authentication via x-api-key header (Anthropic compatibility)
+  describe('x-api-key authentication', () => {
+    it('assert: valid x-api-key -> next() called and client set', () => {
+      const mockConfigLoader = {
+        loadConfig: vi.fn().mockReturnValue({
+          clients: [{ name: 'anthropic-client', token: 'anthropic-token' }],
+        }),
+      };
+
+      const req = {
+        headers: {
+          'x-api-key': 'anthropic-token',
+        },
+      };
+
+      const res = createMockResponse();
+      const next = vi.fn();
+
+      authMiddleware(mockConfigLoader)(req, res, next);
+
+      // Intention: Valid client token passed via x-api-key should succeed.
+      expect(next).toHaveBeenCalled();
+      expect(req.client).toBeDefined();
+      expect(req.client.name).toBe('anthropic-client');
+      expect(res.statusCode).toBeNull();
+    });
+
+    it('assert: unrecognized x-api-key -> 401', () => {
+      const mockConfigLoader = {
+        loadConfig: vi.fn().mockReturnValue({
+          clients: [{ name: 'anthropic-client', token: 'anthropic-token' }],
+        }),
+      };
+
+      const req = {
+        headers: {
+          'x-api-key': 'invalid-token',
+        },
+      };
+
+      const res = createMockResponse();
+      const next = vi.fn();
+
+      authMiddleware(mockConfigLoader)(req, res, next);
+
+      // Intention: Unrecognized token passed via x-api-key returns 401.
+      expect(res.statusCode).toBe(401);
+      expect(res.body.error.code).toBe('unauthorized');
+      expect(res.body.error.message).toContain('Invalid client token');
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it('assert: empty or whitespace x-api-key -> 401', () => {
+      const mockConfigLoader = {
+        loadConfig: vi.fn().mockReturnValue({
+          clients: [{ name: 'anthropic-client', token: 'anthropic-token' }],
+        }),
+      };
+
+      const testValues = ['', '   '];
+      testValues.forEach((val) => {
+        const req = {
+          headers: {
+            'x-api-key': val,
+          },
+        };
+
+        const res = createMockResponse();
+        const next = vi.fn();
+
+        authMiddleware(mockConfigLoader)(req, res, next);
+
+        // Intention: Empty/whitespace x-api-key header must fail.
+        expect(res.statusCode).toBe(401);
+        expect(res.body.error.code).toBe('unauthorized');
+        expect(res.body.error.message).toContain('Empty x-api-key header');
+        expect(next).not.toHaveBeenCalled();
+      });
+    });
+
+    it('assert: Authorization header takes precedence over x-api-key', () => {
+      const mockConfigLoader = {
+        loadConfig: vi.fn().mockReturnValue({
+          clients: [
+            { name: 'client-1', token: 'token-1' },
+            { name: 'client-2', token: 'token-2' },
+          ],
+        }),
+      };
+
+      // Case A: Valid Authorization, invalid x-api-key -> Should succeed.
+      const reqA = {
+        headers: {
+          authorization: 'Bearer token-1',
+          'x-api-key': 'invalid-token',
+        },
+      };
+      const resA = createMockResponse();
+      const nextA = vi.fn();
+
+      authMiddleware(mockConfigLoader)(reqA, resA, nextA);
+
+      // Intention: Precedence rules dictate checking Authorization first.
+      expect(nextA).toHaveBeenCalled();
+      expect(reqA.client.name).toBe('client-1');
+
+      // Case B: Invalid Authorization, valid x-api-key -> Should fail.
+      const reqB = {
+        headers: {
+          authorization: 'Bearer invalid-token',
+          'x-api-key': 'token-2',
+        },
+      };
+      const resB = createMockResponse();
+      const nextB = vi.fn();
+
+      authMiddleware(mockConfigLoader)(reqB, resB, nextB);
+
+      // Intention: If Authorization is present but invalid, validation
+      // fails and we do not fall back to x-api-key.
+      expect(resB.statusCode).toBe(401);
+      expect(resB.body.error.message).toContain('Invalid client token');
+      expect(nextB).not.toHaveBeenCalled();
+    });
+  });
 });

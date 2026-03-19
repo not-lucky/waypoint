@@ -78,6 +78,24 @@ providers:
         actual_model_id: "gpt-4o"
         thinking_supported: false
 
+  omniroute:
+    base_url: "https://omniroute.notlucky.dedyn.io/v1"
+    keys:
+      - "${OMNIROUTE_API}"
+    models:
+      - id: "gemini/gemini-flash-lite-latest"
+        actual_model_id: "gemini/gemini-flash-lite-latest"
+        thinking_supported: false
+  hapuppy:
+    base_url: "${HAPPY_URL}"
+    keys:
+      - "${HAPPY_API}"
+    models:
+      - id: "gpt-oss-20b"
+        actual_model_id: "gpt-oss-20b"
+        thinking_supported: false
+    
+
   # Example custom provider (type defaults to "openai-compatible" when omitted):
   # my-ollama:
   #   base_url: "http://localhost:11434/v1"

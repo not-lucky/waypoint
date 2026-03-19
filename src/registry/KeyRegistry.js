@@ -100,6 +100,63 @@ export default class KeyRegistry {
     key.cooldownUntil = null;
   }
 
+  /**
+   * Calculates health statistics across all key pools.
+   * If any key is currently exhausted or cooling down, the overall status is marked 'degraded'.
+   * @returns {Object} Section 6E schema compatible health statistics.
+   */
+  getHealthStats() {
+    const providers = {};
+    let allKeysFullyActive = true;
+    const now = Date.now();
+
+    Object.entries(this.pools).forEach(([providerName, pool]) => {
+      const { keys } = pool;
+      const totalKeys = keys.length;
+
+      const exhaustedKeys = keys.filter((k) => k.exhausted).length;
+      const coolingKeysList = keys.filter(
+        (k) => !k.exhausted && k.cooldownUntil !== null && k.cooldownUntil > now,
+      );
+      const coolingKeys = coolingKeysList.length;
+      const activeKeys = totalKeys - exhaustedKeys - coolingKeys;
+
+      if (exhaustedKeys > 0 || coolingKeys > 0) {
+        allKeysFullyActive = false;
+      }
+
+      const coolingUntilTimes = coolingKeysList.map((k) => k.cooldownUntil);
+      const coolingUntilMs = coolingUntilTimes.length > 0 ? Math.min(...coolingUntilTimes) : null;
+      const coolingUntil = coolingUntilMs !== null ? Math.floor(coolingUntilMs / 1000) : null;
+
+      /* eslint-disable camelcase */
+      providers[providerName] = {
+        total_keys: totalKeys,
+        active_keys: activeKeys,
+        exhausted_keys: exhaustedKeys,
+        cooling_keys: coolingKeys,
+        cooling_until: coolingUntil,
+      };
+      /* eslint-enable camelcase */
+    });
+
+    /* eslint-disable camelcase */
+    // Gather current routing indexes for each provider to expose them in stats
+    const currentPointer = Object.fromEntries(
+      Object.entries(this.pools).map(([name, pool]) => [name, pool.roundRobinIndex]),
+    );
+
+    return {
+      status: allKeysFullyActive ? 'ok' : 'degraded',
+      providers,
+      routing: {
+        strategy: this.strategy,
+        current_pointer: currentPointer,
+      },
+    };
+    /* eslint-enable camelcase */
+  }
+
   cleanup() {
     this.timers.forEach(clearTimeout);
     this.timers.clear();

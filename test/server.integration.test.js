@@ -54,7 +54,10 @@ describe('Server Route Integration Tests', () => {
       .get('/health')
       .expect(200);
 
-    expect(res.body).toEqual({ status: 'ok' });
+    expect(res.body.status).toBe('ok');
+    expect(res.body).toHaveProperty('uptime_seconds');
+    expect(res.body).toHaveProperty('providers');
+    expect(res.body).toHaveProperty('routing');
   });
 
   it('POST /openai/chat/completions - forwards response on success', async () => {

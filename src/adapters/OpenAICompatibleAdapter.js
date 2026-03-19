@@ -60,6 +60,13 @@ export class OpenAICompatibleAdapter extends BaseProvider {
     this.provider = createOpenAICompatible({
       baseURL: baseUrl,
       name: providerName,
+      // Custom proxy providers (like omniroute) may default to stream: true if omitted.
+      // We explicitly set stream: false when it is falsy or missing to prevent the
+      // API from returning an EventStream that would fail to parse as JSON.
+      transformRequestBody: (body) => ({
+        ...body,
+        stream: body.stream ?? false,
+      }),
     });
   }
 

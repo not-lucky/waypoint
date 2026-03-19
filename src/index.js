@@ -50,8 +50,17 @@ app.use(cors({ origin: corsOrigin }));
 // rejected with a 413 error code prior to processing.
 app.use(express.json({ limit: config.gateway.max_payload_size || '10mb' }));
 
+// Health Check Endpoint (Section 6E specification)
+// Exposes key pool status metrics, routing configurations, and app uptime.
+// Returns a degraded status if any configured keys are cooling down or exhausted.
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
+  const { status, providers, routing } = keyRegistry.getHealthStats();
+  res.json({
+    status,
+    uptime_seconds: Math.floor(process.uptime()),
+    providers,
+    routing,
+  });
 });
 
 const auth = authMiddleware(configLoader);
@@ -64,20 +73,15 @@ const getUniqueModels = () => {
   const currentConfig = configLoader.loadConfig();
   const providers = currentConfig.providers || {};
   const models = Object.values(providers).flatMap((providerConfig) => {
-    const list = [];
-    if (providerConfig.models && Array.isArray(providerConfig.models)) {
-      providerConfig.models.forEach((modelConfig) => {
-        if (modelConfig.id) {
-          list.push(modelConfig.id);
-        }
-        if (modelConfig.aliases && Array.isArray(modelConfig.aliases)) {
-          modelConfig.aliases.forEach((alias) => {
-            list.push(alias);
-          });
-        }
-      });
-    }
-    return list;
+    if (!Array.isArray(providerConfig.models)) return [];
+    return providerConfig.models.flatMap((modelConfig) => {
+      const list = [];
+      if (modelConfig.id) list.push(modelConfig.id);
+      if (Array.isArray(modelConfig.aliases)) {
+        list.push(...modelConfig.aliases);
+      }
+      return list;
+    });
   });
   return [...new Set(models)];
 };
@@ -195,4 +199,4 @@ const shutdown = () => {
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
 
-export { app, server };
+export { app, server, keyRegistry };

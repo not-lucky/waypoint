@@ -6,6 +6,12 @@
 export const clientWindows = new Map();
 
 /**
+ * In-memory store holding client rate limiter interval/timer handles.
+ * Exported so the lifecycle shutdown handler can clear them during teardown.
+ */
+export const rateLimiterIntervals = new Set();
+
+/**
  * Sliding window rate limiting middleware.
  * Expects `req.client` to be populated by authMiddleware.
  *

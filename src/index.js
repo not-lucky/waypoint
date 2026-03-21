@@ -4,13 +4,14 @@ import cors from 'cors';
 import { ConfigLoader } from './config/loader.js';
 import { KeyRegistry } from './registry/KeyRegistry.js';
 import { ProviderFactory } from './adapters/ProviderFactory.js';
-import { UnifiedOrchestrator, activeControllers } from './services/UnifiedOrchestrator.js';
+import { UnifiedOrchestrator } from './services/UnifiedOrchestrator.js';
 import { OpenAIController } from './controllers/OpenAIController.js';
 import { AnthropicController } from './controllers/AnthropicController.js';
 import { validateCompletionBody } from './middleware/zod.validation.js';
 import { authMiddleware } from './middleware/auth.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
 import createLogger from './utils/logger.js';
+import { registerLifecycle } from './lifecycle.js';
 
 // Load configuration
 const configLoader = new ConfigLoader();
@@ -169,34 +170,11 @@ const server = app.listen(port, () => {
 });
 
 // Graceful shutdown
-const shutdown = () => {
-  logger.info('Shutting down gracefully...');
-  server.close(async () => {
-    logger.info('Closed out remaining connections.');
-    configLoader.stopWatcher();
-    keyRegistry.cleanup();
-    await logger.flush();
-    process.exit(0);
-  });
-
-  // Abort all active upstream requests immediately to prevent background quota bleed
-  activeControllers.forEach((ctrl) => {
-    try {
-      ctrl.abort();
-    } catch (err) {
-      // Ignore errors during teardown
-    }
-  });
-  activeControllers.clear();
-
-  setTimeout(async () => {
-    logger.fatal('Could not close connections in time, forcefully shutting down');
-    await logger.flush();
-    process.exit(1);
-  }, 10000);
-};
-
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
+registerLifecycle({
+  server,
+  configLoader,
+  keyRegistry,
+  logger,
+});
 
 export { app, server, keyRegistry };

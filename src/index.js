@@ -68,18 +68,20 @@ const auth = authMiddleware(configLoader);
 
 /**
  * Extracts a deduplicated list of all model IDs and aliases from the current configuration.
- * @returns {string[]} List of unique model identifiers.
+ * Each identifier is prefixed with its provider name in "provider/model" format so that
+ * clients can pass them back unambiguously to resolveModel().
+ * @returns {string[]} List of unique model identifiers in provider/model format.
  */
 const getUniqueModels = () => {
   const currentConfig = configLoader.loadConfig();
   const providers = currentConfig.providers || {};
-  const models = Object.values(providers).flatMap((providerConfig) => {
+  const models = Object.entries(providers).flatMap(([providerName, providerConfig]) => {
     if (!Array.isArray(providerConfig.models)) return [];
     return providerConfig.models.flatMap((modelConfig) => {
       const list = [];
-      if (modelConfig.id) list.push(modelConfig.id);
+      if (modelConfig.id) list.push(`${providerName}/${modelConfig.id}`);
       if (Array.isArray(modelConfig.aliases)) {
-        list.push(...modelConfig.aliases);
+        list.push(...modelConfig.aliases.map((alias) => `${providerName}/${alias}`));
       }
       return list;
     });

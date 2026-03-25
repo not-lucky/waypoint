@@ -213,9 +213,9 @@ describe('Provider Endpoints Integration Tests', () => {
         .expect(200);
 
       const modelIds = res.body.data.map((m) => m.id);
-      expect(modelIds).toHaveLength(2); // reloaded-model-pro + reloaded-alias
-      expect(modelIds).toContain('reloaded-model-pro');
-      expect(modelIds).toContain('reloaded-alias');
+      expect(modelIds).toHaveLength(2); // mock_reload_provider/reloaded-model-pro + mock_reload_provider/reloaded-alias
+      expect(modelIds).toContain('mock_reload_provider/reloaded-model-pro');
+      expect(modelIds).toContain('mock_reload_provider/reloaded-alias');
 
       loadConfigSpy.mockRestore();
     });
@@ -250,17 +250,17 @@ describe('Provider Endpoints Integration Tests', () => {
 
       // Verify that all configured model IDs and aliases are present
       const modelIds = models.map((m) => m.id);
-      expect(modelIds).toContain('gemini-2.5-pro');
-      expect(modelIds).toContain('gemini-pro');
-      expect(modelIds).toContain('pro');
-      expect(modelIds).toContain('gemini-2.0-flash');
-      expect(modelIds).toContain('flash');
-      expect(modelIds).toContain('claude-sonnet-4');
-      expect(modelIds).toContain('sonnet');
-      expect(modelIds).toContain('gpt-4o');
-      expect(modelIds).toContain('gpt4');
-      expect(modelIds).toContain('custom-gpt');
-      expect(modelIds).toContain('custom-sonnet');
+      expect(modelIds).toContain('gemini/gemini-2.5-pro');
+      expect(modelIds).toContain('gemini/gemini-pro');
+      expect(modelIds).toContain('gemini/pro');
+      expect(modelIds).toContain('gemini/gemini-2.0-flash');
+      expect(modelIds).toContain('gemini/flash');
+      expect(modelIds).toContain('anthropic/claude-sonnet-4');
+      expect(modelIds).toContain('anthropic/sonnet');
+      expect(modelIds).toContain('openai/gpt-4o');
+      expect(modelIds).toContain('openai/gpt4');
+      expect(modelIds).toContain('custom-openai/custom-gpt');
+      expect(modelIds).toContain('custom-anthropic/custom-sonnet');
     });
 
     it('should support the /openai/v1/models dual-path mount', async () => {
@@ -302,17 +302,17 @@ describe('Provider Endpoints Integration Tests', () => {
 
       // Verify that all configured model IDs and aliases are present
       const modelIds = models.map((m) => m.id);
-      expect(modelIds).toContain('gemini-2.5-pro');
-      expect(modelIds).toContain('gemini-pro');
-      expect(modelIds).toContain('pro');
-      expect(modelIds).toContain('gemini-2.0-flash');
-      expect(modelIds).toContain('flash');
-      expect(modelIds).toContain('claude-sonnet-4');
-      expect(modelIds).toContain('sonnet');
-      expect(modelIds).toContain('gpt-4o');
-      expect(modelIds).toContain('gpt4');
-      expect(modelIds).toContain('custom-gpt');
-      expect(modelIds).toContain('custom-sonnet');
+      expect(modelIds).toContain('gemini/gemini-2.5-pro');
+      expect(modelIds).toContain('gemini/gemini-pro');
+      expect(modelIds).toContain('gemini/pro');
+      expect(modelIds).toContain('gemini/gemini-2.0-flash');
+      expect(modelIds).toContain('gemini/flash');
+      expect(modelIds).toContain('anthropic/claude-sonnet-4');
+      expect(modelIds).toContain('anthropic/sonnet');
+      expect(modelIds).toContain('openai/gpt-4o');
+      expect(modelIds).toContain('openai/gpt4');
+      expect(modelIds).toContain('custom-openai/custom-gpt');
+      expect(modelIds).toContain('custom-anthropic/custom-sonnet');
     });
 
     it('should support the /anthropic/v1/models dual-path mount', async () => {

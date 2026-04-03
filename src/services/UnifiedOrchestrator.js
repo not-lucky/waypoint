@@ -244,9 +244,12 @@ export class UnifiedOrchestrator {
     const keys = this.keyRegistry.pools[provider]?.keys;
     if (keys) {
       const now = Date.now();
-      const activeCooldowns = keys
-        .map((k) => k.cooldownUntil)
-        .filter((t) => t > now);
+      const activeCooldowns = keys.reduce((acc, k) => {
+        if (k.cooldownUntil > now) {
+          acc.push(k.cooldownUntil);
+        }
+        return acc;
+      }, []);
 
       if (activeCooldowns.length > 0) {
         retryAfterSeconds = Math.max(0, Math.ceil((Math.min(...activeCooldowns) - now) / 1000));

@@ -25,6 +25,11 @@ const findModelInProvider = (modelPart, models) => {
   return { id: modelPart, actual_model_id: modelPart };
 };
 
+// WeakMap resolution cache to hold resolved models. Keyed by the configuration object
+// reference (providersConfig). WeakMap allows the cached values to be garbage collected
+// when config reloads discard the old config reference.
+const resolutionCache = new WeakMap();
+
 /**
  * Resolves the correct model configuration from the providers configuration object.
  * Parses modelName (e.g. "openai/gpt-4o" or "pro") and matches it against
@@ -37,35 +42,56 @@ const findModelInProvider = (modelPart, models) => {
 export const resolveModel = (modelName, providersConfig = {}) => {
   if (!modelName) return null;
 
+  // Retrieve or initialize the cache map for the current configuration reference.
+  // Checking the config object reference ensures correctness across configuration hot-reloads.
+  const isObject = providersConfig && (typeof providersConfig === 'object');
+  let cache = null;
+  if (isObject) {
+    cache = resolutionCache.get(providersConfig);
+    if (!cache) {
+      cache = new Map();
+      resolutionCache.set(providersConfig, cache);
+    }
+    if (cache.has(modelName)) {
+      return cache.get(modelName);
+    }
+  }
+
+  let resolved = null;
+
   // Prefixed format: "provider/model-id"
   if (modelName.includes('/')) {
     const [providerPart, ...rest] = modelName.split('/');
     const cleanProvider = providerPart.trim();
     const providerConf = providersConfig[cleanProvider];
-    if (!providerConf) return null;
-
-    const modelPart = rest.join('/').trim();
-    const models = providerConf.models || [];
-    return { provider: cleanProvider, modelConfig: findModelInProvider(modelPart, models) };
-  }
-
-  // Bare name (no '/' prefix): search all providers for an id or alias match.
-  // Unlike prefixed resolution, bare names do NOT match actual_model_id to avoid
-  // ambiguous cross-provider collisions (e.g. two providers could share a raw model ID).
-  const providerEntries = Object.entries(providersConfig);
-  const matchEntry = providerEntries.find(([, pConf]) => (pConf.models || []).some(
-    (m) => m.id === modelName || m.aliases?.includes(modelName),
-  ));
-
-  if (matchEntry) {
-    const [pName, pConf] = matchEntry;
-    const match = (pConf.models || []).find(
+    if (providerConf) {
+      const modelPart = rest.join('/').trim();
+      const models = providerConf.models || [];
+      resolved = { provider: cleanProvider, modelConfig: findModelInProvider(modelPart, models) };
+    }
+  } else {
+    // Bare name (no '/' prefix): search all providers for an id or alias match.
+    // Unlike prefixed resolution, bare names do NOT match actual_model_id to avoid
+    // ambiguous cross-provider collisions (e.g. two providers could share a raw model ID).
+    const providerEntries = Object.entries(providersConfig);
+    const matchEntry = providerEntries.find(([, pConf]) => (pConf.models || []).some(
       (m) => m.id === modelName || m.aliases?.includes(modelName),
-    );
-    return { provider: pName, modelConfig: match };
+    ));
+
+    if (matchEntry) {
+      const [pName, pConf] = matchEntry;
+      const match = (pConf.models || []).find(
+        (m) => m.id === modelName || m.aliases?.includes(modelName),
+      );
+      resolved = { provider: pName, modelConfig: match };
+    }
   }
 
-  return null;
+  if (cache) {
+    cache.set(modelName, resolved);
+  }
+
+  return resolved;
 };
 
 /**

@@ -213,7 +213,8 @@ describe('Provider Endpoints Integration Tests', () => {
         .expect(200);
 
       const modelIds = res.body.data.map((m) => m.id);
-      expect(modelIds).toHaveLength(2); // mock_reload_provider/reloaded-model-pro + mock_reload_provider/reloaded-alias
+      // mock_reload_provider/reloaded-model-pro + mock_reload_provider/reloaded-alias
+      expect(modelIds).toHaveLength(2);
       expect(modelIds).toContain('mock_reload_provider/reloaded-model-pro');
       expect(modelIds).toContain('mock_reload_provider/reloaded-alias');
 

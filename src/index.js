@@ -66,6 +66,9 @@ app.get('/health', (req, res) => {
 
 const auth = authMiddleware(configLoader);
 
+let cachedUniqueModels = null;
+let lastConfig = null;
+
 /**
  * Extracts a deduplicated list of all model IDs and aliases from the current configuration.
  * Each identifier is prefixed with its provider name in "provider/model" format so that
@@ -74,6 +77,10 @@ const auth = authMiddleware(configLoader);
  */
 const getUniqueModels = () => {
   const currentConfig = configLoader.loadConfig();
+  if (cachedUniqueModels && lastConfig === currentConfig) {
+    return cachedUniqueModels;
+  }
+
   const providers = currentConfig.providers || {};
   const models = Object.entries(providers).flatMap(([providerName, providerConfig]) => {
     if (!Array.isArray(providerConfig.models)) return [];
@@ -86,7 +93,10 @@ const getUniqueModels = () => {
       return list;
     });
   });
-  return [...new Set(models)];
+
+  lastConfig = currentConfig;
+  cachedUniqueModels = [...new Set(models)];
+  return cachedUniqueModels;
 };
 
 // OpenAI Router

@@ -53,11 +53,20 @@ export const rateLimiter = (req, res, next) => {
     clientWindows.set(clientName, []);
   }
 
-  let timestamps = clientWindows.get(clientName);
+  const timestamps = clientWindows.get(clientName);
 
   // Prune expired timestamps to prevent memory leaks and maintain correct sliding count.
   // A timestamp is expired if it falls outside the range [now - windowMs, now].
-  timestamps = timestamps.filter((timestamp) => now - timestamp < windowMs);
+  // Since timestamps are appended in chronological order, they are sorted.
+  // We locate the first timestamp that is within the window, then prune all expired ones in-place.
+  const cutoff = now - windowMs;
+  let firstValidIndex = 0;
+  while (firstValidIndex < timestamps.length && timestamps[firstValidIndex] <= cutoff) {
+    firstValidIndex += 1;
+  }
+  if (firstValidIndex > 0) {
+    timestamps.splice(0, firstValidIndex);
+  }
 
   // If the number of requests in the active window meets or exceeds max, block the request.
   if (timestamps.length >= max) {

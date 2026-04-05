@@ -51,10 +51,12 @@ app.use(cors({ origin: corsOrigin }));
 // rejected with a 413 error code prior to processing.
 app.use(express.json({ limit: config.gateway.max_payload_size || '10mb' }));
 
+const auth = authMiddleware(configLoader);
+
 // Health Check Endpoint (Section 6E specification)
 // Exposes key pool status metrics, routing configurations, and app uptime.
 // Returns a degraded status if any configured keys are cooling down or exhausted.
-app.get('/health', (req, res) => {
+app.get('/health', auth, (req, res) => {
   const { status, providers, routing } = keyRegistry.getHealthStats();
   res.json({
     status,
@@ -63,8 +65,6 @@ app.get('/health', (req, res) => {
     routing,
   });
 });
-
-const auth = authMiddleware(configLoader);
 
 let cachedUniqueModels = null;
 let lastConfig = null;

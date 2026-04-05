@@ -52,6 +52,7 @@ describe('Server Route Integration Tests', () => {
   it('GET /health - returns ok', async () => {
     const res = await request(app)
       .get('/health')
+      .set('Authorization', 'Bearer mock-webui-token')
       .expect(200);
 
     expect(res.body.status).toBe('ok');

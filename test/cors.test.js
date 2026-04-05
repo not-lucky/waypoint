@@ -123,6 +123,7 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
       await loadServerWithConfig(['*'], '10mb');
       const res = await request(app)
         .get('/health')
+        .set('Authorization', 'Bearer test-token')
         .set('Origin', 'http://random-domain.com')
         .expect(200);
 
@@ -133,6 +134,7 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
       await loadServerWithConfig(['http://trusted.com'], '10mb');
       const res = await request(app)
         .get('/health')
+        .set('Authorization', 'Bearer test-token')
         .set('Origin', 'http://trusted.com')
         .expect(200);
 
@@ -143,6 +145,7 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
       await loadServerWithConfig(['http://trusted.com'], '10mb');
       const res = await request(app)
         .get('/health')
+        .set('Authorization', 'Bearer test-token')
         .set('Origin', 'http://untrusted.com')
         .expect(200);
 
@@ -155,6 +158,7 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
       // Test origin a.com
       const resA = await request(app)
         .get('/health')
+        .set('Authorization', 'Bearer test-token')
         .set('Origin', 'http://a.com')
         .expect(200);
       expect(resA.headers['access-control-allow-origin']).toBe('http://a.com');
@@ -162,6 +166,7 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
       // Test origin b.com
       const resB = await request(app)
         .get('/health')
+        .set('Authorization', 'Bearer test-token')
         .set('Origin', 'http://b.com')
         .expect(200);
       expect(resB.headers['access-control-allow-origin']).toBe('http://b.com');
@@ -169,6 +174,7 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
       // Test origin c.com (unallowed)
       const resC = await request(app)
         .get('/health')
+        .set('Authorization', 'Bearer test-token')
         .set('Origin', 'http://c.com')
         .expect(200);
       expect(resC.headers['access-control-allow-origin']).toBeUndefined();
@@ -180,6 +186,7 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
       await loadServerWithConfig(['http://trusted.com'], '10mb');
       const res = await request(app)
         .get('/health')
+        .set('Authorization', 'Bearer test-token')
         .expect(200);
 
       expect(res.headers['access-control-allow-origin']).toBeUndefined();
@@ -206,6 +213,7 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
       await loadServerWithConfig(undefined, '10mb');
       const res = await request(app)
         .get('/health')
+        .set('Authorization', 'Bearer test-token')
         .set('Origin', 'http://anydomain.com')
         .expect(200);
 
@@ -217,6 +225,7 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
       await loadServerWithConfig(['http://trusted.com', '*'], '10mb');
       const res = await request(app)
         .get('/health')
+        .set('Authorization', 'Bearer test-token')
         .set('Origin', 'http://random-untrusted.com')
         .expect(200);
 
@@ -228,6 +237,7 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
       await loadServerWithConfig([], '10mb');
       const res = await request(app)
         .get('/health')
+        .set('Authorization', 'Bearer test-token')
         .set('Origin', 'http://trusted.com')
         .expect(200);
 
@@ -416,6 +426,7 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
 
       await request(app)
         .get('/health')
+        .set('Authorization', 'Bearer test-token')
         .expect(200);
     });
   });

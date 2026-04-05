@@ -1,3 +1,8 @@
+// WeakMap resolution cache to hold resolved token maps. Keyed by the clients configuration
+// array reference. WeakMap allows the cached maps to be garbage collected when config
+// reloads discard the old config reference.
+const clientCache = new WeakMap();
+
 /**
  * Authentication middleware for client access control.
  * Validates the Authorization header format (Bearer <token>)
@@ -61,8 +66,21 @@ export const authMiddleware = (configLoader) => (req, res, next) => {
   const config = configLoader.loadConfig() || {};
   // Handle case where config.clients is missing or not an array.
   const clients = Array.isArray(config.clients) ? config.clients : [];
-  // Safeguard against null, undefined, or non-object entries inside config.clients array.
-  const client = clients.find((c) => c && typeof c === 'object' && c.token === token);
+
+  // Retrieve or initialize the cache map for the current clients array reference.
+  let tokenMap = clientCache.get(clients);
+  if (!tokenMap) {
+    tokenMap = new Map();
+    clients.forEach((c) => {
+      // Safeguard against null, undefined, or non-object entries inside config.clients array.
+      if (c && typeof c === 'object' && c.token && !tokenMap.has(c.token)) {
+        tokenMap.set(c.token, c);
+      }
+    });
+    clientCache.set(clients, tokenMap);
+  }
+
+  const client = tokenMap.get(token);
 
   if (!client) {
     res.status(401).json({

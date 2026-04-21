@@ -1,8 +1,12 @@
+import { getAppLogger } from '../utils/logger.js';
+
+const logger = getAppLogger('rate-limiter');
+
 /**
  * In-memory store mapping client names to an array of request timestamps (Unix epoch ms).
  * This forms the basis of the sliding window rate limiter.
  * Exported specifically so tests can inspect internal state (e.g., asserting timestamp pruning).
- */
+ * */
 export const clientWindows = new Map();
 
 /**
@@ -34,14 +38,17 @@ export const rateLimiterIntervals = new Set();
  */
 export const rateLimiter = (req, res, next) => {
   const { client } = req;
+  logger.debug('Rate limiter check initiated', { clientName: client?.name });
   // Bypass rate limiting if the client profile or limits are not present.
   if (!client || !client.name || !client.rate_limit) {
+    logger.debug('Rate limiter bypassed: missing client name or rate limit config');
     return next();
   }
 
   const { window_ms: windowMs, max } = client.rate_limit;
   // Ensure that both rate limit parameters are numeric before proceeding.
   if (typeof windowMs !== 'number' || typeof max !== 'number') {
+    logger.debug('Rate limiter bypassed: invalid non-numeric rate limit params');
     return next();
   }
 
@@ -70,6 +77,7 @@ export const rateLimiter = (req, res, next) => {
 
   // If the number of requests in the active window meets or exceeds max, block the request.
   if (timestamps.length >= max) {
+    logger.debug('Rate limit exceeded: blocking request', { clientName, max, currentCount: timestamps.length });
     return res.status(429).json({
       error: {
         code: 'rate_limit_exceeded',
@@ -80,6 +88,7 @@ export const rateLimiter = (req, res, next) => {
   }
 
   // Record the current request's timestamp.
+  logger.debug('Rate limit checked: request allowed', { clientName, max, currentCount: timestamps.length + 1 });
   timestamps.push(now);
   clientWindows.set(clientName, timestamps);
   return next();

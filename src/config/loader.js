@@ -1,6 +1,54 @@
 import fs from 'node:fs';
 import yaml from 'js-yaml';
 import { isDeepStrictEqual } from 'node:util';
+import { getAppLogger } from '../utils/logger.js';
+
+const logtapeLogger = getAppLogger('config');
+
+function logDebug(customLogger, msg, meta) {
+  if (customLogger && typeof customLogger.debug === 'function') {
+    if (meta !== undefined) customLogger.debug(msg, meta);
+    else customLogger.debug(msg);
+  } else {
+    if (meta !== undefined) logtapeLogger.debug(msg, meta);
+    else logtapeLogger.debug(msg);
+  }
+}
+
+function logWarning(customLogger, msg, meta) {
+  if (customLogger) {
+    if (typeof customLogger.warning === 'function') {
+      if (meta !== undefined) customLogger.warning(msg, meta);
+      else customLogger.warning(msg);
+    } else if (typeof customLogger.warn === 'function') {
+      if (meta !== undefined) customLogger.warn(msg, meta);
+      else customLogger.warn(msg);
+    }
+  } else {
+    if (meta !== undefined) logtapeLogger.warning(msg, meta);
+    else logtapeLogger.warning(msg);
+  }
+}
+
+function logError(customLogger, msg, meta) {
+  if (customLogger && typeof customLogger.error === 'function') {
+    if (meta !== undefined) customLogger.error(msg, meta);
+    else customLogger.error(msg);
+  } else {
+    if (meta !== undefined) logtapeLogger.error(msg, meta);
+    else logtapeLogger.error(msg);
+  }
+}
+
+function logFatal(customLogger, msg, meta) {
+  if (customLogger && typeof customLogger.fatal === 'function') {
+    if (meta !== undefined) customLogger.fatal(msg, meta);
+    else customLogger.fatal(msg);
+  } else {
+    if (meta !== undefined) logtapeLogger.fatal(msg, meta);
+    else logtapeLogger.fatal(msg);
+  }
+}
 
 // Reserved provider names.
 // These providers map to official SDKs and do not require a base_url.
@@ -129,10 +177,9 @@ const checkStructuralChanges = (oldConf, newConf) => {
   );
 };
 
-const logErrorAndExitOrThrow = (msg, shouldExit) => {
+const logErrorAndExitOrThrow = (msg, shouldExit, customLogger = null) => {
   if (shouldExit) {
-    // eslint-disable-next-line no-console
-    console.error(`FATAL ERROR: ${msg}`);
+    logFatal(customLogger, `FATAL ERROR: ${msg}`);
     process.exit(1);
   }
   throw new Error(msg);
@@ -154,6 +201,7 @@ const validateFallbackModel = (
   providers,
   originalProviders,
   shouldExit,
+  customLogger = null,
 ) => {
   const fallbackRef = model.fallback_model;
 
@@ -161,6 +209,7 @@ const validateFallbackModel = (
     logErrorAndExitOrThrow(
       `Invalid 'fallback_model' at index ${modelIndex} for provider '${providerName}'. Must be a non-empty string.`,
       shouldExit,
+      customLogger,
     );
   }
 
@@ -169,6 +218,7 @@ const validateFallbackModel = (
     logErrorAndExitOrThrow(
       `Invalid 'fallback_model' format '${fallbackRef}' at index ${modelIndex} for provider '${providerName}'. Must be in 'provider/model-id' format.`,
       shouldExit,
+      customLogger,
     );
   }
 
@@ -180,6 +230,7 @@ const validateFallbackModel = (
     logErrorAndExitOrThrow(
       `Invalid 'fallback_model' reference '${fallbackRef}' at index ${modelIndex} for provider '${providerName}': provider '${fallbackProvider}' does not exist in configuration.`,
       shouldExit,
+      customLogger,
     );
   }
 
@@ -189,6 +240,7 @@ const validateFallbackModel = (
     logErrorAndExitOrThrow(
       `Invalid 'fallback_model' reference '${fallbackRef}' at index ${modelIndex} for provider '${providerName}': model ID or alias '${fallbackModelId}' does not exist in provider '${fallbackProvider}'.`,
       shouldExit,
+      customLogger,
     );
   }
 
@@ -196,6 +248,7 @@ const validateFallbackModel = (
     logErrorAndExitOrThrow(
       `Invalid 'fallback_model' reference '${fallbackRef}' at index ${modelIndex} for provider '${providerName}': model cannot fall back to itself.`,
       shouldExit,
+      customLogger,
     );
   }
 
@@ -206,94 +259,106 @@ export const validateConfig = (
   config,
   shouldExit = true,
   reservedProviders = RESERVED_PROVIDERS,
-  logger = null,
+  customLogger = null,
 ) => {
   if (!config) {
-    logErrorAndExitOrThrow('Configuration object is null or undefined.', shouldExit);
+    logErrorAndExitOrThrow('Configuration object is null or undefined.', shouldExit, customLogger);
   }
 
   if (!config.gateway || typeof config.gateway !== 'object') {
-    logErrorAndExitOrThrow("Missing structural field 'gateway'.", shouldExit);
+    logErrorAndExitOrThrow("Missing structural field 'gateway'.", shouldExit, customLogger);
   }
 
   if (!isPositiveInteger(config.gateway.port)) {
-    logErrorAndExitOrThrow("Missing or invalid 'gateway.port'. Must be a positive integer.", shouldExit);
+    logErrorAndExitOrThrow("Missing or invalid 'gateway.port'. Must be a positive integer.", shouldExit, customLogger);
   }
 
   if (config.gateway.global_retry_limit !== undefined
     && !isPositiveInteger(config.gateway.global_retry_limit)) {
-    logErrorAndExitOrThrow("Invalid 'gateway.global_retry_limit'. Must be a positive integer.", shouldExit);
+    logErrorAndExitOrThrow("Invalid 'gateway.global_retry_limit'. Must be a positive integer.", shouldExit, customLogger);
   }
 
   if (config.gateway.cooldown !== undefined) {
     if (typeof config.gateway.cooldown !== 'object' || config.gateway.cooldown === null) {
-      logErrorAndExitOrThrow("Invalid 'gateway.cooldown'. Must be an object.", shouldExit);
+      logErrorAndExitOrThrow("Invalid 'gateway.cooldown'. Must be an object.", shouldExit, customLogger);
     }
 
     const { base_seconds: baseSeconds, max_seconds: maxSeconds } = config.gateway.cooldown;
     if (baseSeconds !== undefined && !isPositiveInteger(baseSeconds)) {
-      logErrorAndExitOrThrow("Invalid 'gateway.cooldown.base_seconds'. Must be a positive integer.", shouldExit);
+      logErrorAndExitOrThrow("Invalid 'gateway.cooldown.base_seconds'. Must be a positive integer.", shouldExit, customLogger);
     }
     if (maxSeconds !== undefined && !isPositiveInteger(maxSeconds)) {
-      logErrorAndExitOrThrow("Invalid 'gateway.cooldown.max_seconds'. Must be a positive integer.", shouldExit);
+      logErrorAndExitOrThrow("Invalid 'gateway.cooldown.max_seconds'. Must be a positive integer.", shouldExit, customLogger);
     }
   }
 
   if (config.gateway.routing !== undefined) {
     if (typeof config.gateway.routing !== 'object' || config.gateway.routing === null) {
-      logErrorAndExitOrThrow("Invalid structural field 'gateway.routing'. Must be an object.", shouldExit);
+      logErrorAndExitOrThrow("Invalid structural field 'gateway.routing'. Must be an object.", shouldExit, customLogger);
     }
     const { strategy } = config.gateway.routing;
     if (strategy !== undefined && strategy !== 'round-robin' && strategy !== 'fill-first') {
       logErrorAndExitOrThrow(
         `Invalid routing strategy '${strategy}'. Supported strategies: 'round-robin', 'fill-first'.`,
         shouldExit,
+        customLogger,
       );
     }
   }
 
   if (!config.clients || !Array.isArray(config.clients)) {
-    logErrorAndExitOrThrow("Missing structural field 'clients'.", shouldExit);
+    logErrorAndExitOrThrow("Missing structural field 'clients'.", shouldExit, customLogger);
   }
 
   config.clients.forEach((client, i) => {
     if (!client || typeof client !== 'object') {
-      logErrorAndExitOrThrow(`Invalid client configuration at index ${i}.`, shouldExit);
+      logErrorAndExitOrThrow(`Invalid client configuration at index ${i}.`, shouldExit, customLogger);
     }
     if (!isNonEmptyString(client.token)) {
-      logErrorAndExitOrThrow(`Missing or empty 'token' for client at index ${i}.`, shouldExit);
+      logErrorAndExitOrThrow(`Missing or empty 'token' for client at index ${i}.`, shouldExit, customLogger);
     }
     if (!client.rate_limit || typeof client.rate_limit !== 'object') {
-      logErrorAndExitOrThrow(`Missing structural field 'rate_limit' for client at index ${i}.`, shouldExit);
+      logErrorAndExitOrThrow(`Missing structural field 'rate_limit' for client at index ${i}.`, shouldExit, customLogger);
     }
     if (!isPositiveInteger(client.rate_limit.window_ms)) {
       logErrorAndExitOrThrow(
         `Invalid or missing 'rate_limit.window_ms' for client at index ${i}. Must be a positive integer.`,
         shouldExit,
+        customLogger,
       );
     }
     if (!isPositiveInteger(client.rate_limit.max)) {
       logErrorAndExitOrThrow(
         `Invalid or missing 'rate_limit.max' for client at index ${i}. Must be a positive integer.`,
         shouldExit,
+        customLogger,
       );
     }
   });
 
   if (!config.logging || typeof config.logging !== 'object') {
-    logErrorAndExitOrThrow("Missing structural field 'logging'.", shouldExit);
+    logErrorAndExitOrThrow("Missing structural field 'logging'.", shouldExit, customLogger);
   }
   if (typeof config.logging.enable_console !== 'boolean') {
-    logErrorAndExitOrThrow("Invalid or missing 'logging.enable_console'. Must be a boolean.", shouldExit);
+    logErrorAndExitOrThrow("Invalid or missing 'logging.enable_console'. Must be a boolean.", shouldExit, customLogger);
   }
   if (typeof config.logging.enable_file !== 'boolean') {
-    logErrorAndExitOrThrow("Invalid or missing 'logging.enable_file'. Must be a boolean.", shouldExit);
+    logErrorAndExitOrThrow("Invalid or missing 'logging.enable_file'. Must be a boolean.", shouldExit, customLogger);
   }
   if (config.logging.enable_file && !isNonEmptyString(config.logging.file_path)) {
-    logErrorAndExitOrThrow("Invalid or missing 'logging.file_path'. Must be a non-empty string.", shouldExit);
+    logErrorAndExitOrThrow("Invalid or missing 'logging.file_path'. Must be a non-empty string.", shouldExit, customLogger);
   }
   if (config.logging.format !== 'json' && config.logging.format !== 'text') {
-    logErrorAndExitOrThrow("Invalid or missing 'logging.format'. Must be 'json' or 'text'.", shouldExit);
+    logErrorAndExitOrThrow("Invalid or missing 'logging.format'. Must be 'json' or 'text'.", shouldExit, customLogger);
+  }
+
+  const validLevels = ['debug', 'info', 'warning', 'error', 'fatal'];
+  if (config.logging.level !== undefined && !validLevels.includes(config.logging.level)) {
+    logErrorAndExitOrThrow(
+      `Invalid 'logging.level' value '${config.logging.level}'. Must be one of: ${validLevels.join(', ')}.`,
+      shouldExit,
+      customLogger,
+    );
   }
 
   if (
@@ -301,14 +366,14 @@ export const validateConfig = (
     || typeof config.providers !== 'object'
     || Object.keys(config.providers).length === 0
   ) {
-    logErrorAndExitOrThrow("Configuration must define at least one provider under 'providers'.", shouldExit);
+    logErrorAndExitOrThrow("Configuration must define at least one provider under 'providers'.", shouldExit, customLogger);
   }
 
   const originalProviders = new Set(Object.keys(config.providers));
 
   Object.entries(config.providers).forEach(([providerName, providerConf]) => {
     if (!providerConf || typeof providerConf !== 'object') {
-      logErrorAndExitOrThrow(`Invalid configuration for provider '${providerName}'.`, shouldExit);
+      logErrorAndExitOrThrow(`Invalid configuration for provider '${providerName}'.`, shouldExit, customLogger);
     }
 
     // --- type field validation ---
@@ -316,11 +381,7 @@ export const validateConfig = (
     if (reservedProviders.has(providerName)) {
       if (providerConf.type !== undefined) {
         const msg = `WARNING: Reserved provider '${providerName}' does not accept a 'type' field. It will be ignored.`;
-        if (logger) {
-          logger.warn(msg);
-        } else {
-          console.warn(msg);
-        }
+        logWarning(customLogger, msg);
         // eslint-disable-next-line no-param-reassign
         delete providerConf.type;
       }
@@ -334,6 +395,7 @@ export const validateConfig = (
         logErrorAndExitOrThrow(
           `Invalid 'type' value '${providerConf.type}' for custom provider '${providerName}'. unknown provider type.`,
           shouldExit,
+          customLogger,
         );
       }
     }
@@ -342,6 +404,7 @@ export const validateConfig = (
       logErrorAndExitOrThrow(
         `Provider '${providerName}' is a custom provider and must specify a non-empty 'base_url'. custom provider requires base_url.`,
         shouldExit,
+        customLogger,
       );
     }
 
@@ -350,11 +413,7 @@ export const validateConfig = (
       const validKeys = providerConf.keys.filter((key, index) => {
         if (key == null || (typeof key === 'string' && key.trim() === '')) {
           const msg = `WARNING: Skipping undefined or empty key for provider '${providerName}' at index ${index}.`;
-          if (logger) {
-            logger.warn(msg);
-          } else {
-            console.warn(msg);
-          }
+          logWarning(customLogger, msg);
           return false;
         }
         return true;
@@ -369,38 +428,42 @@ export const validateConfig = (
       logErrorAndExitOrThrow(
         `Provider '${providerName}' has zero active keys remaining in the pool.`,
         shouldExit,
+        customLogger,
       );
       return;
     }
 
     if (!providerConf.models || !Array.isArray(providerConf.models)
       || providerConf.models.length === 0) {
-      logErrorAndExitOrThrow(`Provider '${providerName}' must have a non-empty 'models' array.`, shouldExit);
+      logErrorAndExitOrThrow(`Provider '${providerName}' must have a non-empty 'models' array.`, shouldExit, customLogger);
     }
 
     providerConf.models.forEach((model, j) => {
       if (!model || typeof model !== 'object') {
-        logErrorAndExitOrThrow(`Invalid model at index ${j} for provider '${providerName}'.`, shouldExit);
+        logErrorAndExitOrThrow(`Invalid model at index ${j} for provider '${providerName}'.`, shouldExit, customLogger);
       }
       if (!isNonEmptyString(model.id)) {
-        logErrorAndExitOrThrow(`Missing or empty model 'id' at index ${j} for provider '${providerName}'.`, shouldExit);
+        logErrorAndExitOrThrow(`Missing or empty model 'id' at index ${j} for provider '${providerName}'.`, shouldExit, customLogger);
       }
       if (!isNonEmptyString(model.actual_model_id)) {
         logErrorAndExitOrThrow(
           `Missing or empty model 'actual_model_id' at index ${j} for provider '${providerName}'.`,
           shouldExit,
+          customLogger,
         );
       }
       if (model.aliases !== undefined && !Array.isArray(model.aliases)) {
         logErrorAndExitOrThrow(
           `Invalid 'aliases' at index ${j} for provider '${providerName}'. Must be an array.`,
           shouldExit,
+          customLogger,
         );
       }
       if (model.thinking_supported !== undefined && typeof model.thinking_supported !== 'boolean') {
         logErrorAndExitOrThrow(
           `Invalid 'thinking_supported' at index ${j} for provider '${providerName}'. Must be a boolean.`,
           shouldExit,
+          customLogger,
         );
       }
       if (
@@ -410,6 +473,7 @@ export const validateConfig = (
         logErrorAndExitOrThrow(
           `Invalid 'default_thinking_budget' at index ${j} for provider '${providerName}'. Must be a positive integer.`,
           shouldExit,
+          customLogger,
         );
       }
 
@@ -421,10 +485,13 @@ export const validateConfig = (
           config.providers,
           originalProviders,
           shouldExit,
+          customLogger,
         );
       }
     });
   });
+
+  logDebug(customLogger, 'Configuration validation passed successfully');
 };
 
 /**
@@ -444,9 +511,6 @@ export class ConfigLoader {
 
   /**
    * Injects the logger instance after initial config load.
-   * The logger cannot be set at construction time because creating it
-   * requires the loaded config, which this class is responsible for loading.
-   * Until setLogger is called, all warnings/errors fall back to console.*.
    */
   setLogger(logger) {
     this.logger = logger;
@@ -464,13 +528,13 @@ export class ConfigLoader {
 
     this.currentConfigPath = configPath;
     try {
+      logDebug(this.logger, `Reading configuration file from path: ${configPath}`);
       const raw = fs.readFileSync(configPath, 'utf8');
       const parsed = yaml.load(raw);
       this.currentConfig = deepFreeze(this.interpolateAndValidate(parsed, reservedProviders));
     } catch (err) {
       // Initial startup validation failure: log fatal error and abort startup.
-      // eslint-disable-next-line no-console
-      console.error(`FATAL ERROR: Failed to load config file at ${configPath}: ${err.message}`);
+      logFatal(this.logger, `FATAL ERROR: Failed to load config file at ${configPath}: ${err.message}`);
       process.exit(1);
     }
 
@@ -591,11 +655,7 @@ export class ConfigLoader {
         return val.flatMap((item, i) => {
           if (item == null || (typeof item === 'string' && item.trim() === '')) {
             const msg = `WARNING: Skipping undefined or empty key for provider '${providerName}' at index ${i}.`;
-            if (this.logger) {
-              this.logger.warn(msg);
-            } else {
-              console.warn(msg);
-            }
+            logWarning(this.logger, msg);
             return [];
           }
 
@@ -606,11 +666,7 @@ export class ConfigLoader {
           const missingVar = getMissingEnvVar(item);
           if (missingVar) {
             const msg = `WARNING: Missing or empty environment variable ${missingVar} for key at path ${path.join('.')}[${i}]. Skipping key.`;
-            if (this.logger) {
-              this.logger.warn(msg);
-            } else {
-              console.warn(msg);
-            }
+            logWarning(this.logger, msg);
             return [];
           }
 
@@ -633,7 +689,9 @@ export class ConfigLoader {
           `Missing or empty environment variable ${missingVar} at configuration path ${path.join('.')}`,
         );
       }
-      return replaceEnvVars(val);
+      const resolved = replaceEnvVars(val);
+      logDebug(this.logger, `Interpolated config value at ${path.join('.')}`);
+      return resolved;
     }
 
     return val;
@@ -664,7 +722,9 @@ export class ConfigLoader {
       if (!this.isWatching) return;
 
       try {
+        logDebug(this.logger, `Starting config file watcher for: ${configPath}`);
         this.watcher = fs.watch(configPath, (eventType) => {
+          logDebug(this.logger, `Config file watcher detected event '${eventType}' on: ${configPath}`);
           if (eventType === 'rename') {
             // Atomic save detected (rename). Re-initialize watcher on the file path.
             setTimeout(() => {
@@ -680,11 +740,7 @@ export class ConfigLoader {
         retryCount += 1;
         if (retryCount >= 5) {
           const msg = 'WARNING: Stopped watching configuration file after 5 failed attempts.';
-          if (this.logger) {
-            this.logger.warn(msg);
-          } else {
-            console.warn(msg);
-          }
+          logWarning(this.logger, msg);
           this.stopWatcher();
           return;
         }
@@ -715,11 +771,7 @@ export class ConfigLoader {
         const structuralChanged = checkStructuralChanges(this.currentConfig, newConfig);
         if (structuralChanged) {
           const msg = 'WARNING: Structural configuration changed. A process restart is required to apply these changes.';
-          if (this.logger) {
-            this.logger.warn(msg);
-          } else {
-            console.warn(msg);
-          }
+          logWarning(this.logger, msg);
         }
 
         // Swap configuration references atomically to prevent request-processing race conditions.
@@ -731,21 +783,13 @@ export class ConfigLoader {
           try {
             listener(this.currentConfig, oldConfig);
           } catch (err) {
-            if (this.logger) {
-              this.logger.error('Error in config change listener:', err);
-            } else {
-              console.error('Error in config change listener:', err);
-            }
+            logError(this.logger, 'Error in config change listener:', err);
           }
         });
       } catch (err) {
         // At runtime, we catch validation errors and keep the server process online.
         const msg = `Error reloading configuration file on change: ${err.message}`;
-        if (this.logger) {
-          this.logger.error(msg);
-        } else {
-          console.error(msg);
-        }
+        logError(this.logger, msg);
       }
     }, 100);
   }

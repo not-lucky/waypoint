@@ -1,5 +1,6 @@
 import { activeControllers } from './services/UnifiedOrchestrator.js';
 import { rateLimiterIntervals } from './middleware/rateLimiter.js';
+import { flushLogs } from './utils/logger.js';
 
 let isTearingDown = false;
 
@@ -40,7 +41,7 @@ export async function teardown({
     if (logger && typeof logger.fatal === 'function') {
       logger.fatal('Could not close connections in time, forcefully shutting down');
       try {
-        await logger.flush();
+        await flushLogs();
       } catch (err) {
         // Suppress errors during emergency flush to guarantee process.exit(1) executes.
       }
@@ -58,6 +59,9 @@ export async function teardown({
     // 1. server.close() - refuse new socket connects.
     // We initiate server closure first so that no new HTTP requests are accepted.
     // We wrap it in a Promise so we can await its complete close after aborting in-flight work.
+    if (logger && typeof logger.debug === 'function') {
+      logger.debug('Graceful shutdown: closing server to new connections');
+    }
     const serverClosePromise = new Promise((resolve, reject) => {
       if (server && typeof server.close === 'function') {
         server.close((err) => {
@@ -72,6 +76,9 @@ export async function teardown({
     // 2. abort all active AbortControllers (from global Set)
     // Aborting in-flight streams will cause their connection handlers to complete and close,
     // which in turn allows the server.close() callback to fire.
+    if (logger && typeof logger.debug === 'function') {
+      logger.debug(`Graceful shutdown: aborting ${activeControllers.size} active connections`);
+    }
     activeControllers.forEach((ctrl) => {
       try {
         ctrl.abort();
@@ -85,18 +92,27 @@ export async function teardown({
 
     // 3. watcher.close() (fs.watch configuration watcher)
     // Release the configuration file watcher handle to avoid file system locks.
+    if (logger && typeof logger.debug === 'function') {
+      logger.debug('Graceful shutdown: stopping configuration file watcher');
+    }
     if (configLoader && typeof configLoader.stopWatcher === 'function') {
       configLoader.stopWatcher();
     }
 
     // 4. clearTimeout all cooldown timer handles
     // Cancel any active key cooldown restoration timers to clear the event loop.
+    if (logger && typeof logger.debug === 'function') {
+      logger.debug('Graceful shutdown: cleaning up key registry cooldown timers');
+    }
     if (keyRegistry && typeof keyRegistry.cleanup === 'function') {
       keyRegistry.cleanup();
     }
 
     // 5. clearInterval all rate limiter handles
     // Clear any token-bucket or request intervals registered by client rate limiters.
+    if (logger && typeof logger.debug === 'function') {
+      logger.debug(`Graceful shutdown: clearing ${rateLimiterIntervals.size} rate limiter intervals`);
+    }
     if (rateLimiterIntervals) {
       rateLimiterIntervals.forEach((intervalId) => {
         clearInterval(intervalId);
@@ -110,10 +126,14 @@ export async function teardown({
     // Clear the safety timeout since shutdown succeeded
     clearTimeout(safetyTimeout);
 
-    // 6. logger.flush() - write buffered logs to disk
+    // 6. flushLogs() - write buffered logs to disk using LogTape
+    if (logger && typeof logger.debug === 'function') {
+      logger.debug('Graceful shutdown: flushing logs and shutting down logging system');
+    }
     if (logger && typeof logger.flush === 'function') {
       await logger.flush();
     }
+    await flushLogs();
 
     // 7. process.exit(0)
     process.exit(0);
@@ -121,8 +141,15 @@ export async function teardown({
     // If any step throws during graceful shutdown, log the fatal error and force exit 1.
     if (logger && typeof logger.fatal === 'function') {
       logger.fatal('Fatal error during graceful teardown:', err);
+      if (typeof logger.flush === 'function') {
+        try {
+          await logger.flush();
+        } catch (flushErr) {
+          // ignore
+        }
+      }
       try {
-        await logger.flush();
+        await flushLogs();
       } catch (flushErr) {
         // ignore
       }

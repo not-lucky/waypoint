@@ -1,4 +1,8 @@
 import { resolveModel, applyModelConfig, applyHeaderOverrides } from '../utils/modelResolver.js';
+import { getAppLogger } from '../utils/logger.js';
+import { createRequestLog } from '../utils/requestLogger.js';
+
+const logger = getAppLogger('openai');
 
 /**
  * Protocol controller for the OpenAI-compatible ingress endpoints.
@@ -14,6 +18,9 @@ export class OpenAIController {
   }
 
   async handleCompletion(req, res) {
+    // Create per-request debug log (no-op if disabled in config)
+    const reqLog = createRequestLog(req, this.orchestrator.config);
+
     try {
       const body = req.body || {};
       const providersConfig = this.orchestrator.config?.providers || {};
@@ -35,51 +42,96 @@ export class OpenAIController {
       applyModelConfig(unifiedReq, resolveModel(body.model, providersConfig));
       const cleanRawReq = applyHeaderOverrides(unifiedReq, req);
 
-      const response = await this.orchestrator.executeCompletion(unifiedReq, cleanRawReq);
+      logger.debug('OpenAI completion request received', {
+        model: body.model,
+        messagesCount: body.messages?.length || 0,
+        stream: body.stream || false,
+        resolvedProvider: unifiedReq.provider,
+        resolvedModel: unifiedReq.actualModelId,
+      });
+
+      const response = await this.orchestrator.executeCompletion(unifiedReq, cleanRawReq, reqLog);
 
       // Orchestrator returns { error: {...} } on failure rather than throwing,
       // so we check and map the httpStatus for the client response
       if (response?.error) {
-        return res.status(response.error.httpStatus || 500).json(response);
+        logger.debug('OpenAI completion failed', { error: response.error });
+        const statusCode = response.error.httpStatus || 500;
+        reqLog.logClientResponse(statusCode, response);
+        await reqLog.finalize();
+        return res.status(statusCode).json(response);
       }
 
       // If the response is a stream (async generator), handle as SSE (Server-Sent Events)
       if (response && typeof response[Symbol.asyncIterator] === 'function') {
+        logger.debug('Starting OpenAI SSE response stream');
         // Set standard headers for event streams to disable buffering and allow live streaming
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('X-Accel-Buffering', 'no');
 
+        let chunkCount = 0;
         try {
           /* eslint-disable no-restricted-syntax */
           // Iterate over each chunk produced by the orchestrator/adapter stream
           for await (const chunk of response) {
-            res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+            chunkCount += 1;
+            const sseData = `data: ${JSON.stringify(chunk)}\n\n`;
+
+            // Log both directions of the stream event
+            reqLog.appendStreamEvent('provider', chunk);
+            reqLog.appendStreamEvent('client', sseData);
+
+            res.write(sseData);
           }
           /* eslint-enable no-restricted-syntax */
           // Signal stream termination using standard OpenAI [DONE] indicator
-          res.write('data: [DONE]\n\n');
+          const doneMarker = 'data: [DONE]\n\n';
+          reqLog.appendStreamEvent('client', doneMarker);
+          res.write(doneMarker);
+          logger.debug('OpenAI SSE response stream completed', { chunkCount });
+
+          // Log client response summary for streaming
+          reqLog.logClientResponse(200, {
+            _streamed: true,
+            _format: 'sse',
+            _eventCount: chunkCount,
+          });
         } catch (err) {
+          logger.debug('OpenAI SSE response stream aborted or failed', { chunkCount, error: err.message });
+          reqLog.logClientResponse(0, {
+            _streamed: true,
+            _aborted: true,
+            _eventCount: chunkCount,
+            error: err.message,
+          });
           // Handle client disconnect or unexpected stream errors silently
         } finally {
           // Always end the response stream to clean up connection resources
+          await reqLog.finalize();
           res.end();
         }
         return res;
       }
 
       // NormalizedResponse is already OpenAI-shaped — no translation needed
+      logger.debug('OpenAI non-stream response sent successfully');
+      reqLog.logClientResponse(200, response);
+      await reqLog.finalize();
       return res.json(response);
     } catch (err) {
       // Catch-all for unexpected errors (e.g. orchestrator throws instead of returning error)
-      this.orchestrator.logger?.error('Unexpected completion error:', err);
-      return res.status(500).json({
+      logger.error('Unexpected completion error:', err);
+      const errorBody = {
         error: {
           code: 'internal_server_error',
           message: err.message || String(err),
           httpStatus: 500,
         },
-      });
+      };
+      reqLog.logClientResponse(500, errorBody);
+      await reqLog.finalize();
+      return res.status(500).json(errorBody);
     }
   }
 }

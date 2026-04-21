@@ -86,6 +86,7 @@ describe('AnthropicController Edge Case Tests', () => {
           thinkingBudget: 2048,
         }),
         expect.any(Object),
+        expect.any(Object),
       );
     });
 
@@ -105,6 +106,7 @@ describe('AnthropicController Edge Case Tests', () => {
           actualModelId: 'gemini-2.5-pro-preview-05-06',
         }),
         expect.any(Object),
+        expect.any(Object),
       );
     });
 
@@ -122,6 +124,7 @@ describe('AnthropicController Edge Case Tests', () => {
         expect.objectContaining({
           model: 'unknown-model-alias',
         }),
+        expect.any(Object),
         expect.any(Object),
       );
       const callArg = mockOrchestrator.executeCompletion.mock.calls[0][0];
@@ -147,6 +150,7 @@ describe('AnthropicController Edge Case Tests', () => {
           thinkingEnabled: true,
         }),
         expect.any(Object),
+        expect.any(Object),
       );
     });
 
@@ -166,6 +170,7 @@ describe('AnthropicController Edge Case Tests', () => {
           thinkingEnabled: true,
         }),
         expect.any(Object),
+        expect.any(Object),
       );
     });
 
@@ -183,6 +188,7 @@ describe('AnthropicController Edge Case Tests', () => {
         expect.objectContaining({
           thinkingBudget: 2048, // stays default
         }),
+        expect.any(Object),
         expect.any(Object),
       );
     });
@@ -204,6 +210,7 @@ describe('AnthropicController Edge Case Tests', () => {
           temperature: 1.5,
         }),
         expect.any(Object),
+        expect.any(Object),
       );
     });
 
@@ -221,6 +228,7 @@ describe('AnthropicController Edge Case Tests', () => {
         expect.objectContaining({
           temperature: 0.7,
         }),
+        expect.any(Object),
         expect.any(Object),
       );
     });
@@ -249,6 +257,7 @@ describe('AnthropicController Edge Case Tests', () => {
           ],
         }),
         expect.any(Object),
+        expect.any(Object),
       );
     });
 
@@ -274,6 +283,7 @@ describe('AnthropicController Edge Case Tests', () => {
           ],
         }),
         expect.any(Object),
+        expect.any(Object),
       );
     });
 
@@ -297,6 +307,7 @@ describe('AnthropicController Edge Case Tests', () => {
           ],
         }),
         expect.any(Object),
+        expect.any(Object),
       );
     });
 
@@ -314,6 +325,7 @@ describe('AnthropicController Edge Case Tests', () => {
         expect.objectContaining({
           maxTokens: 100,
         }),
+        expect.any(Object),
         expect.any(Object),
       );
     });

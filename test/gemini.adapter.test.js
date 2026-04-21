@@ -197,6 +197,36 @@ describe('GeminiAdapter Tests', () => {
     }));
   });
 
+  it('assert: thinking_supported true enables thinking option with default or configured budget', async () => {
+    const adapter = new GeminiAdapter();
+
+    generateText.mockResolvedValue({
+      text: 'hello',
+      finishReason: 'stop',
+      usage: {},
+    });
+
+    const req = {
+      model: 'gemini/gemini-2.5-pro',
+      actualModelId: 'gemini-2.5-pro',
+      messages: [],
+      thinking_supported: true,
+      thinkingBudget: 10240,
+    };
+
+    await adapter.generateCompletion(req, 'gemini-key');
+
+    expect(generateText).toHaveBeenLastCalledWith(expect.objectContaining({
+      providerOptions: {
+        google: {
+          thinkingConfig: {
+            thinkingBudget: 10240,
+          },
+        },
+      },
+    }));
+  });
+
   it('assert: generateStream forwards thinking options and abortSignal correctly', async () => {
     const adapter = new GeminiAdapter();
 

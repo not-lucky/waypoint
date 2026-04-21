@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { getAppLogger } from '../utils/logger.js';
+
+const logger = getAppLogger('validation');
 
 /**
  * Zod schema representing a single message within the conversation history.
@@ -58,27 +61,33 @@ export const completionSchema = z.object({
  * detailing field-level discrepancies.
  */
 export const validateCompletionBody = (req, res, next) => {
+  logger.debug('Validating completion request body');
   // Parse payload using safeParse to avoid throwing errors synchronously
   const result = completionSchema.safeParse(req.body);
 
   if (!result.success) {
     // Extract parsing issues from the ZodError instance
     const issues = result.error.issues || [];
+    const details = issues.map((err) => ({
+      // Formats path to target field as dot-separated string (e.g. "messages.0.role")
+      field: err.path.join('.'),
+      message: err.message,
+    }));
+
+    logger.debug('Validation failed', { details });
 
     // Map issues into a NormalizedError response format with field-level details
     return res.status(400).json({
       error: {
         code: 'validation_error',
         message: 'Payload validation failed',
-        details: issues.map((err) => ({
-          // Formats path to target field as dot-separated string (e.g. "messages.0.role")
-          field: err.path.join('.'),
-          message: err.message,
-        })),
+        details,
       },
     });
   }
 
   // Validation succeeded, proceed down the router chain
+  logger.debug('Validation passed successfully');
   return next();
 };
+

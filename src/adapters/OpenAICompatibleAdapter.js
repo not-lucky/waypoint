@@ -7,7 +7,8 @@ import {
 
 const getReasoningEffort = (req) => {
   const effort = req.thinkingLevel || req.reasoningEffort;
-  if (!effort && req.thinkingEnabled) {
+  const thinkingEnabled = req.thinkingEnabled || req.thinking_supported || false;
+  if (!effort && thinkingEnabled) {
     if (req.thinkingBudget !== undefined) {
       if (req.thinkingBudget <= 1024) {
         return 'low';

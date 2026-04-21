@@ -1,6 +1,13 @@
 // WeakMap resolution cache to hold resolved token maps. Keyed by the clients configuration
 // array reference. WeakMap allows the cached maps to be garbage collected when config
 // reloads discard the old config reference.
+import { getAppLogger } from '../utils/logger.js';
+
+const logger = getAppLogger('auth');
+
+// WeakMap resolution cache to hold resolved token maps. Keyed by the clients configuration
+// array reference. WeakMap allows the cached maps to be garbage collected when config
+// reloads discard the old config reference.
 const clientCache = new WeakMap();
 
 /**
@@ -12,11 +19,13 @@ const clientCache = new WeakMap();
  * @returns {Function} Express middleware function.
  */
 export const authMiddleware = (configLoader) => (req, res, next) => {
+  logger.debug('Auth attempt: checking credentials');
   const authHeader = req.headers.authorization;
   const xApiKey = req.headers['x-api-key'];
 
   // Reject immediately if both standard Authorization and Anthropic x-api-key are missing.
   if (authHeader === undefined && xApiKey === undefined) {
+    logger.debug('Auth failed: missing credentials');
     res.status(401).json({
       error: {
         code: 'unauthorized',
@@ -33,6 +42,7 @@ export const authMiddleware = (configLoader) => (req, res, next) => {
     // RFC 7235 specifies authentication schemes case-insensitively, so "bearer" is acceptable.
     const parts = authHeader.trim().split(/\s+/);
     if (parts.length !== 2 || parts[0].toLowerCase() !== 'bearer') {
+      logger.debug('Auth failed: invalid Authorization header format');
       res.status(401).json({
         error: {
           code: 'unauthorized',
@@ -48,6 +58,7 @@ export const authMiddleware = (configLoader) => (req, res, next) => {
     // Extract the client token directly from x-api-key when Authorization is not provided.
     const trimmedToken = xApiKey.trim();
     if (!trimmedToken) {
+      logger.debug('Auth failed: empty x-api-key header');
       res.status(401).json({
         error: {
           code: 'unauthorized',
@@ -83,6 +94,7 @@ export const authMiddleware = (configLoader) => (req, res, next) => {
   const client = tokenMap.get(token);
 
   if (!client) {
+    logger.debug('Auth failed: invalid client token');
     res.status(401).json({
       error: {
         code: 'unauthorized',
@@ -93,6 +105,7 @@ export const authMiddleware = (configLoader) => (req, res, next) => {
     return;
   }
 
+  logger.debug('Auth successful', { clientName: client.name });
   // Attach client profile to request context for downstream rate limiting, auditing, or logging
   req.client = client;
   next();

@@ -21,7 +21,8 @@ const prepareOptions = (req, apiKey, extraOptions = {}) => {
     options.maxTokens = req.maxTokens;
   }
 
-  if (req.thinkingEnabled) {
+  const thinkingEnabled = req.thinkingEnabled || req.thinking_supported || false;
+  if (thinkingEnabled) {
     options.providerOptions = {
       google: {
         thinkingConfig: {

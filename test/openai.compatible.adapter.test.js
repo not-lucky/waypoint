@@ -398,6 +398,20 @@ describe('OpenAICompatibleAdapter Tests', () => {
         openai: { reasoningEffort: 'medium' },
       },
     }));
+
+    // Case 6: thinking_supported is true, budget > 2048 -> high
+    await adapter.generateCompletion({
+      actualModelId: 'gpt-4o',
+      messages: [],
+      thinking_supported: true,
+      thinkingBudget: 4096,
+    }, 'test-api-key');
+
+    expect(generateText).toHaveBeenLastCalledWith(expect.objectContaining({
+      providerOptions: {
+        openai: { reasoningEffort: 'high' },
+      },
+    }));
   });
 
   it('assert: custom providerName sets reasoningEffort under correct dynamic key', async () => {

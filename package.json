@@ -17,6 +17,8 @@
     "@ai-sdk/anthropic": "^3.0.79",
     "@ai-sdk/google": "^3.0.79",
     "@ai-sdk/openai-compatible": "^2.0.48",
+    "@logtape/file": "^2.1.1",
+    "@logtape/logtape": "^2.1.1",
     "ai": "^6.0.191",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",

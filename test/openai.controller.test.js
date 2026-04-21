@@ -85,6 +85,7 @@ describe('OpenAIController Edge Case Tests', () => {
           thinkingBudget: 2048,
         }),
         expect.any(Object),
+        expect.any(Object),
       );
     });
 
@@ -103,6 +104,7 @@ describe('OpenAIController Edge Case Tests', () => {
           provider: 'gemini',
           actualModelId: 'unconfigured-model-id',
         }),
+        expect.any(Object),
         expect.any(Object),
       );
     });
@@ -123,6 +125,7 @@ describe('OpenAIController Edge Case Tests', () => {
           actualModelId: 'gpt-4o',
         }),
         expect.any(Object),
+        expect.any(Object),
       );
     });
 
@@ -142,6 +145,7 @@ describe('OpenAIController Edge Case Tests', () => {
           actualModelId: 'gemini-2.5-pro-preview-05-06',
         }),
         expect.any(Object),
+        expect.any(Object),
       );
     });
 
@@ -159,6 +163,7 @@ describe('OpenAIController Edge Case Tests', () => {
         expect.objectContaining({
           model: 'unknown-model-alias',
         }),
+        expect.any(Object),
         expect.any(Object),
       );
       const callArg = mockOrchestrator.executeCompletion.mock.calls[0][0];
@@ -184,6 +189,7 @@ describe('OpenAIController Edge Case Tests', () => {
           thinkingEnabled: true,
         }),
         expect.any(Object),
+        expect.any(Object),
       );
     });
 
@@ -202,6 +208,7 @@ describe('OpenAIController Edge Case Tests', () => {
           thinkingBudget: 2048,
           thinkingEnabled: true,
         }),
+        expect.any(Object),
         expect.any(Object),
       );
     });
@@ -222,6 +229,7 @@ describe('OpenAIController Edge Case Tests', () => {
           thinkingEnabled: true,
         }),
         expect.any(Object),
+        expect.any(Object),
       );
     });
 
@@ -239,6 +247,7 @@ describe('OpenAIController Edge Case Tests', () => {
         expect.objectContaining({
           thinkingBudget: 2048, // stays default
         }),
+        expect.any(Object),
         expect.any(Object),
       );
     });
@@ -260,6 +269,7 @@ describe('OpenAIController Edge Case Tests', () => {
           temperature: 1.5,
         }),
         expect.any(Object),
+        expect.any(Object),
       );
     });
 
@@ -277,6 +287,7 @@ describe('OpenAIController Edge Case Tests', () => {
         expect.objectContaining({
           temperature: 0.0,
         }),
+        expect.any(Object),
         expect.any(Object),
       );
     });
@@ -296,6 +307,7 @@ describe('OpenAIController Edge Case Tests', () => {
           temperature: 0.7, // preserves body
         }),
         expect.any(Object),
+        expect.any(Object),
       );
     });
 
@@ -314,6 +326,7 @@ describe('OpenAIController Edge Case Tests', () => {
           temperature: 0.7, // preserves body
         }),
         expect.any(Object),
+        expect.any(Object),
       );
     });
 
@@ -331,6 +344,7 @@ describe('OpenAIController Edge Case Tests', () => {
         expect.objectContaining({
           temperature: 0.7,
         }),
+        expect.any(Object),
         expect.any(Object),
       );
     });
@@ -352,6 +366,7 @@ describe('OpenAIController Edge Case Tests', () => {
           maxTokens: 150,
         }),
         expect.any(Object),
+        expect.any(Object),
       );
     });
 
@@ -370,6 +385,7 @@ describe('OpenAIController Edge Case Tests', () => {
           maxTokens: 250,
         }),
         expect.any(Object),
+        expect.any(Object),
       );
     });
 
@@ -386,6 +402,7 @@ describe('OpenAIController Edge Case Tests', () => {
         expect.objectContaining({
           messages: [],
         }),
+        expect.any(Object),
         expect.any(Object),
       );
     });

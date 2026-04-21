@@ -1,4 +1,8 @@
 import { resolveModel, applyModelConfig, applyHeaderOverrides } from '../utils/modelResolver.js';
+import { getAppLogger } from '../utils/logger.js';
+import { createRequestLog } from '../utils/requestLogger.js';
+
+const logger = getAppLogger('anthropic');
 
 // Maps OpenAI-style finish_reason values to Anthropic stop_reason equivalents.
 // Unmapped reasons (e.g. 'content_filter') are passed through as-is.
@@ -64,6 +68,9 @@ export class AnthropicController {
   }
 
   async handleCompletion(req, res) {
+    // Create per-request debug log (no-op if disabled in config)
+    const reqLog = createRequestLog(req, this.orchestrator.config);
+
     try {
       const body = req.body || {};
       const providersConfig = this.orchestrator.config?.providers || {};
@@ -93,15 +100,29 @@ export class AnthropicController {
       applyModelConfig(unifiedReq, resolveModel(body.model, providersConfig));
       const cleanRawReq = applyHeaderOverrides(unifiedReq, req);
 
-      const response = await this.orchestrator.executeCompletion(unifiedReq, cleanRawReq);
+      logger.debug('Anthropic completion request received', {
+        model: body.model,
+        systemPromptPresent: !!body.system,
+        messagesCount: body.messages?.length || 0,
+        stream: body.stream || false,
+        resolvedProvider: unifiedReq.provider,
+        resolvedModel: unifiedReq.actualModelId,
+      });
+
+      const response = await this.orchestrator.executeCompletion(unifiedReq, cleanRawReq, reqLog);
 
       // Error responses use the same format regardless of client protocol
       if (response?.error) {
-        return res.status(response.error.httpStatus || 500).json(response);
+        logger.debug('Anthropic completion failed', { error: response.error });
+        const statusCode = response.error.httpStatus || 500;
+        reqLog.logClientResponse(statusCode, response);
+        await reqLog.finalize();
+        return res.status(statusCode).json(response);
       }
 
       // If the response is a stream, translate to Anthropic SSE format and stream to client
       if (response && typeof response[Symbol.asyncIterator] === 'function') {
+        logger.debug('Starting Anthropic SSE response stream');
         // Set standard Server-Sent Events headers to disable proxy buffering
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
@@ -111,13 +132,19 @@ export class AnthropicController {
         let activeBlockType = null; // Track currently active block type: 'text' or 'thinking'
         let currentBlockIndex = 0; // Incremented on each block type transition
         const msgId = `msg_${Date.now()}`;
+        let chunkCount = 0;
 
         try {
           /* eslint-disable no-restricted-syntax */
           for await (const chunk of response) {
+            chunkCount += 1;
+
+            // Log provider-side chunk
+            reqLog.appendStreamEvent('provider', chunk);
+
             // Send the message_start event on the first chunk to establish initial metadata
             if (!messageStartSent) {
-              res.write(`event: message_start\ndata: ${JSON.stringify({
+              const messageStartEvent = `event: message_start\ndata: ${JSON.stringify({
                 type: 'message_start',
                 message: {
                   id: chunk.id || msgId,
@@ -132,7 +159,9 @@ export class AnthropicController {
                     output_tokens: 0,
                   },
                 },
-              })}\n\n`);
+              })}\n\n`;
+              reqLog.appendStreamEvent('client', messageStartEvent);
+              res.write(messageStartEvent);
               messageStartSent = true;
             }
 
@@ -144,33 +173,39 @@ export class AnthropicController {
               // Handle transitions from previous block types (e.g. text -> thinking)
               if (activeBlockType !== 'thinking') {
                 if (activeBlockType !== null) {
-                  res.write(`event: content_block_stop\ndata: ${JSON.stringify({
+                  const stopEvent = `event: content_block_stop\ndata: ${JSON.stringify({
                     type: 'content_block_stop',
                     index: currentBlockIndex,
-                  })}\n\n`);
+                  })}\n\n`;
+                  reqLog.appendStreamEvent('client', stopEvent);
+                  res.write(stopEvent);
                   currentBlockIndex += 1;
                 }
                 // Send content_block_start for thinking
-                res.write(`event: content_block_start\ndata: ${JSON.stringify({
+                const startEvent = `event: content_block_start\ndata: ${JSON.stringify({
                   type: 'content_block_start',
                   index: currentBlockIndex,
                   content_block: {
                     type: 'thinking',
                     thinking: '',
                   },
-                })}\n\n`);
+                })}\n\n`;
+                reqLog.appendStreamEvent('client', startEvent);
+                res.write(startEvent);
                 activeBlockType = 'thinking';
               }
 
               // Send content_block_delta for thinking content
-              res.write(`event: content_block_delta\ndata: ${JSON.stringify({
+              const thinkingDelta = `event: content_block_delta\ndata: ${JSON.stringify({
                 type: 'content_block_delta',
                 index: currentBlockIndex,
                 delta: {
                   type: 'thinking_delta',
                   thinking: delta.reasoning_content,
                 },
-              })}\n\n`);
+              })}\n\n`;
+              reqLog.appendStreamEvent('client', thinkingDelta);
+              res.write(thinkingDelta);
             }
 
             // Handle text content if present in the chunk
@@ -178,48 +213,56 @@ export class AnthropicController {
               // Handle transitions from previous block types (e.g. thinking -> text)
               if (activeBlockType !== 'text') {
                 if (activeBlockType !== null) {
-                  res.write(`event: content_block_stop\ndata: ${JSON.stringify({
+                  const stopEvent = `event: content_block_stop\ndata: ${JSON.stringify({
                     type: 'content_block_stop',
                     index: currentBlockIndex,
-                  })}\n\n`);
+                  })}\n\n`;
+                  reqLog.appendStreamEvent('client', stopEvent);
+                  res.write(stopEvent);
                   currentBlockIndex += 1;
                 }
                 // Send content_block_start for text
-                res.write(`event: content_block_start\ndata: ${JSON.stringify({
+                const startEvent = `event: content_block_start\ndata: ${JSON.stringify({
                   type: 'content_block_start',
                   index: currentBlockIndex,
                   content_block: {
                     type: 'text',
                     text: '',
                   },
-                })}\n\n`);
+                })}\n\n`;
+                reqLog.appendStreamEvent('client', startEvent);
+                res.write(startEvent);
                 activeBlockType = 'text';
               }
 
               // Send content_block_delta for text content
-              res.write(`event: content_block_delta\ndata: ${JSON.stringify({
+              const textDelta = `event: content_block_delta\ndata: ${JSON.stringify({
                 type: 'content_block_delta',
                 index: currentBlockIndex,
                 delta: {
                   type: 'text_delta',
                   text: delta.content,
                 },
-              })}\n\n`);
+              })}\n\n`;
+              reqLog.appendStreamEvent('client', textDelta);
+              res.write(textDelta);
             }
 
             // Handle completion/finish reason
             if (choice.finish_reason) {
               if (activeBlockType !== null) {
-                res.write(`event: content_block_stop\ndata: ${JSON.stringify({
+                const stopEvent = `event: content_block_stop\ndata: ${JSON.stringify({
                   type: 'content_block_stop',
                   index: currentBlockIndex,
-                })}\n\n`);
+                })}\n\n`;
+                reqLog.appendStreamEvent('client', stopEvent);
+                res.write(stopEvent);
                 activeBlockType = null;
               }
 
               // Map standard stop reasons (e.g., stop -> end_turn)
               const stopReason = STOP_REASON_MAP[choice.finish_reason] || choice.finish_reason || 'end_turn';
-              res.write(`event: message_delta\ndata: ${JSON.stringify({
+              const messageDelta = `event: message_delta\ndata: ${JSON.stringify({
                 type: 'message_delta',
                 delta: {
                   stop_reason: stopReason,
@@ -228,44 +271,73 @@ export class AnthropicController {
                 usage: {
                   output_tokens: 0,
                 },
-              })}\n\n`);
+              })}\n\n`;
+              reqLog.appendStreamEvent('client', messageDelta);
+              res.write(messageDelta);
             }
           }
           /* eslint-enable no-restricted-syntax */
 
           // Clean up any remaining active block stops at EOF
           if (activeBlockType !== null) {
-            res.write(`event: content_block_stop\ndata: ${JSON.stringify({
+            const stopEvent = `event: content_block_stop\ndata: ${JSON.stringify({
               type: 'content_block_stop',
               index: currentBlockIndex,
-            })}\n\n`);
+            })}\n\n`;
+            reqLog.appendStreamEvent('client', stopEvent);
+            res.write(stopEvent);
           }
 
           // Signal final message termination
-          res.write(`event: message_stop\ndata: ${JSON.stringify({
+          const messageStop = `event: message_stop\ndata: ${JSON.stringify({
             type: 'message_stop',
-          })}\n\n`);
+          })}\n\n`;
+          reqLog.appendStreamEvent('client', messageStop);
+          res.write(messageStop);
+          logger.debug('Anthropic SSE response stream completed', { chunkCount });
+
+          // Log client response summary for streaming
+          reqLog.logClientResponse(200, {
+            _streamed: true,
+            _format: 'anthropic-sse',
+            _eventCount: chunkCount,
+          });
         } catch (err) {
+          logger.debug('Anthropic SSE response stream aborted or failed', { chunkCount, error: err.message });
+          reqLog.logClientResponse(0, {
+            _streamed: true,
+            _aborted: true,
+            _eventCount: chunkCount,
+            error: err.message,
+          });
           // Stream interrupted or aborted
         } finally {
           // Ensure connection is closed cleanly
+          await reqLog.finalize();
           res.end();
         }
         return res;
       }
 
       // Translate from NormalizedResponse (OpenAI-shaped) to Anthropic Messages format
-      return res.json(translateResponse(response));
+      logger.debug('Anthropic non-stream response sent successfully');
+      const translatedResponse = translateResponse(response);
+      reqLog.logClientResponse(200, translatedResponse);
+      await reqLog.finalize();
+      return res.json(translatedResponse);
     } catch (err) {
       // Catch-all for unexpected errors
-      this.orchestrator.logger?.error('Unexpected completion error:', err);
-      return res.status(500).json({
+      logger.error('Unexpected completion error:', err);
+      const errorBody = {
         error: {
           code: 'internal_server_error',
           message: err.message || String(err),
           httpStatus: 500,
         },
-      });
+      };
+      reqLog.logClientResponse(500, errorBody);
+      await reqLog.finalize();
+      return res.status(500).json(errorBody);
     }
   }
 }

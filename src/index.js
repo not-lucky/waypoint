@@ -10,14 +10,15 @@ import { AnthropicController } from './controllers/AnthropicController.js';
 import { validateCompletionBody } from './middleware/zod.validation.js';
 import { authMiddleware } from './middleware/auth.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
-import createLogger from './utils/logger.js';
+import { configureLogging, getAppLogger } from './utils/logger.js';
 import { registerLifecycle } from './lifecycle.js';
 
 // Load configuration
 const configLoader = new ConfigLoader();
 const config = configLoader.loadConfig();
-const logger = createLogger(config);
-configLoader.setLogger(logger);
+await configureLogging(config);
+const logger = getAppLogger('server');
+logger.debug('Configuration loaded successfully');
 
 // Instantiate registry, factory, and orchestrator
 const keyRegistry = new KeyRegistry(config);
@@ -39,6 +40,7 @@ const allowedOrigins = config.gateway.cors?.allowed_origins || ['*'];
 // as a wildcard allowing any request origin.
 // Otherwise, we pass the array of specific allowed origins.
 const corsOrigin = allowedOrigins.includes('*') ? '*' : allowedOrigins;
+logger.debug('CORS configuration applied', { corsOrigin });
 
 // Apply global CORS middleware before all routes to ensure preflights
 // and headers are handled uniformly.
@@ -49,7 +51,9 @@ app.use(cors({ origin: corsOrigin }));
 // The limit constraint is enforced dynamically from the gateway config,
 // defaulting to '10mb'. This ensures that oversized requests are
 // rejected with a 413 error code prior to processing.
-app.use(express.json({ limit: config.gateway.max_payload_size || '10mb' }));
+const maxPayloadSize = config.gateway.max_payload_size || '10mb';
+logger.debug(`Body parsing middleware configured with limit: ${maxPayloadSize}`);
+app.use(express.json({ limit: maxPayloadSize }));
 
 const auth = authMiddleware(configLoader);
 
@@ -128,6 +132,7 @@ openaiRouter.post(
 // Express matches prefixes sequentially; putting `/openai` first would match
 // `/openai/v1/chat/completions` as `/openai` base with a suffix of `/v1/chat/completions`,
 // leading to 404 errors.
+logger.debug('Mounting OpenAI routes at /openai/v1 and /openai');
 app.use(['/openai/v1', '/openai'], openaiRouter);
 
 // Anthropic Router
@@ -155,6 +160,7 @@ anthropicRouter.post(
 );
 
 // Mount with `/anthropic/v1` first to avoid partial-matching 404 routing bugs
+logger.debug('Mounting Anthropic routes at /anthropic/v1 and /anthropic');
 app.use(['/anthropic/v1', '/anthropic'], anthropicRouter);
 
 // Global fallback error handler to prevent unhandled exceptions from leaking raw HTML
@@ -177,6 +183,7 @@ app.use((err, req, res, next) => {
   });
 });
 
+logger.debug('Initializing Express app listening...');
 const server = app.listen(port, () => {
   logger.info(`Waypoint listening on port ${port}`);
 });

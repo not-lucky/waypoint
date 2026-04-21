@@ -1,5 +1,33 @@
 /* eslint-disable no-restricted-syntax, no-constant-condition, no-await-in-loop, no-continue */
 import { resolveModel, applyModelConfig } from '../utils/modelResolver.js';
+import { getAppLogger } from '../utils/logger.js';
+
+const fallbackLogger = getAppLogger('orchestrator');
+
+function logDebug(logger, msg, meta) {
+  if (logger && typeof logger.debug === 'function') {
+    if (meta !== undefined) logger.debug(msg, meta);
+    else logger.debug(msg);
+  } else {
+    if (meta !== undefined) fallbackLogger.debug(msg, meta);
+    else fallbackLogger.debug(msg);
+  }
+}
+
+function logWarning(logger, msg, meta) {
+  if (logger) {
+    if (typeof logger.warning === 'function') {
+      if (meta !== undefined) logger.warning(msg, meta);
+      else logger.warning(msg);
+    } else if (typeof logger.warn === 'function') {
+      if (meta !== undefined) logger.warn(msg, meta);
+      else logger.warn(msg);
+    }
+  } else {
+    if (meta !== undefined) fallbackLogger.warning(msg, meta);
+    else fallbackLogger.warning(msg);
+  }
+}
 
 // Global registry of all active request AbortControllers.
 // Used during graceful shutdown (in index.js) to cancel all in-flight
@@ -22,7 +50,7 @@ export class UnifiedOrchestrator {
    * @param {Object} rawReq - The raw Express request context.
    * @returns {Promise<Object>} Normalized completion result or error object.
    */
-  async executeCompletion(unifiedReq, rawReq) {
+  async executeCompletion(unifiedReq, rawReq, requestLog) {
     const req = { isFallback: false, ...unifiedReq };
 
     // Apply header-based overrides if rawReq is provided and has headers
@@ -54,10 +82,19 @@ export class UnifiedOrchestrator {
     const abortController = new AbortController();
     activeControllers.add(abortController);
 
+    logDebug(this.logger, 'Request entry: executing completion', {
+      model: req.model,
+      provider: req.provider,
+      stream: req.stream,
+      thinkingEnabled: req.thinkingEnabled,
+      thinkingBudget: req.thinkingBudget,
+    });
+
     if (rawReq) {
       // Bind directly to the request close event for actual client disconnects.
       if (typeof rawReq.on === 'function') {
         rawReq.on('close', () => {
+          logDebug(this.logger, 'Request abort/cancel event detected via request close');
           abortController.abort();
         });
       }
@@ -68,6 +105,7 @@ export class UnifiedOrchestrator {
         target.on('close', () => {
           const { res } = rawReq;
           if (res ? !res.writableEnded : true) {
+            logDebug(this.logger, 'Request abort/cancel event detected via response close');
             abortController.abort();
           }
         });
@@ -104,6 +142,7 @@ export class UnifiedOrchestrator {
         // Inner loop for key rotation/retries
         while (attempt < retryLimit) {
           if (abortController.signal.aborted) {
+            logDebug(this.logger, 'Request aborted during retry loop check');
             return {
               error: {
                 code: 'request_cancelled',
@@ -117,11 +156,16 @@ export class UnifiedOrchestrator {
           const apiKey = this.keyRegistry.getKey(provider);
 
           if (!apiKey) {
+            logDebug(this.logger, 'No active keys available in pool for provider', { provider });
             if (req.isFallback) {
               return this.buildAllKeysExhaustedError(provider);
             }
 
             if (req.fallbackModel) {
+              logDebug(this.logger, 'Triggering fallback routing from key exhaustion', {
+                originalModel: unifiedReq.model,
+                fallbackModel: req.fallbackModel,
+              });
               const resolved = resolveModel(req.fallbackModel, this.config.providers);
               if (resolved) {
                 applyModelConfig(req, resolved);
@@ -138,9 +182,18 @@ export class UnifiedOrchestrator {
             break;
           }
 
+          logDebug(this.logger, 'Key selected from pool for provider', { provider });
+
+          // Log provider request (stage 2) on first attempt
+          if (attempt === 0 && requestLog) {
+            requestLog.logProviderRequest(req, apiKey);
+          }
+
+          logDebug(this.logger, `Attempting execution: attempt=${attempt + 1}/${retryLimit} for provider=${provider}`);
           attempt += 1;
 
           try {
+            const providerStartTime = Date.now();
             if (req.stream) {
               const stream = adapter.generateStream(req, apiKey, abortController.signal);
               const iterator = stream[Symbol.asyncIterator]();
@@ -148,10 +201,19 @@ export class UnifiedOrchestrator {
               const firstResult = await iterator.next();
               this.keyRegistry.flagSuccess(provider, apiKey);
 
+              // Log provider response for streaming (note: actual chunks logged by controller)
+              if (requestLog) {
+                requestLog.logProviderResponse(
+                  { _streamed: true, provider, model: req.model },
+                  Date.now() - providerStartTime,
+                );
+              }
+
               // Flag that we are returning a stream so the outer executeCompletion
               // finally block does not prematurely delete the controller.
               isStreamingResponse = true;
 
+              const self = this;
               const streamWrapper = async function* streamWrapper() {
                 try {
                   if (!firstResult.done) {
@@ -159,17 +221,20 @@ export class UnifiedOrchestrator {
                     while (true) {
                       // Check abort signal before requesting the next chunk
                       if (abortController.signal.aborted) {
+                        logDebug(self.logger, 'Stream abort detected before chunk retrieval');
                         break;
                       }
                       const nextResult = await iterator.next();
                       if (nextResult.done) break;
                       // Check abort signal again after receiving the chunk but before yielding it
                       if (abortController.signal.aborted) {
+                        logDebug(self.logger, 'Stream abort detected after chunk retrieval');
                         break;
                       }
                       yield nextResult.value;
                     }
                   }
+                  logDebug(self.logger, 'Streaming completion completed successfully', { provider, model: req.model });
                 } finally {
                   // Clean up the abort controller once the stream terminates or is aborted
                   activeControllers.delete(abortController);
@@ -183,9 +248,21 @@ export class UnifiedOrchestrator {
 
             const response = await adapter.generateCompletion(req, apiKey, abortController.signal);
             this.keyRegistry.flagSuccess(provider, apiKey);
+
+            // Log provider response for non-streaming (stage 3)
+            if (requestLog) {
+              requestLog.logProviderResponse(response, Date.now() - providerStartTime);
+            }
+
+            logDebug(this.logger, 'Completion execution succeeded', {
+              provider,
+              model: req.model,
+              usage: response?.usage || 'unknown',
+            });
             return response;
           } catch (error) {
             if (abortController.signal.aborted) {
+              logDebug(this.logger, 'Request aborted during adapter call exception handling');
               return {
                 error: {
                   code: 'request_cancelled',
@@ -198,17 +275,17 @@ export class UnifiedOrchestrator {
             const statusCode = error?.status || error?.statusCode || error?.response?.status || 500;
             this.keyRegistry.flagFailure(provider, apiKey, statusCode);
             const msg = `Attempt ${attempt} of ${retryLimit} for provider '${provider}' failed. Reason: ${error?.message || error}`;
-            if (this.logger) {
-              this.logger.warn(msg);
-            } else {
-              console.warn(msg);
-            }
+            logWarning(this.logger, msg);
           }
         }
 
         if (triggerFallback) continue;
 
         if (req.fallbackModel && !req.isFallback) {
+          logDebug(this.logger, 'Triggering fallback routing from retry exhaustion', {
+            originalModel: unifiedReq.model,
+            fallbackModel: req.fallbackModel,
+          });
           const resolved = resolveModel(req.fallbackModel, this.config.providers);
           if (resolved) {
             applyModelConfig(req, resolved);

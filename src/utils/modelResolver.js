@@ -120,6 +120,7 @@ export const applyModelConfig = (unifiedReq, resolved) => {
   // Apply model-level thinking defaults; these may be overridden later by header overrides
   if (modelConfig.thinking_supported) {
     unifiedReq.thinking_supported = true;
+    unifiedReq.thinkingEnabled = true;
     if (modelConfig.default_thinking_budget !== undefined) {
       unifiedReq.thinkingBudget = modelConfig.default_thinking_budget;
     }

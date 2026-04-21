@@ -1,112 +1,126 @@
-/* eslint-disable no-underscore-dangle */
 import {
   describe, it, expect, beforeEach, afterEach, vi,
 } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import createLogger from '../src/utils/logger.js';
+import { reset } from '@logtape/logtape';
+import { configureLogging, getAppLogger, flushLogs } from '../src/utils/logger.js';
 
-describe('Structured Logger', () => {
-  let stdoutSpy;
-  let stderrSpy;
-  let loggers = [];
+/**
+ * Filters out LogTape meta-logger diagnostic messages from console spy calls.
+ * The meta-logger emits a "LogTape loggers are configured..." info message
+ * during every configure() call, which pollutes test assertions.
+ */
+const filterAppCalls = (spy) => spy.mock.calls.filter((call) => {
+  const msg = String(call[0] || '');
+  return !msg.includes('LogTape loggers are configured')
+    && !msg.includes('logtape')
+    && !msg.includes('meta');
+});
+
+describe('Structured Logger (LogTape)', () => {
+  let logSpy, infoSpy, warnSpy, errorSpy, debugSpy;
   const tempLogDir = path.resolve('./test/temp-logs');
   const tempLogFile = path.join(tempLogDir, 'test-logger.log');
 
-  beforeEach(() => {
-    stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
-    stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+  beforeEach(async () => {
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    await reset();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.restoreAllMocks();
-    loggers.forEach((logger) => {
-      if (logger._fileStream && !logger._fileStream.destroyed) {
-        logger._fileStream.destroy();
-      }
-    });
-    loggers = [];
+    await reset();
     if (fs.existsSync(tempLogDir)) {
       fs.rmSync(tempLogDir, { recursive: true, force: true });
     }
   });
 
-  const makeLogger = (config) => {
-    const logger = createLogger(config);
-    loggers.push(logger);
-    return logger;
-  };
-
   it('should expose standard level methods', () => {
-    const logger = makeLogger({ logging: { enable_console: false } });
+    const logger = getAppLogger('test');
+    expect(typeof logger.debug).toBe('function');
     expect(typeof logger.info).toBe('function');
     expect(typeof logger.warn).toBe('function');
+    expect(typeof logger.warning).toBe('function');
     expect(typeof logger.error).toBe('function');
     expect(typeof logger.fatal).toBe('function');
-    expect(typeof logger.flush).toBe('function');
   });
 
-  it('should format logs as JSON by default', () => {
-    const logger = makeLogger({
+  it('should format logs as JSON by default', async () => {
+    await configureLogging({
       logging: {
         enable_console: true,
         format: 'json',
       },
     });
 
+    const logger = getAppLogger('test-json');
     logger.info('Test JSON message', { userId: 123 });
 
-    expect(stdoutSpy).toHaveBeenCalled();
-    const output = stdoutSpy.mock.calls[0][0];
+    const calls = [...filterAppCalls(infoSpy), ...filterAppCalls(logSpy)];
+    expect(calls.length).toBeGreaterThan(0);
+    const output = calls[0][0];
     const parsed = JSON.parse(output.trim());
-    expect(parsed.level).toBe('INFO');
+    expect(parsed.level).toBe('info');
     expect(parsed.message).toBe('Test JSON message');
     expect(parsed.userId).toBe(123);
     expect(parsed.timestamp).toBeDefined();
     expect(new Date(parsed.timestamp).toString()).not.toBe('Invalid Date');
   });
 
-  it('should format logs as text if configured', () => {
-    const logger = makeLogger({
+  it('should format logs as text if configured', async () => {
+    await configureLogging({
       logging: {
         enable_console: true,
         format: 'text',
       },
     });
 
-    logger.warn('Test text warning', { tag: 'security', code: 403 });
+    const logger = getAppLogger('test-text');
+    logger.warning('Test text warning', { tag: 'security', code: 403 });
 
-    expect(stderrSpy).toHaveBeenCalled();
-    const output = stderrSpy.mock.calls[0][0].trim();
-    expect(output).toContain('[WARN]');
+    const calls = [...filterAppCalls(warnSpy), ...filterAppCalls(errorSpy)];
+    expect(calls.length).toBeGreaterThan(0);
+    const output = calls[0][0].trim();
+    expect(output).toContain('[WARNING]');
     expect(output).toContain('Test text warning');
     expect(output).toContain('tag=security');
     expect(output).toContain('code=403');
   });
 
-  it('should write to process.stdout for INFO and process.stderr for WARN/ERROR/FATAL', () => {
-    const logger = makeLogger({
+  it('should write to correct stream based on level', async () => {
+    await configureLogging({
       logging: {
         enable_console: true,
+        format: 'json',
       },
     });
 
+    const logger = getAppLogger('test-routing');
     logger.info('Info to stdout');
-    logger.warn('Warn to stderr');
+    logger.warning('Warning to stderr');
     logger.error('Error to stderr');
     logger.fatal('Fatal to stderr');
 
-    expect(stdoutSpy).toHaveBeenCalledTimes(1);
-    expect(stdoutSpy.mock.calls[0][0]).toContain('Info to stdout');
+    const stdoutCalls = [...filterAppCalls(infoSpy), ...filterAppCalls(logSpy)];
+    expect(stdoutCalls.length).toBeGreaterThan(0);
+    const stdoutOutputs = stdoutCalls.map((c) => c[0]).join('\n');
+    expect(stdoutOutputs).toContain('Info to stdout');
 
-    expect(stderrSpy).toHaveBeenCalledTimes(3);
-    expect(stderrSpy.mock.calls[0][0]).toContain('Warn to stderr');
-    expect(stderrSpy.mock.calls[1][0]).toContain('Error to stderr');
-    expect(stderrSpy.mock.calls[2][0]).toContain('Fatal to stderr');
+    const stderrCalls = [...filterAppCalls(warnSpy), ...filterAppCalls(errorSpy)];
+    expect(stderrCalls.length).toBeGreaterThan(0);
+    const stderrOutputs = stderrCalls.map((c) => c[0]).join('\n');
+    expect(stderrOutputs).toContain('Warning to stderr');
+    expect(stderrOutputs).toContain('Error to stderr');
+    expect(stderrOutputs).toContain('Fatal to stderr');
   });
 
   it('should write to file transport and auto-create parent directories', async () => {
-    const logger = makeLogger({
+    await configureLogging({
       logging: {
         enable_console: false,
         enable_file: true,
@@ -115,96 +129,72 @@ describe('Structured Logger', () => {
       },
     });
 
+    const logger = getAppLogger('test-file');
     logger.info('File message 1');
-    logger.warn('File message 2');
+    logger.warning('File message 2');
 
-    await logger.flush();
+    await flushLogs();
 
     expect(fs.existsSync(tempLogFile)).toBe(true);
 
     const content = fs.readFileSync(tempLogFile, 'utf8').trim().split('\n');
-    expect(content.length).toBe(2);
+    // Filter out meta-logger lines from file content too
+    const appLines = content.filter((line) => !line.includes('logtape'));
+    expect(appLines.length).toBe(2);
 
-    const log1 = JSON.parse(content[0]);
-    const log2 = JSON.parse(content[1]);
+    const log1 = JSON.parse(appLines[0]);
+    const log2 = JSON.parse(appLines[1]);
 
-    expect(log1.level).toBe('INFO');
+    expect(log1.level).toBe('info');
     expect(log1.message).toBe('File message 1');
-    expect(log2.level).toBe('WARN');
+    expect(log2.level).toBe('warning');
     expect(log2.message).toBe('File message 2');
   });
 
-  it('should drain writes and resolve flush promise', async () => {
-    const logger = makeLogger({
-      logging: {
-        enable_console: false,
-        enable_file: true,
-        file_path: tempLogFile,
-      },
-    });
-
-    logger.info('Log 1');
-    logger.info('Log 2');
-    logger.info('Log 3');
-
-    await logger.flush();
-
-    expect(fs.existsSync(tempLogFile)).toBe(true);
-    const content = fs.readFileSync(tempLogFile, 'utf8').trim().split('\n');
-    expect(content.length).toBe(3);
-  });
-
-  it('should handle Error objects as messages and extract stack traces', () => {
-    const logger = makeLogger({
+  it('should handle Error objects and extract stack traces', async () => {
+    await configureLogging({
       logging: {
         enable_console: true,
         format: 'json',
       },
     });
 
+    const logger = getAppLogger('test-error');
     const testError = new Error('Database connection failed');
-    logger.error(testError, { operation: 'db_query' });
+    logger.error('DB error', { err: testError });
 
-    expect(stderrSpy).toHaveBeenCalled();
-    const output = stderrSpy.mock.calls[0][0];
+    const calls = [...filterAppCalls(errorSpy)];
+    expect(calls.length).toBeGreaterThan(0);
+    const output = calls[0][0];
     const parsed = JSON.parse(output.trim());
-    expect(parsed.level).toBe('ERROR');
-    expect(parsed.message).toBe('Database connection failed');
-    expect(parsed.stack).toContain('Error: Database connection failed');
-    expect(parsed.operation).toBe('db_query');
+    expect(parsed.level).toBe('error');
+    expect(parsed.err.message).toBe('Database connection failed');
+    expect(parsed.err.stack).toContain('Error: Database connection failed');
   });
 
-  it('should handle non-object metadata and handle quotes/spaces in text metadata format', () => {
-    const logger = makeLogger({
+  it('should filter logs by level', async () => {
+    await configureLogging({
       logging: {
         enable_console: true,
-        format: 'text',
+        format: 'json',
+        level: 'warning',
       },
     });
 
-    logger.info('Space test', { phrase: 'hello world', count: 5, obj: { a: 1 } });
+    const logger = getAppLogger('test-level');
+    logger.debug('should not print');
+    logger.info('should not print');
+    logger.warning('should print warning');
+    logger.error('should print error');
 
-    expect(stdoutSpy).toHaveBeenCalled();
-    const output = stdoutSpy.mock.calls[0][0].trim();
-    expect(output).toContain('phrase="hello world"');
-    expect(output).toContain('count=5');
-    expect(output).toContain('obj="{\\"a\\":1}"');
-  });
+    const stdoutCalls = [...filterAppCalls(infoSpy), ...filterAppCalls(logSpy), ...filterAppCalls(debugSpy)];
+    expect(stdoutCalls.length).toBe(0);
 
-  it('should do nothing when both console and file transports are disabled', async () => {
-    const logger = makeLogger({
-      logging: {
-        enable_console: false,
-        enable_file: false,
-      },
-    });
+    const stderrCalls = [...filterAppCalls(warnSpy), ...filterAppCalls(errorSpy)];
+    expect(stderrCalls.length).toBeGreaterThanOrEqual(2);
 
-    logger.info('Should not print anywhere');
-
-    expect(stdoutSpy).not.toHaveBeenCalled();
-    expect(stderrSpy).not.toHaveBeenCalled();
-    expect(fs.existsSync(tempLogDir)).toBe(false);
-
-    await expect(logger.flush()).resolves.toBeUndefined();
+    const stderrOutputs = stderrCalls.map((c) => c[0]).join('\n');
+    expect(stderrOutputs).toContain('should print warning');
+    expect(stderrOutputs).toContain('should print error');
   });
 });

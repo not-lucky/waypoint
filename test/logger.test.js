@@ -19,7 +19,8 @@ const filterAppCalls = (spy) => spy.mock.calls.filter((call) => {
 });
 
 describe('Structured Logger (LogTape)', () => {
-  let logSpy, infoSpy, warnSpy, errorSpy, debugSpy;
+  let logSpy; let infoSpy; let warnSpy; let errorSpy; let
+    debugSpy;
   const tempLogDir = path.resolve('./test/temp-logs');
   const tempLogFile = path.join(tempLogDir, 'test-logger.log');
 
@@ -187,7 +188,11 @@ describe('Structured Logger (LogTape)', () => {
     logger.warning('should print warning');
     logger.error('should print error');
 
-    const stdoutCalls = [...filterAppCalls(infoSpy), ...filterAppCalls(logSpy), ...filterAppCalls(debugSpy)];
+    const stdoutCalls = [
+      ...filterAppCalls(infoSpy),
+      ...filterAppCalls(logSpy),
+      ...filterAppCalls(debugSpy),
+    ];
     expect(stdoutCalls.length).toBe(0);
 
     const stderrCalls = [...filterAppCalls(warnSpy), ...filterAppCalls(errorSpy)];

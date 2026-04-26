@@ -5,14 +5,14 @@ import { getAppLogger } from '../utils/logger.js';
 
 const logtapeLogger = getAppLogger('config');
 
+// Safe wrappers around the dynamic logger to avoid runtime crashes
+// if a logger instance goes missing or is not fully initialized.
 function logDebug(customLogger, msg, meta) {
   if (customLogger && typeof customLogger.debug === 'function') {
     if (meta !== undefined) customLogger.debug(msg, meta);
     else customLogger.debug(msg);
-  } else {
-    if (meta !== undefined) logtapeLogger.debug(msg, meta);
-    else logtapeLogger.debug(msg);
-  }
+  } else if (meta !== undefined) logtapeLogger.debug(msg, meta);
+  else logtapeLogger.debug(msg);
 }
 
 function logWarning(customLogger, msg, meta) {
@@ -24,30 +24,24 @@ function logWarning(customLogger, msg, meta) {
       if (meta !== undefined) customLogger.warn(msg, meta);
       else customLogger.warn(msg);
     }
-  } else {
-    if (meta !== undefined) logtapeLogger.warning(msg, meta);
-    else logtapeLogger.warning(msg);
-  }
+  } else if (meta !== undefined) logtapeLogger.warning(msg, meta);
+  else logtapeLogger.warning(msg);
 }
 
 function logError(customLogger, msg, meta) {
   if (customLogger && typeof customLogger.error === 'function') {
     if (meta !== undefined) customLogger.error(msg, meta);
     else customLogger.error(msg);
-  } else {
-    if (meta !== undefined) logtapeLogger.error(msg, meta);
-    else logtapeLogger.error(msg);
-  }
+  } else if (meta !== undefined) logtapeLogger.error(msg, meta);
+  else logtapeLogger.error(msg);
 }
 
 function logFatal(customLogger, msg, meta) {
   if (customLogger && typeof customLogger.fatal === 'function') {
     if (meta !== undefined) customLogger.fatal(msg, meta);
     else customLogger.fatal(msg);
-  } else {
-    if (meta !== undefined) logtapeLogger.fatal(msg, meta);
-    else logtapeLogger.fatal(msg);
-  }
+  } else if (meta !== undefined) logtapeLogger.fatal(msg, meta);
+  else logtapeLogger.fatal(msg);
 }
 
 // Reserved provider names.
@@ -61,6 +55,8 @@ const VAR_REGEX = /\$\{([A-Za-z0-9_]+)\}/g;
 
 /**
  * Replaces all ${VAR} placeholders in a string with their process.env values.
+ * This is crucial for securely injecting API keys via Kubernetes secrets or Docker envs
+ * without hardcoding them in the YAML configuration.
  *
  * @param {string} str - The string containing placeholders.
  * @returns {string} The string with all placeholders resolved.
@@ -70,6 +66,7 @@ const replaceEnvVars = (str) => str.replace(VAR_REGEX, (_, varName) => process.e
 /**
  * Scans a string for environment variable placeholders and returns the name of
  * the first one that is missing or empty in the environment.
+ * Validates environmental dependencies before attempting connection.
  *
  * @param {string} str - The string to check.
  * @returns {string|null} The name of the missing env var, or null if all exist.
@@ -88,6 +85,8 @@ const getMissingEnvVar = (str) => {
 
 /**
  * Coerces a specific property of an object to an integer if it's a string of digits.
+ * YAML parsers sometimes interpret raw numerical environmental variables as strings,
+ * which breaks downstream Zod-style strict integer validators. This safely enforces types.
  *
  * @param {object} obj - The target object.
  * @param {string} key - The property key.
@@ -100,6 +99,11 @@ const coerceToInt = (obj, key) => {
   return obj;
 };
 
+/**
+ * Recursively freezes an object making it totally immutable.
+ * Used to freeze the loaded configuration to prevent any rogue components from
+ * intentionally or accidentally mutating global config state at runtime.
+ */
 export const deepFreeze = (obj) => {
   if (obj === null || typeof obj !== 'object') {
     return obj;
@@ -162,6 +166,8 @@ export const deepFreeze = (obj) => {
 
 /**
  * Compares critical structural gateway and logging configuration values.
+ * Hot-reloading cannot safely apply structural changes like port reassignment or 
+ * log file rotation without a process restart. This detects those scenarios.
  *
  * @param {object} oldConf - Previous configuration state.
  * @param {object} newConf - New configuration state.
@@ -194,6 +200,11 @@ const matchesModelId = (model, fallbackModelId) => (
   || (Array.isArray(model.aliases) && model.aliases.includes(fallbackModelId))
 );
 
+/**
+ * Complex semantic validation for model fallback mappings.
+ * Ensures that if model A falls back to model B, model B actually exists and is not
+ * model A (preventing infinite recursion loops at route time).
+ */
 const validateFallbackModel = (
   model,
   modelIndex,
@@ -255,6 +266,11 @@ const validateFallbackModel = (
   return false;
 };
 
+/**
+ * Exhaustive structural validation against the loaded YAML config.
+ * Fails fast by design. An invalid configuration shouldn't run, as it could 
+ * silently misroute requests or expose unintended permissions.
+ */
 export const validateConfig = (
   config,
   shouldExit = true,
@@ -276,6 +292,11 @@ export const validateConfig = (
   if (config.gateway.global_retry_limit !== undefined
     && !isPositiveInteger(config.gateway.global_retry_limit)) {
     logErrorAndExitOrThrow("Invalid 'gateway.global_retry_limit'. Must be a positive integer.", shouldExit, customLogger);
+  }
+
+  if (config.gateway.http_timeout_ms !== undefined
+    && !isPositiveInteger(config.gateway.http_timeout_ms)) {
+    logErrorAndExitOrThrow("Invalid 'gateway.http_timeout_ms'. Must be a positive integer.", shouldExit, customLogger);
   }
 
   if (config.gateway.cooldown !== undefined) {
@@ -598,7 +619,7 @@ export class ConfigLoader {
     // Coerce numeric properties immutably
     const coerced = ConfigLoader.coerceNumericProperties(interpolated);
 
-    // Call validateConfig with shouldExit = false
+    // Call validateConfig with shouldExit = false so hot reloads gracefully fail on invalid configs.
     validateConfig(coerced, false, reservedProviders, this.logger);
 
     return coerced;
@@ -616,6 +637,7 @@ export class ConfigLoader {
         gateway: [
           (g) => coerceToInt(g, 'port'),
           (g) => coerceToInt(g, 'global_retry_limit'),
+          (g) => coerceToInt(g, 'http_timeout_ms'),
           (g) => (g.cooldown ? {
             ...g,
             cooldown: coerceToInt(coerceToInt(g.cooldown, 'base_seconds'), 'max_seconds'),
@@ -699,7 +721,8 @@ export class ConfigLoader {
 
   /**
    * Starts the fs.watch process on the config file.
-   * Handles 'rename' event by closing the old watcher and re-initializing to address atomic saves.
+   * Handles 'rename' event by closing the old watcher and re-initializing to address atomic saves
+   * (e.g. vim/nano replacing the inode).
    */
   startWatcher(configPath, reservedProviders = RESERVED_PROVIDERS) {
     if (this.isWatching) {
@@ -767,7 +790,7 @@ export class ConfigLoader {
         const parsed = yaml.load(raw);
         const newConfig = deepFreeze(this.interpolateAndValidate(parsed, reservedProviders));
 
-        // Warn if port or other structural parameters changed.
+        // Warn if port or other structural parameters changed since we can't hot reload those.
         const structuralChanged = checkStructuralChanges(this.currentConfig, newConfig);
         if (structuralChanged) {
           const msg = 'WARNING: Structural configuration changed. A process restart is required to apply these changes.';

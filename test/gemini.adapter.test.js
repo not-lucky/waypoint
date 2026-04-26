@@ -1,4 +1,4 @@
-/* eslint-disable no-restricted-syntax, generator-star-spacing */
+/* eslint-disable no-restricted-syntax, max-len, generator-star-spacing */
 import {
   vi,
   describe,
@@ -6,41 +6,40 @@ import {
   expect,
   beforeEach,
 } from 'vitest';
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { generateText, streamText } from 'ai';
 import { GeminiAdapter } from '../src/adapters/GeminiAdapter.js';
 
-vi.mock('@ai-sdk/google', () => ({
-  createGoogleGenerativeAI: vi.fn(),
-}));
-
-vi.mock('ai', () => ({
-  generateText: vi.fn(),
-  streamText: vi.fn(),
-}));
-
 describe('GeminiAdapter Tests', () => {
-  const mockModelInstance = { mock: 'gemini-model' };
-  let mockGoogleProvider;
+  let mockFetch;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGoogleProvider = vi.fn().mockReturnValue(mockModelInstance);
-    createGoogleGenerativeAI.mockReturnValue(mockGoogleProvider);
+    mockFetch = vi.fn();
+    global.fetch = mockFetch;
   });
 
   it('assert: thought:true part + regular part -> message has content and reasoning_content populated separately', async () => {
     const adapter = new GeminiAdapter();
 
-    generateText.mockResolvedValue({
-      text: 'regular content text',
-      reasoning: 'my internal reasoning thoughts',
-      finishReason: 'stop',
-      usage: {
-        promptTokens: 10,
-        completionTokens: 20,
-        totalTokens: 30,
-      },
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: 'assistant',
+              content: 'regular content text',
+              reasoning_content: 'my internal reasoning thoughts',
+            },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 20,
+          total_tokens: 30,
+        },
+      }),
     });
 
     const req = {
@@ -53,19 +52,29 @@ describe('GeminiAdapter Tests', () => {
 
     const response = await adapter.generateCompletion(req, 'gemini-key');
 
-    expect(createGoogleGenerativeAI).toHaveBeenCalledWith({ apiKey: 'gemini-key' });
-    expect(mockGoogleProvider).toHaveBeenCalledWith('gemini-2.5-pro');
-    expect(generateText).toHaveBeenCalledWith({
-      model: mockModelInstance,
-      messages: req.messages,
-      providerOptions: {
-        google: {
-          thinkingConfig: {
-            thinkingBudget: 1024,
-          },
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+      expect.objectContaining({
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Authorization: 'Bearer gemini-key',
         },
-      },
-    });
+        body: JSON.stringify({
+          model: 'gemini-2.5-pro',
+          messages: [{ role: 'user', content: 'hello' }],
+          stream: false,
+          extra_body: {
+            google: {
+              thinking_config: {
+                thinking_level: 'low',
+                include_thoughts: true,
+              },
+            },
+          },
+        }),
+      }),
+    );
 
     expect(response.choices[0].message).toEqual({
       role: 'assistant',
@@ -77,10 +86,19 @@ describe('GeminiAdapter Tests', () => {
   it('assert: no thought parts -> reasoning_content is null/absent', async () => {
     const adapter = new GeminiAdapter();
 
-    generateText.mockResolvedValue({
-      text: 'regular content without thoughts',
-      finishReason: 'stop',
-      usage: {},
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        candidates: [
+          {
+            content: {
+              parts: [{ text: 'regular content without thoughts' }],
+            },
+            finishReason: 'STOP',
+            index: 0,
+          },
+        ],
+      }),
     });
 
     const req = {
@@ -141,15 +159,21 @@ describe('GeminiAdapter Tests', () => {
   it('assert: generateStream yields chunks correctly', async () => {
     const adapter = new GeminiAdapter();
 
-    const mockFullStream = {
-      async *[Symbol.asyncIterator]() {
-        yield { type: 'text-delta', text: 'hello' };
-        yield { type: 'finish', finishReason: 'stop' };
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode(
+          'data: {"candidates": [{"content": {"parts": [{"text": "hello"}]}}]}\n\n',
+        );
+        yield encoder.encode(
+          'data: {"candidates": [{"finishReason": "STOP"}]}\n\n',
+        );
       },
     };
 
-    streamText.mockReturnValue({
-      fullStream: mockFullStream,
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: mockBody,
     });
 
     const req = {
@@ -171,10 +195,11 @@ describe('GeminiAdapter Tests', () => {
   it('assert: thinkingEnabled true without thinkingBudget uses default thinkingBudget 2048', async () => {
     const adapter = new GeminiAdapter();
 
-    generateText.mockResolvedValue({
-      text: 'hello',
-      finishReason: 'stop',
-      usage: {},
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: 'hello' } }],
+      }),
     });
 
     const req = {
@@ -186,24 +211,22 @@ describe('GeminiAdapter Tests', () => {
 
     await adapter.generateCompletion(req, 'gemini-key');
 
-    expect(generateText).toHaveBeenLastCalledWith(expect.objectContaining({
-      providerOptions: {
-        google: {
-          thinkingConfig: {
-            thinkingBudget: 2048,
-          },
-        },
-      },
-    }));
+    expect(mockFetch).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        body: expect.stringContaining('"thinking_level":"medium"'),
+      }),
+    );
   });
 
   it('assert: thinking_supported true enables thinking option with default or configured budget', async () => {
     const adapter = new GeminiAdapter();
 
-    generateText.mockResolvedValue({
-      text: 'hello',
-      finishReason: 'stop',
-      usage: {},
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: 'hello' } }],
+      }),
     });
 
     const req = {
@@ -216,28 +239,28 @@ describe('GeminiAdapter Tests', () => {
 
     await adapter.generateCompletion(req, 'gemini-key');
 
-    expect(generateText).toHaveBeenLastCalledWith(expect.objectContaining({
-      providerOptions: {
-        google: {
-          thinkingConfig: {
-            thinkingBudget: 10240,
-          },
-        },
-      },
-    }));
+    expect(mockFetch).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        body: expect.stringContaining('"thinking_level":"high"'),
+      }),
+    );
   });
 
   it('assert: generateStream forwards thinking options and abortSignal correctly', async () => {
     const adapter = new GeminiAdapter();
 
-    const mockFullStream = {
-      async *[Symbol.asyncIterator]() {
-        yield { type: 'finish', finishReason: 'stop' };
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode('data: {"choices": [{"delta": {"content": "hello"}}]}\n\n');
+        yield encoder.encode('data: [DONE]\n\n');
       },
     };
 
-    streamText.mockReturnValue({
-      fullStream: mockFullStream,
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: mockBody,
     });
 
     const req = {
@@ -257,20 +280,27 @@ describe('GeminiAdapter Tests', () => {
       chunks.push(chunk);
     }
 
-    expect(streamText).toHaveBeenLastCalledWith({
-      model: mockModelInstance,
-      messages: [],
-      abortSignal: controller.signal,
-      temperature: 0.5,
-      maxTokens: 500,
-      providerOptions: {
-        google: {
-          thinkingConfig: {
-            thinkingBudget: 4096,
+    expect(mockFetch).toHaveBeenLastCalledWith(
+      'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+      expect.objectContaining({
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: 'gemini-2.5-pro',
+          messages: [],
+          stream: true,
+          extra_body: {
+            google: {
+              thinking_config: {
+                thinking_level: 'high',
+                include_thoughts: true,
+              },
+            },
           },
-        },
-      },
-    });
+          temperature: 0.5,
+          max_tokens: 500,
+        }),
+      }),
+    );
   });
 
   it('assert: generateCompletion forwards abortSignal correctly', async () => {
@@ -282,10 +312,88 @@ describe('GeminiAdapter Tests', () => {
     };
     const controller = new AbortController();
 
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        candidates: [{ content: { parts: [{ text: 'hello' }] } }],
+      }),
+    });
+
     await adapter.generateCompletion(req, 'gemini-key', controller.signal);
 
-    expect(generateText).toHaveBeenLastCalledWith(expect.objectContaining({
-      abortSignal: controller.signal,
-    }));
+    expect(mockFetch).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        signal: controller.signal,
+      }),
+    );
+  });
+
+  it('should parse and extract <thought> tags from generateCompletion (non-streaming)', async () => {
+    const adapter = new GeminiAdapter();
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: 'assistant',
+              content: '<thought>I am thinking about a response</thought>This is the final response text.',
+              reasoning_content: null,
+            },
+            finish_reason: 'stop',
+          },
+        ],
+      }),
+    });
+
+    const req = {
+      model: 'gemini/gemini-flash-lite-latest',
+      actualModelId: 'gemini-flash-lite-latest',
+      messages: [],
+      thinkingEnabled: true,
+    };
+
+    const response = await adapter.generateCompletion(req, 'gemini-key');
+    expect(response.choices[0].message.content).toBe('This is the final response text.');
+    expect(response.choices[0].message.reasoning_content).toBe('I am thinking about a response');
+  });
+
+  it('should parse and split <thought> tags across stream chunks in generateStream', async () => {
+    const adapter = new GeminiAdapter();
+
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode('data: {"choices": [{"delta": {"content": "<thought>think"}}]}\n\n');
+        yield encoder.encode('data: {"choices": [{"delta": {"content": "ing</thought>Hello"}}]}\n\n');
+        yield encoder.encode('data: [DONE]\n\n');
+      },
+    };
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: mockBody,
+    });
+
+    const req = {
+      model: 'gemini/gemini-flash-lite-latest',
+      actualModelId: 'gemini-flash-lite-latest',
+      messages: [],
+      thinkingEnabled: true,
+    };
+
+    const chunks = [];
+    for await (const chunk of adapter.generateStream(req, 'gemini-key')) {
+      chunks.push(chunk);
+    }
+
+    const nonTrivialChunks = chunks.filter((c) => c.choices[0]?.delta.content || c.choices[0]?.delta.reasoning_content);
+
+    expect(nonTrivialChunks).toHaveLength(3);
+    expect(nonTrivialChunks[0].choices[0].delta).toEqual({ content: null, reasoning_content: 'think' });
+    expect(nonTrivialChunks[1].choices[0].delta).toEqual({ content: null, reasoning_content: 'ing' });
+    expect(nonTrivialChunks[2].choices[0].delta).toEqual({ content: 'Hello', reasoning_content: null });
   });
 });

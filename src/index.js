@@ -13,53 +13,70 @@ import { rateLimiter } from './middleware/rateLimiter.js';
 import { configureLogging, getAppLogger } from './utils/logger.js';
 import { registerLifecycle } from './lifecycle.js';
 
+/**
+ * Entry point for the Waypoint API gateway.
+ * We initialize the application by loading the configuration first because all downstream
+ * services (logging, registries, adapters) depend on the configuration state.
+ * This fail-fast approach ensures we don't start the server in an invalid or partially-configured state.
+ */
+
 // Load configuration
 const configLoader = new ConfigLoader();
 const config = configLoader.loadConfig();
+
+// Initialize logging early so we can capture startup events and failures properly
 await configureLogging(config);
 const logger = getAppLogger('server');
 logger.debug('Configuration loaded successfully');
 
-// Instantiate registry, factory, and orchestrator
+// Instantiate core domain services:
+// - KeyRegistry manages API key pools, rotations, and cooldowns.
+// - ProviderFactory instantiates the right adapter per provider.
+// - UnifiedOrchestrator glues them together, executing the core retry and fallback logic.
 const keyRegistry = new KeyRegistry(config);
 const providerFactory = new ProviderFactory(config);
 const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config, logger);
 
+// Controllers act as protocol translation boundaries. They parse incoming requests 
+// for specific formats (OpenAI vs Anthropic) into a unified internal representation.
 const openAIController = new OpenAIController(orchestrator);
 const anthropicController = new AnthropicController(orchestrator);
 
 const app = express();
 const { port } = config.gateway;
 
-// Retrieve CORS configuration allowed origins.
-// Defaults to ['*'] (allow all) if not configured.
+/**
+ * CORS configuration: 
+ * We extract allowed origins from the configuration to support both public
+ * APIs (wildcard '*') and restricted enterprise deployments (specific arrays).
+ */
 const allowedOrigins = config.gateway.cors?.allowed_origins || ['*'];
-
-// If the allowed origins list contains the wildcard '*', we pass '*' as a
-// string to the cors middleware. The cors middleware treats a string '*'
-// as a wildcard allowing any request origin.
-// Otherwise, we pass the array of specific allowed origins.
 const corsOrigin = allowedOrigins.includes('*') ? '*' : allowedOrigins;
 logger.debug('CORS configuration applied', { corsOrigin });
 
-// Apply global CORS middleware before all routes to ensure preflights
-// and headers are handled uniformly.
+// Apply global CORS middleware before all routes to ensure preflights and headers are handled uniformly
 app.use(cors({ origin: corsOrigin }));
 
-// Apply global body parsing middleware before all route handlers and
-// router-level middlewares.
-// The limit constraint is enforced dynamically from the gateway config,
-// defaulting to '10mb'. This ensures that oversized requests are
-// rejected with a 413 error code prior to processing.
+/**
+ * Global Body Parsing:
+ * We parse JSON payloads globally but strictly enforce a configurable maximum payload size.
+ * This is crucial to prevent memory exhaustion (OOM) attacks from malicious clients sending massive payloads.
+ * Large payloads are rejected at the edge before hitting any expensive schema validation logic.
+ */
 const maxPayloadSize = config.gateway.max_payload_size || '10mb';
 logger.debug(`Body parsing middleware configured with limit: ${maxPayloadSize}`);
 app.use(express.json({ limit: maxPayloadSize }));
 
+// Auth middleware verifies client tokens. By abstracting it here, we ensure
+// consistent security constraints across all exposed endpoints.
 const auth = authMiddleware(configLoader);
 
-// Health Check Endpoint (Section 6E specification)
-// Exposes key pool status metrics, routing configurations, and app uptime.
-// Returns a degraded status if any configured keys are cooling down or exhausted.
+/**
+ * Health Check Endpoint (Section 6E specification)
+ * Exposes key pool status metrics, routing configurations, and app uptime.
+ * We require auth here because health check data can leak internal cluster 
+ * topologies and rate limit exhaustion states, which could be exploited.
+ */
 app.get('/health', auth, (req, res) => {
   const { status, providers, routing } = keyRegistry.getHealthStats();
   res.json({
@@ -75,9 +92,9 @@ let lastConfig = null;
 
 /**
  * Extracts a deduplicated list of all model IDs and aliases from the current configuration.
- * Each identifier is prefixed with its provider name in "provider/model" format so that
- * clients can pass them back unambiguously to resolveModel().
- * @returns {string[]} List of unique model identifiers in provider/model format.
+ * We cache this extraction because recalculating it on every `/models` request is unnecessary
+ * overhead when the configuration hasn't changed.
+ * The output is prefixed (e.g. "provider/model") to eliminate cross-provider ambiguity when routing.
  */
 const getUniqueModels = () => {
   const currentConfig = configLoader.loadConfig();
@@ -103,23 +120,23 @@ const getUniqueModels = () => {
   return cachedUniqueModels;
 };
 
-// OpenAI Router
+// ==========================================
+// OpenAI Protocol Router
+// ==========================================
+// We encapsulate the OpenAI routes into their own express.Router() to easily
+// apply auth and rate limiting logic specific to this path.
 const openaiRouter = express.Router();
 openaiRouter.use(auth);
 openaiRouter.use(rateLimiter);
 
-// GET /openai/models lists all configured models and aliases across all providers
+// GET /openai/models lists all configured models mapping them to standard OpenAI schemas.
 openaiRouter.get('/models', (req, res) => {
-  // Map unique model IDs to OpenAI compatible model object structures.
   const data = getUniqueModels().map((id) => ({
     id,
     object: 'model',
     owned_by: 'waypoint',
   }));
-  res.json({
-    object: 'list',
-    data,
-  });
+  res.json({ object: 'list', data });
 });
 
 openaiRouter.post(
@@ -128,29 +145,29 @@ openaiRouter.post(
   (req, res) => openAIController.handleCompletion(req, res),
 );
 
-// We mount the specific subpath `/openai/v1` BEFORE `/openai`.
-// Express matches prefixes sequentially; putting `/openai` first would match
-// `/openai/v1/chat/completions` as `/openai` base with a suffix of `/v1/chat/completions`,
-// leading to 404 errors.
+/**
+ * We mount `/openai/v1` BEFORE `/openai`. 
+ * Express evaluates prefixes sequentially. If we mounted `/openai` first, it would 
+ * capture `/openai/v1/...` requests and strip the prefix incorrectly, causing 404s.
+ */
 logger.debug('Mounting OpenAI routes at /openai/v1 and /openai');
 app.use(['/openai/v1', '/openai'], openaiRouter);
 
-// Anthropic Router
+
+// ==========================================
+// Anthropic Protocol Router
+// ==========================================
 const anthropicRouter = express.Router();
 anthropicRouter.use(auth);
 anthropicRouter.use(rateLimiter);
 
-// GET /anthropic/models lists all configured models and aliases across all providers
+// GET /anthropic/models lists models mapped to standard Anthropic schemas.
 anthropicRouter.get('/models', (req, res) => {
-  // Map unique model IDs to Anthropic compatible model object structures.
   const data = getUniqueModels().map((id) => ({
     type: 'model',
     id,
   }));
-  res.json({
-    type: 'list',
-    data,
-  });
+  res.json({ type: 'list', data });
 });
 
 anthropicRouter.post(
@@ -163,7 +180,12 @@ anthropicRouter.post(
 logger.debug('Mounting Anthropic routes at /anthropic/v1 and /anthropic');
 app.use(['/anthropic/v1', '/anthropic'], anthropicRouter);
 
-// Global fallback error handler to prevent unhandled exceptions from leaking raw HTML
+/**
+ * Global Fallback Error Handler:
+ * Prevents unhandled exceptions from leaking raw HTML or stack traces to the client.
+ * This ensures the API strictly conforms to JSON output, even during catastrophic failures,
+ * maintaining contract stability for downstream parsers.
+ */
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   logger.error('Unhandled express exception:', err);
@@ -188,7 +210,7 @@ const server = app.listen(port, () => {
   logger.info(`Waypoint listening on port ${port}`);
 });
 
-// Graceful shutdown
+// Register graceful shutdown to cleanly drain connections and free resources during scaling events.
 registerLifecycle({
   server,
   configLoader,

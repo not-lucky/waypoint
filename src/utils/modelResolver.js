@@ -6,6 +6,8 @@ export const THINKING_BUDGETS = { low: 512, medium: 2048, high: 8192 };
 
 /**
  * Finds a model entry in a provider's model list by id, alias, or actual_model_id.
+ * This helper isolates the mapping logic to allow flexible addressing of models,
+ * accommodating variations across API clients, fallback mappings, and internal IDs.
  *
  * @param {string} modelPart - The model identifier to search for.
  * @param {Array} models - The provider's configured models array.
@@ -27,13 +29,17 @@ const findModelInProvider = (modelPart, models) => {
 
 // WeakMap resolution cache to hold resolved models. Keyed by the configuration object
 // reference (providersConfig). WeakMap allows the cached values to be garbage collected
-// when config reloads discard the old config reference.
+// when config reloads discard the old config reference, preventing memory leaks while 
+// maintaining high throughput lookup performance for identical subsequent requests.
 const resolutionCache = new WeakMap();
 
 /**
  * Resolves the correct model configuration from the providers configuration object.
  * Parses modelName (e.g. "openai/gpt-4o" or "pro") and matches it against
  * configured models, aliases, or actual_model_ids.
+ *
+ * By caching this resolution operation, we significantly decrease the latency footprint
+ * in high-concurrency environments since model resolution happens on every single request.
  *
  * @param {string} modelName - The identifier of the model to resolve.
  * @param {Object} providersConfig - The providers section of the loaded configuration.
@@ -59,7 +65,8 @@ export const resolveModel = (modelName, providersConfig = {}) => {
 
   let resolved = null;
 
-  // Prefixed format: "provider/model-id"
+  // Prefixed format: "provider/model-id" 
+  // Forces strict routing bypassing default ambiguity resolution.
   if (modelName.includes('/')) {
     const [providerPart, ...rest] = modelName.split('/');
     const cleanProvider = providerPart.trim();
@@ -132,6 +139,9 @@ export const applyModelConfig = (unifiedReq, resolved) => {
  * Applies X-Gateway-Thinking-Level and X-Gateway-Temperature header overrides
  * to the unified request, then returns a sanitized copy of the raw request
  * with those headers removed to prevent double-processing by the orchestrator.
+ *
+ * Isolating configuration to custom headers allows upstream clients strict behavioral
+ * manipulation independent of static yaml defaults. 
  *
  * @param {Object} unifiedReq - The request object to mutate with overrides.
  * @param {Object} rawReq - The raw Express request.

@@ -403,6 +403,54 @@ describe('AnthropicController Edge Case Tests', () => {
         },
       });
     });
+
+    it('should parse and translate success response containing <thought> tags in content field (fallback)', async () => {
+      mockOrchestrator.executeCompletion.mockResolvedValue({
+        id: 'waypoint-789',
+        object: 'chat.completion',
+        created: 123456,
+        model: 'gemini/gemini-2.5-pro',
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: 'assistant',
+              content: '<thought>thinking inside tags</thought>actual visible response',
+              reasoning_content: null,
+            },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: {
+          prompt_tokens: 5,
+          completion_tokens: 15,
+          total_tokens: 20,
+        },
+      });
+
+      const controller = new AnthropicController(mockOrchestrator);
+      const req = { body: { model: 'gemini/gemini-2.5-pro' }, headers: {} };
+      const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+
+      await controller.handleCompletion(req, res);
+
+      expect(res.json).toHaveBeenCalledWith({
+        id: 'waypoint-789',
+        type: 'message',
+        role: 'assistant',
+        model: 'gemini/gemini-2.5-pro',
+        content: [
+          { type: 'thinking', thinking: 'thinking inside tags' },
+          { type: 'text', text: 'actual visible response' },
+        ],
+        stop_reason: 'end_turn',
+        stop_sequence: null,
+        usage: {
+          input_tokens: 5,
+          output_tokens: 15,
+        },
+      });
+    });
   });
 
   describe('Error Propagation', () => {

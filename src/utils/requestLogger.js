@@ -6,14 +6,53 @@ import { getAppLogger } from './logger.js';
 const logger = getAppLogger('request-logger');
 
 /**
+ * Safely sanitizes a URL by removing sensitive credential parameters (e.g. key).
+ * Prevents credentials from leaking into debugging logs or file storage.
+ * @param {string} urlString - Raw URL string.
+ * @returns {string} Sanitized URL string.
+ */
+export const sanitizeUrl = (urlString) => {
+  if (!urlString || typeof urlString !== 'string') return '';
+  try {
+    const url = new URL(urlString);
+    url.searchParams.delete('key');
+    return url.toString();
+  } catch (e) {
+    return urlString.replace(/[?&]key=[^&]*/g, '');
+  }
+};
+
+/**
+ * Serializes standard Headers object (from fetch Response) to a standard object.
+ * Resolves incompatibilities between native Fetch Headers representation and standard JSON format.
+ * @param {Headers|Object} headers - The Headers object or plain object.
+ * @returns {Object} Plain object representing headers.
+ */
+export const serializeHeaders = (headers) => {
+  if (!headers) return {};
+  if (typeof headers.forEach === 'function') {
+    const obj = {};
+    headers.forEach((v, k) => {
+      obj[k] = v;
+    });
+    return obj;
+  }
+  if (typeof headers.entries === 'function') {
+    return Object.fromEntries(headers.entries());
+  }
+  return { ...headers };
+};
+
+/**
  * Generates a short random ID for request folder naming.
+ * Provides a unique collision-free directory footprint for concurrent logged requests.
  * @returns {string} 6-character hex string.
  */
 const shortId = () => Math.random().toString(16).slice(2, 8);
 
 /**
  * Converts an ISO timestamp to a filesystem-safe string.
- * Replaces colons with dashes (e.g., "2026-06-06T10-19-30.123Z").
+ * Replaces colons with dashes (e.g., "2026-06-06T10-19-30.123Z") so logs can be exported natively to Windows disks.
  * @param {string} iso - ISO 8601 timestamp.
  * @returns {string} Filesystem-safe timestamp.
  */
@@ -21,7 +60,7 @@ const safeTimestamp = (iso) => iso.replace(/:/g, '-');
 
 /**
  * Redacts sensitive headers from a headers object.
- * Masks authorization, x-api-key, and similar auth headers.
+ * Masks authorization, x-api-key, and similar auth headers to adhere to basic PII and credential safety standards.
  * @param {Object} headers - Raw HTTP headers.
  * @returns {Object} Copy with sensitive values replaced by "[REDACTED]".
  */
@@ -29,46 +68,38 @@ const redactHeaders = (headers) => {
   if (!headers || typeof headers !== 'object') return {};
   const redacted = { ...headers };
   const sensitiveKeys = ['authorization', 'x-api-key', 'proxy-authorization'];
-  for (const key of sensitiveKeys) {
+  sensitiveKeys.forEach((key) => {
     if (redacted[key]) {
       redacted[key] = '[REDACTED]';
     }
-  }
+  });
   return redacted;
 };
 
 /**
- * Masks an API key to show only the first 4 characters.
- * @param {string} key - The API key.
- * @returns {string} Masked key (e.g., "AIza...***").
- */
-const maskApiKey = (key) => {
-  if (!key || typeof key !== 'string') return '***';
-  if (key.length <= 4) return '***';
-  return `${key.slice(0, 4)}...***`;
-};
-
-/**
  * Writes JSON data to a file asynchronously.
- * Creates parent directories if needed.
+ * Offloads heavy JSON serialization and IO waiting from the main thread event loop.
  * @param {string} filePath - Absolute path to write to.
  * @param {*} data - Data to JSON-stringify and write.
  */
 const writeJsonFile = async (filePath, data) => {
   try {
-    await fsp.writeFile(filePath, JSON.stringify(data, null, 2) + '\n', 'utf8');
+    await fsp.writeFile(filePath, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
   } catch (err) {
     logger.error('Failed to write request log file', { filePath, error: err.message });
   }
 };
 
-/** No-op stub returned when request logging is disabled. */
+/** 
+ * No-op stub returned when request logging is disabled.
+ * The null object pattern prevents massive nested if checks in downstream operations.
+ */
 const NOOP_LOG = Object.freeze({
   logProviderRequest() {},
   logProviderResponse() {},
   logClientResponse() {},
   appendStreamEvent() {},
-  async finalize() {},
+  finalize() { return Promise.resolve(); },
   id: null,
   dir: null,
 });
@@ -76,6 +107,7 @@ const NOOP_LOG = Object.freeze({
 /**
  * Per-request log context. Created by createRequestLog().
  * Each instance manages a timestamped folder containing the 5 debug log files.
+ * Tracks the complete lifecycle of a single proxy event across multiple asynchronous boundaries.
  */
 class RequestLog {
   /**
@@ -88,45 +120,31 @@ class RequestLog {
     this.id = id;
     this.startTime = startTime;
     /** @type {Promise[]} Pending write operations to await on finalize. */
-    this._pendingWrites = [];
+    this.pendingWrites = [];
     /** @type {string[]} Buffered stream event lines to flush periodically. */
-    this._streamBuffer = [];
-    this._streamFlushTimer = null;
-    this._streamFilePath = path.join(dir, '05_event_stream.jsonl');
-    this._finalized = false;
+    this.streamBuffer = [];
+    this.streamFlushTimer = null;
+    this.streamFilePath = path.join(dir, '05_event_stream.jsonl');
+    this.finalized = false;
   }
 
   /**
    * Logs the provider request (stage 2).
-   * Called from the orchestrator after key selection and model resolution.
    *
-   * @param {Object} unifiedReq - The unified request being sent upstream.
-   * @param {string} [apiKey] - The selected API key (will be masked).
+   * @param {string} url - The sanitized request URL sent upstream.
+   * @param {Object} headers - The response headers received from the provider.
+   * @param {Object} body - The payload sent to the provider.
    */
-  logProviderRequest(unifiedReq, apiKey) {
-    if (this._finalized) return;
+  logProviderRequest(url, headers, body) {
+    if (this.finalized) return;
     const data = {
       timestamp: new Date().toISOString(),
-      provider: unifiedReq.provider,
-      model: unifiedReq.actualModelId,
-      stream: unifiedReq.stream || false,
-      apiKeyPrefix: maskApiKey(apiKey),
-      unifiedRequest: {
-        model: unifiedReq.model,
-        actualModelId: unifiedReq.actualModelId,
-        provider: unifiedReq.provider,
-        messagesCount: unifiedReq.messages?.length || 0,
-        temperature: unifiedReq.temperature,
-        maxTokens: unifiedReq.maxTokens,
-        stream: unifiedReq.stream,
-        thinkingEnabled: unifiedReq.thinkingEnabled,
-        thinkingBudget: unifiedReq.thinkingBudget,
-        isFallback: unifiedReq.isFallback,
-        fallbackModel: unifiedReq.fallbackModel,
-      },
+      url,
+      headers,
+      body,
     };
     const p = writeJsonFile(path.join(this.dir, '02_provider_request.json'), data);
-    this._pendingWrites.push(p);
+    this.pendingWrites.push(p);
   }
 
   /**
@@ -137,7 +155,7 @@ class RequestLog {
    * @param {number} durationMs - Time in ms from provider request to response.
    */
   logProviderResponse(response, durationMs) {
-    if (this._finalized) return;
+    if (this.finalized) return;
     const isStream = response && typeof response[Symbol.asyncIterator] === 'function';
     const data = {
       timestamp: new Date().toISOString(),
@@ -145,6 +163,7 @@ class RequestLog {
       _streamed: isStream,
     };
 
+    // Keep the file small if we are streaming, stream contents go to a separate jsonl
     if (isStream) {
       data.note = 'Streaming response — see 05_event_stream.jsonl for chunks';
     } else {
@@ -152,7 +171,7 @@ class RequestLog {
     }
 
     const p = writeJsonFile(path.join(this.dir, '03_provider_response.json'), data);
-    this._pendingWrites.push(p);
+    this.pendingWrites.push(p);
   }
 
   /**
@@ -163,7 +182,7 @@ class RequestLog {
    * @param {Object} body - The response body sent (or summary for streams).
    */
   logClientResponse(statusCode, body) {
-    if (this._finalized) return;
+    if (this.finalized) return;
     const data = {
       timestamp: new Date().toISOString(),
       statusCode,
@@ -171,28 +190,30 @@ class RequestLog {
       response: body,
     };
     const p = writeJsonFile(path.join(this.dir, '04_client_response.json'), data);
-    this._pendingWrites.push(p);
+    this.pendingWrites.push(p);
   }
 
   /**
    * Appends a single SSE event to the event stream log (stage 5).
    * Buffers events and flushes periodically for performance.
+   * This prevents high I/O overhead locking up the event loop during rapid streaming.
    *
-   * @param {"provider" | "client"} direction - Whether this event is from the provider or to the client.
+   * @param {"provider" | "client"} direction - Whether this event is from
+   * the provider or to the client.
    * @param {*} data - The event data (chunk object or raw SSE string).
    */
   appendStreamEvent(direction, data) {
-    if (this._finalized) return;
+    if (this.finalized) return;
     const line = JSON.stringify({
       direction,
       timestamp: new Date().toISOString(),
       data,
     });
-    this._streamBuffer.push(line);
+    this.streamBuffer.push(line);
 
     // Flush every 20 events to balance write frequency and memory
-    if (this._streamBuffer.length >= 20) {
-      this._flushStreamBuffer();
+    if (this.streamBuffer.length >= 20) {
+      this.flushStreamBuffer();
     }
   }
 
@@ -200,28 +221,29 @@ class RequestLog {
    * Flushes the stream event buffer to disk.
    * @private
    */
-  _flushStreamBuffer() {
-    if (this._streamBuffer.length === 0) return;
-    const lines = this._streamBuffer.join('\n') + '\n';
-    this._streamBuffer = [];
-    const p = fsp.appendFile(this._streamFilePath, lines, 'utf8').catch((err) => {
+  flushStreamBuffer() {
+    if (this.streamBuffer.length === 0) return;
+    const lines = `${this.streamBuffer.join('\n')}\n`;
+    this.streamBuffer = [];
+    const p = fsp.appendFile(this.streamFilePath, lines, 'utf8').catch((err) => {
       logger.error('Failed to flush stream event buffer', { error: err.message });
     });
-    this._pendingWrites.push(p);
+    this.pendingWrites.push(p);
   }
 
   /**
    * Finalizes the request log by flushing all pending writes.
-   * Must be called before the response is fully sent.
+   * Must be called before the response is fully sent to guarantee logs are 
+   * finalized synchronously with API closure.
    */
   async finalize() {
-    if (this._finalized) return;
-    this._finalized = true;
+    if (this.finalized) return;
+    this.finalized = true;
     // Flush any remaining stream events
-    this._flushStreamBuffer();
+    this.flushStreamBuffer();
     // Wait for all pending async writes to complete
-    await Promise.all(this._pendingWrites);
-    this._pendingWrites = [];
+    await Promise.all(this.pendingWrites);
+    this.pendingWrites = [];
     logger.debug('Request log finalized', { dir: this.dir });
   }
 }
@@ -266,7 +288,7 @@ export function createRequestLog(req, config) {
     body: req.body || {},
   };
   const p = writeJsonFile(path.join(dir, '01_client_request.json'), clientReqData);
-  reqLog._pendingWrites.push(p);
+  reqLog.pendingWrites.push(p);
 
   logger.debug('Request log created', { dir, id });
   return reqLog;

@@ -4,15 +4,32 @@ import { flushLogs } from './utils/logger.js';
 
 let isTearingDown = false;
 
+// Store listeners globally so they survive module cache resets during unit/integration tests
+// This is critical for preventing memory leaks and duplicate handlers during test suite runs
+global.waypointSigint = global.waypointSigint || null;
+global.waypointSigterm = global.waypointSigterm || null;
+
 /**
  * Resets the in-progress teardown state. Primarily used for unit testing.
+ * Testing environments need to simulate start/stop lifecycles without actually
+ * killing the host process. This resets the module state cleanly.
  */
 export function resetLifecycleState() {
   isTearingDown = false;
+  if (global.waypointSigint) {
+    process.off('SIGINT', global.waypointSigint);
+    global.waypointSigint = null;
+  }
+  if (global.waypointSigterm) {
+    process.off('SIGTERM', global.waypointSigterm);
+    global.waypointSigterm = null;
+  }
 }
 
 /**
  * Initiates the graceful teardown sequence in the exact order specified in Section 8.
+ * A structured teardown is essential to prevent dropped client connections, orphaned 
+ * resources, and corrupted log files when the process receives termination signals (e.g. from Kubernetes).
  *
  * @param {Object} params
  * @param {Object} params.server - Node HTTP Server instance
@@ -28,6 +45,7 @@ export async function teardown({
   logger,
 }) {
   // Prevent duplicate teardown invocations if multiple signals are received rapidly.
+  // This guarantees teardown idempotency.
   if (isTearingDown) return;
   isTearingDown = true;
 
@@ -37,6 +55,7 @@ export async function teardown({
 
   // Register a safety fallback timer. If the server connections fail to drain or
   // logger flush hangs for more than 10 seconds, we forcefully exit with code 1.
+  // This prevents the application from hanging indefinitely in a zombie state during scaling down.
   const safetyTimeout = setTimeout(async () => {
     if (logger && typeof logger.fatal === 'function') {
       logger.fatal('Could not close connections in time, forcefully shutting down');
@@ -76,6 +95,7 @@ export async function teardown({
     // 2. abort all active AbortControllers (from global Set)
     // Aborting in-flight streams will cause their connection handlers to complete and close,
     // which in turn allows the server.close() callback to fire.
+    // If we didn't do this, long-polling SSE streams would keep the server alive forever.
     if (logger && typeof logger.debug === 'function') {
       logger.debug(`Graceful shutdown: aborting ${activeControllers.size} active connections`);
     }
@@ -127,6 +147,7 @@ export async function teardown({
     clearTimeout(safetyTimeout);
 
     // 6. flushLogs() - write buffered logs to disk using LogTape
+    // Log flushing must happen last to ensure all teardown steps are successfully recorded.
     if (logger && typeof logger.debug === 'function') {
       logger.debug('Graceful shutdown: flushing logs and shutting down logging system');
     }
@@ -160,6 +181,8 @@ export async function teardown({
 
 /**
  * Registers SIGINT and SIGTERM lifecycle hooks.
+ * These listeners intercept OS termination signals allowing us to gracefully
+ * tear down before the OS forcefully terminates the process.
  *
  * @param {Object} params
  * @param {Object} params.server - Node HTTP Server instance
@@ -173,6 +196,13 @@ export function registerLifecycle({
   keyRegistry,
   logger,
 }) {
+  if (global.waypointSigint) {
+    process.off('SIGINT', global.waypointSigint);
+  }
+  if (global.waypointSigterm) {
+    process.off('SIGTERM', global.waypointSigterm);
+  }
+
   const handleSignal = (signal) => {
     if (logger && typeof logger.info === 'function') {
       logger.info(`Received ${signal}.`);
@@ -185,6 +215,9 @@ export function registerLifecycle({
     });
   };
 
-  process.on('SIGINT', () => handleSignal('SIGINT'));
-  process.on('SIGTERM', () => handleSignal('SIGTERM'));
+  global.waypointSigint = () => handleSignal('SIGINT');
+  global.waypointSigterm = () => handleSignal('SIGTERM');
+
+  process.on('SIGINT', global.waypointSigint);
+  process.on('SIGTERM', global.waypointSigterm);
 }

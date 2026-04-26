@@ -1,4 +1,4 @@
-/* eslint-disable no-restricted-syntax, generator-star-spacing */
+/* eslint-disable no-restricted-syntax, max-len, generator-star-spacing */
 import {
   vi,
   describe,
@@ -6,33 +6,15 @@ import {
   expect,
   beforeEach,
 } from 'vitest';
-import { createAnthropic } from '@ai-sdk/anthropic';
-import { generateText, streamText } from 'ai';
 import { AnthropicAdapter } from '../src/adapters/AnthropicAdapter.js';
 
-vi.mock('@ai-sdk/anthropic', () => ({
-  createAnthropic: vi.fn(),
-}));
-
-vi.mock('ai', () => ({
-  generateText: vi.fn(),
-  streamText: vi.fn(),
-}));
-
 describe('AnthropicAdapter Tests', () => {
-  const mockModelInstance = { mock: 'anthropic-model' };
-  let mockAnthropicProvider;
+  let mockFetch;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockAnthropicProvider = vi.fn().mockReturnValue(mockModelInstance);
-    createAnthropic.mockReturnValue(mockAnthropicProvider);
-
-    generateText.mockResolvedValue({
-      text: 'hello',
-      finishReason: 'stop',
-      usage: {},
-    });
+    mockFetch = vi.fn();
+    global.fetch = mockFetch;
   });
 
   it('assert: constructed without baseUrl -> Anthropic client uses default endpoint', async () => {
@@ -43,11 +25,29 @@ describe('AnthropicAdapter Tests', () => {
       messages: [],
     };
 
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: 'msg_123',
+        content: [{ type: 'text', text: 'hello' }],
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 10, output_tokens: 20 },
+      }),
+    });
+
     await adapter.generateCompletion(req, 'key-default');
 
-    expect(createAnthropic).toHaveBeenCalledWith({
-      apiKey: 'key-default',
-    });
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://api.anthropic.com/v1/messages',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'x-api-key': 'key-default',
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
+        }),
+      }),
+    );
   });
 
   it('assert: constructed with baseUrl -> Anthropic client receives that baseURL option', async () => {
@@ -59,26 +59,47 @@ describe('AnthropicAdapter Tests', () => {
       messages: [],
     };
 
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: 'msg_123',
+        content: [{ type: 'text', text: 'hello' }],
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 10, output_tokens: 20 },
+      }),
+    });
+
     await adapter.generateCompletion(req, 'key-custom');
 
-    expect(createAnthropic).toHaveBeenCalledWith({
-      apiKey: 'key-custom',
-      baseURL: customUrl,
-    });
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://custom.anthropic.api/v1/messages',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'x-api-key': 'key-custom',
+        }),
+      }),
+    );
   });
 
   it('assert: mock response with thinking block -> NormalizedResponse.choices[0].message.reasoning_content populated', async () => {
     const adapter = new AnthropicAdapter();
 
-    generateText.mockResolvedValue({
-      text: 'final structured answer',
-      reasoning: 'thinking about the answer',
-      finishReason: 'stop',
-      usage: {
-        promptTokens: 20,
-        completionTokens: 80,
-        totalTokens: 100,
-      },
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: 'msg_123',
+        model: 'claude-3-5-sonnet',
+        content: [
+          { type: 'thinking', thinking: 'thinking about the answer' },
+          { type: 'text', text: 'final structured answer' },
+        ],
+        stop_reason: 'end_turn',
+        usage: {
+          input_tokens: 20,
+          output_tokens: 80,
+        },
+      }),
     });
 
     const req = {
@@ -91,18 +112,21 @@ describe('AnthropicAdapter Tests', () => {
 
     const response = await adapter.generateCompletion(req, 'anthropic-key');
 
-    expect(generateText).toHaveBeenCalledWith({
-      model: mockModelInstance,
-      messages: req.messages,
-      providerOptions: {
-        anthropic: {
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://api.anthropic.com/v1/messages',
+      expect.objectContaining({
+        body: JSON.stringify({
+          model: 'claude-3-5-sonnet',
+          messages: [{ role: 'user', content: 'solve' }],
+          max_tokens: 4096 + 2048, // budget is 4096, maxTokens defaults to 4096, adjusted to budget+2048
           thinking: {
             type: 'enabled',
-            budgetTokens: 4096,
+            budget_tokens: 4096,
           },
-        },
-      },
-    });
+          stream: false,
+        }),
+      }),
+    );
 
     expect(response.choices[0].message).toEqual({
       role: 'assistant',
@@ -154,16 +178,24 @@ describe('AnthropicAdapter Tests', () => {
   it('assert: generateStream streams chunks per Section 6C schema', async () => {
     const adapter = new AnthropicAdapter();
 
-    const mockFullStream = {
-      async *[Symbol.asyncIterator]() {
-        yield { type: 'text-delta', text: 'chunk 1' };
-        yield { type: 'reasoning-delta', text: 'thinking 1' };
-        yield { type: 'finish', finishReason: 'stop' };
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode(
+          'event: content_block_delta\ndata: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "chunk 1"}}\n\n',
+        );
+        yield encoder.encode(
+          'event: content_block_delta\ndata: {"type": "content_block_delta", "index": 0, "delta": {"type": "thinking_delta", "thinking": "thinking 1"}}\n\n',
+        );
+        yield encoder.encode(
+          'event: message_delta\ndata: {"type": "message_delta", "delta": {"stop_reason": "end_turn"}}\n\n',
+        );
       },
     };
 
-    streamText.mockReturnValue({
-      fullStream: mockFullStream,
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: mockBody,
     });
 
     const req = {
@@ -192,18 +224,22 @@ describe('AnthropicAdapter Tests', () => {
       thinkingEnabled: true,
     };
 
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: 'msg_123',
+        content: [{ type: 'text', text: 'hello' }],
+      }),
+    });
+
     await adapter.generateCompletion(req, 'key');
 
-    expect(generateText).toHaveBeenLastCalledWith(expect.objectContaining({
-      providerOptions: {
-        anthropic: {
-          thinking: {
-            type: 'enabled',
-            budgetTokens: 2048,
-          },
-        },
-      },
-    }));
+    expect(mockFetch).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        body: expect.stringContaining('"thinking":{"type":"enabled","budget_tokens":2048}'),
+      }),
+    );
   });
 
   it('assert: thinking_supported: true enables thinking option with default budget', async () => {
@@ -215,18 +251,22 @@ describe('AnthropicAdapter Tests', () => {
       thinking_supported: true,
     };
 
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: 'msg_123',
+        content: [{ type: 'text', text: 'hello' }],
+      }),
+    });
+
     await adapter.generateCompletion(req, 'key');
 
-    expect(generateText).toHaveBeenLastCalledWith(expect.objectContaining({
-      providerOptions: {
-        anthropic: {
-          thinking: {
-            type: 'enabled',
-            budgetTokens: 2048,
-          },
-        },
-      },
-    }));
+    expect(mockFetch).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        body: expect.stringContaining('"thinking":{"type":"enabled","budget_tokens":2048}'),
+      }),
+    );
   });
 
   it('assert: generateStream forwards thinking options and abortSignal correctly', async () => {
@@ -243,14 +283,18 @@ describe('AnthropicAdapter Tests', () => {
 
     const controller = new AbortController();
 
-    const mockFullStream = {
-      async *[Symbol.asyncIterator]() {
-        yield { type: 'finish', finishReason: 'stop' };
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode(
+          'event: message_delta\ndata: {"type": "message_delta", "delta": {"stop_reason": "end_turn"}}\n\n',
+        );
       },
     };
 
-    streamText.mockReturnValue({
-      fullStream: mockFullStream,
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: mockBody,
     });
 
     const chunks = [];
@@ -258,21 +302,23 @@ describe('AnthropicAdapter Tests', () => {
       chunks.push(chunk);
     }
 
-    expect(streamText).toHaveBeenLastCalledWith({
-      model: mockModelInstance,
-      messages: [],
-      abortSignal: controller.signal,
-      temperature: 0.8,
-      maxTokens: 2000,
-      providerOptions: {
-        anthropic: {
+    expect(mockFetch).toHaveBeenLastCalledWith(
+      'https://api.anthropic.com/v1/messages',
+      expect.objectContaining({
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: 'claude-3-5-sonnet',
+          messages: [],
+          max_tokens: 2000,
+          temperature: 0.8,
           thinking: {
             type: 'enabled',
-            budgetTokens: 1000,
+            budget_tokens: 1000,
           },
-        },
-      },
-    });
+          stream: true,
+        }),
+      }),
+    );
   });
 
   it('assert: generateCompletion forwards abortSignal correctly', async () => {
@@ -284,10 +330,21 @@ describe('AnthropicAdapter Tests', () => {
     };
     const controller = new AbortController();
 
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: 'msg_123',
+        content: [{ type: 'text', text: 'hello' }],
+      }),
+    });
+
     await adapter.generateCompletion(req, 'key', controller.signal);
 
-    expect(generateText).toHaveBeenLastCalledWith(expect.objectContaining({
-      abortSignal: controller.signal,
-    }));
+    expect(mockFetch).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        signal: controller.signal,
+      }),
+    );
   });
 });

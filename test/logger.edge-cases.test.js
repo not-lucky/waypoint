@@ -22,7 +22,7 @@ const filterAppCalls = (spy) => spy.mock.calls.filter((call) => {
 const filterAppLines = (lines) => lines.filter((line) => !line.includes('logtape'));
 
 describe('Logger Edge Cases (LogTape)', () => {
-  let logSpy, infoSpy, warnSpy, errorSpy, debugSpy;
+  let logSpy; let infoSpy; let warnSpy; let errorSpy;
   const tempLogDir = path.resolve('./test/temp-logs-edge');
   const tempLogFile = path.join(tempLogDir, 'edge-test.log');
 
@@ -31,7 +31,6 @@ describe('Logger Edge Cases (LogTape)', () => {
     infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
     warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
     await reset();
   });
 
@@ -145,7 +144,9 @@ describe('Logger Edge Cases (LogTape)', () => {
 
   it('should append to existing file on second log configuration', async () => {
     await configureLogging({
-      logging: { enable_console: false, enable_file: true, file_path: tempLogFile, format: 'json' },
+      logging: {
+        enable_console: false, enable_file: true, file_path: tempLogFile, format: 'json',
+      },
     });
     let logger = getAppLogger('test-edge');
     logger.info('first write');
@@ -155,7 +156,9 @@ describe('Logger Edge Cases (LogTape)', () => {
     expect(content1.length).toBe(1);
 
     await configureLogging({
-      logging: { enable_console: false, enable_file: true, file_path: tempLogFile, format: 'json' },
+      logging: {
+        enable_console: false, enable_file: true, file_path: tempLogFile, format: 'json',
+      },
     });
     logger = getAppLogger('test-edge');
     logger.info('second write');
@@ -169,7 +172,9 @@ describe('Logger Edge Cases (LogTape)', () => {
 
   it('should write to both console and file simultaneously', async () => {
     await configureLogging({
-      logging: { enable_console: true, enable_file: true, file_path: tempLogFile, format: 'json' },
+      logging: {
+        enable_console: true, enable_file: true, file_path: tempLogFile, format: 'json',
+      },
     });
     const logger = getAppLogger('test-edge');
     logger.info('dual write');

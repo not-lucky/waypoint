@@ -1,19 +1,19 @@
-// WeakMap resolution cache to hold resolved token maps. Keyed by the clients configuration
-// array reference. WeakMap allows the cached maps to be garbage collected when config
-// reloads discard the old config reference.
 import { getAppLogger } from '../utils/logger.js';
 
 const logger = getAppLogger('auth');
 
 // WeakMap resolution cache to hold resolved token maps. Keyed by the clients configuration
 // array reference. WeakMap allows the cached maps to be garbage collected when config
-// reloads discard the old config reference.
+// reloads discard the old config reference, preventing long-term memory leaks.
 const clientCache = new WeakMap();
 
 /**
  * Authentication middleware for client access control.
  * Validates the Authorization header format (Bearer <token>)
  * and verifies that <token> matches a configured client token.
+ * 
+ * We abstract auth to a middleware layer rather than controller layer to ensure
+ * unified security enforcement across all routes, preventing accidental unauthorized exposure.
  *
  * @param {Object} configLoader - The configuration loader instance to fetch the current config.
  * @returns {Function} Express middleware function.
@@ -24,6 +24,7 @@ export const authMiddleware = (configLoader) => (req, res, next) => {
   const xApiKey = req.headers['x-api-key'];
 
   // Reject immediately if both standard Authorization and Anthropic x-api-key are missing.
+  // This fails fast, reducing processing overhead for unauthenticated bot scanners.
   if (authHeader === undefined && xApiKey === undefined) {
     logger.debug('Auth failed: missing credentials');
     res.status(401).json({
@@ -56,6 +57,7 @@ export const authMiddleware = (configLoader) => (req, res, next) => {
     [, token] = parts;
   } else {
     // Extract the client token directly from x-api-key when Authorization is not provided.
+    // This allows seamless integration for Anthropic SDK clients.
     const trimmedToken = xApiKey.trim();
     if (!trimmedToken) {
       logger.debug('Auth failed: empty x-api-key header');
@@ -79,6 +81,8 @@ export const authMiddleware = (configLoader) => (req, res, next) => {
   const clients = Array.isArray(config.clients) ? config.clients : [];
 
   // Retrieve or initialize the cache map for the current clients array reference.
+  // Using an O(1) Map lookup instead of Array.find() on every request significantly
+  // reduces CPU overhead in high-throughput environments with many clients.
   let tokenMap = clientCache.get(clients);
   if (!tokenMap) {
     tokenMap = new Map();
@@ -106,7 +110,8 @@ export const authMiddleware = (configLoader) => (req, res, next) => {
   }
 
   logger.debug('Auth successful', { clientName: client.name });
-  // Attach client profile to request context for downstream rate limiting, auditing, or logging
+  // Attach client profile to request context for downstream rate limiting, auditing, or logging.
+  // This avoids redundant token lookups in subsequent middleware.
   req.client = client;
   next();
 };

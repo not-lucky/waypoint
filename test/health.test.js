@@ -9,6 +9,7 @@ import {
   afterEach,
 } from 'vitest';
 import request from 'supertest';
+import { resetLifecycleState } from '../src/lifecycle.js';
 
 describe('Health Endpoint Integration Tests', () => {
   let app;
@@ -44,6 +45,7 @@ describe('Health Endpoint Integration Tests', () => {
 
   afterAll(async () => {
     process.env = originalEnv;
+    resetLifecycleState();
     vi.restoreAllMocks();
     if (server) {
       await new Promise((resolve) => { server.close(resolve); });

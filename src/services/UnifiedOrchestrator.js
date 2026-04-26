@@ -8,10 +8,8 @@ function logDebug(logger, msg, meta) {
   if (logger && typeof logger.debug === 'function') {
     if (meta !== undefined) logger.debug(msg, meta);
     else logger.debug(msg);
-  } else {
-    if (meta !== undefined) fallbackLogger.debug(msg, meta);
-    else fallbackLogger.debug(msg);
-  }
+  } else if (meta !== undefined) fallbackLogger.debug(msg, meta);
+  else fallbackLogger.debug(msg);
 }
 
 function logWarning(logger, msg, meta) {
@@ -23,15 +21,14 @@ function logWarning(logger, msg, meta) {
       if (meta !== undefined) logger.warn(msg, meta);
       else logger.warn(msg);
     }
-  } else {
-    if (meta !== undefined) fallbackLogger.warning(msg, meta);
-    else fallbackLogger.warning(msg);
-  }
+  } else if (meta !== undefined) fallbackLogger.warning(msg, meta);
+  else fallbackLogger.warning(msg);
 }
 
 // Global registry of all active request AbortControllers.
 // Used during graceful shutdown (in index.js) to cancel all in-flight
-// requests and prevent upstream quota bleed.
+// requests and prevent upstream quota bleed. We maintain this centrally
+// so the process can quickly drain sockets on SIGINT.
 export const activeControllers = new Set();
 
 export class UnifiedOrchestrator {
@@ -46,6 +43,9 @@ export class UnifiedOrchestrator {
    * Executes LLM completion by dispatching the request to the configured provider adapter,
    * handling key rotation, retries, overrides, and automatic fallback routing.
    *
+   * This is the core routing brain of the gateway. It implements resilience strategies
+   * (retries, fallback providers) without coupling to the HTTP transport layer.
+   *
    * @param {Object} unifiedReq - The normalized request payload.
    * @param {Object} rawReq - The raw Express request context.
    * @returns {Promise<Object>} Normalized completion result or error object.
@@ -53,7 +53,8 @@ export class UnifiedOrchestrator {
   async executeCompletion(unifiedReq, rawReq, requestLog) {
     const req = { isFallback: false, ...unifiedReq };
 
-    // Apply header-based overrides if rawReq is provided and has headers
+    // Apply header-based overrides if rawReq is provided and has headers.
+    // Client-supplied gateway headers allow per-request override of YAML config values.
     if (rawReq?.headers) {
       const thinkingLevelHeader = rawReq.headers['x-gateway-thinking-level'];
       if (thinkingLevelHeader) {
@@ -76,9 +77,12 @@ export class UnifiedOrchestrator {
       }
     }
 
+    // Rely on global retry limit from gateway configuration.
     const retryLimit = this.config.gateway?.global_retry_limit ?? 3;
 
     // Create an abort signal and listen to the request close event.
+    // This allows us to instantly terminate upstream queries if the client drops the connection,
+    // conserving external API limits.
     const abortController = new AbortController();
     activeControllers.add(abortController);
 
@@ -115,7 +119,8 @@ export class UnifiedOrchestrator {
     let isStreamingResponse = false;
 
     try {
-      // Outer loop to handle fallbacks
+      // Outer loop to handle fallbacks. This allows us to jump entirely between
+      // different configured providers if one provider is completely unresponsive.
       while (true) {
         // Resolve provider and actualModelId from config if model is specified
         if (req.model) {
@@ -139,7 +144,8 @@ export class UnifiedOrchestrator {
         let attempt = 0;
         let triggerFallback = false;
 
-        // Inner loop for key rotation/retries
+        // Inner loop for key rotation/retries. We loop here to rotate through available
+        // keys on the current provider before giving up and failing over to the outer fallback loop.
         while (attempt < retryLimit) {
           if (abortController.signal.aborted) {
             logDebug(this.logger, 'Request aborted during retry loop check');
@@ -157,10 +163,13 @@ export class UnifiedOrchestrator {
 
           if (!apiKey) {
             logDebug(this.logger, 'No active keys available in pool for provider', { provider });
+            
+            // If already on a fallback, we halt completely.
             if (req.isFallback) {
               return this.buildAllKeysExhaustedError(provider);
             }
 
+            // If a fallback model is configured for this specific model, we switch contexts.
             if (req.fallbackModel) {
               logDebug(this.logger, 'Triggering fallback routing from key exhaustion', {
                 originalModel: unifiedReq.model,
@@ -184,20 +193,23 @@ export class UnifiedOrchestrator {
 
           logDebug(this.logger, 'Key selected from pool for provider', { provider });
 
-          // Log provider request (stage 2) on first attempt
-          if (attempt === 0 && requestLog) {
-            requestLog.logProviderRequest(req, apiKey);
-          }
-
           logDebug(this.logger, `Attempting execution: attempt=${attempt + 1}/${retryLimit} for provider=${provider}`);
           attempt += 1;
 
           try {
             const providerStartTime = Date.now();
+            
+            // Stream execution branch
             if (req.stream) {
-              const stream = adapter.generateStream(req, apiKey, abortController.signal);
+              const stream = adapter.generateStream(
+                req,
+                apiKey,
+                abortController.signal,
+                requestLog,
+              );
               const iterator = stream[Symbol.asyncIterator]();
 
+              // We only flag the key successful if it can yield the initial chunk
               const firstResult = await iterator.next();
               this.keyRegistry.flagSuccess(provider, apiKey);
 
@@ -214,6 +226,7 @@ export class UnifiedOrchestrator {
               isStreamingResponse = true;
 
               const self = this;
+              // Wrap the iterator to continuously check the client abort signal
               const streamWrapper = async function* streamWrapper() {
                 try {
                   if (!firstResult.done) {
@@ -246,7 +259,13 @@ export class UnifiedOrchestrator {
               return streamWrapper();
             }
 
-            const response = await adapter.generateCompletion(req, apiKey, abortController.signal);
+            // Standard unary execution branch
+            const response = await adapter.generateCompletion(
+              req,
+              apiKey,
+              abortController.signal,
+              requestLog,
+            );
             this.keyRegistry.flagSuccess(provider, apiKey);
 
             // Log provider response for non-streaming (stage 3)
@@ -272,6 +291,8 @@ export class UnifiedOrchestrator {
                 },
               };
             }
+            // An error occurred from the adapter. Flag the failure in the key registry,
+            // which will handle exponential backoff, and allow the while loop to retry if possible.
             const statusCode = error?.status || error?.statusCode || error?.response?.status || 500;
             this.keyRegistry.flagFailure(provider, apiKey, statusCode);
             const msg = `Attempt ${attempt} of ${retryLimit} for provider '${provider}' failed. Reason: ${error?.message || error}`;
@@ -281,6 +302,7 @@ export class UnifiedOrchestrator {
 
         if (triggerFallback) continue;
 
+        // If retries are exhausted and a fallback is configured, initiate outer loop cycle
         if (req.fallbackModel && !req.isFallback) {
           logDebug(this.logger, 'Triggering fallback routing from retry exhaustion', {
             originalModel: unifiedReq.model,
@@ -312,6 +334,7 @@ export class UnifiedOrchestrator {
 
   /**
    * Helper to build the normalized 503 all_keys_exhausted error payload.
+   * Scans the active cooldowns to inform the client of a 'retryAfterSeconds' delay.
    *
    * @param {string} provider - The name of the provider whose keys are exhausted.
    * @returns {Object} Normalized error payload.

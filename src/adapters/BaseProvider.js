@@ -93,7 +93,60 @@ export class NotImplementedError extends Error {
  * @property {number} [retryAfterSeconds] - Optional cooldown duration for 429 errors
  */
 
+/**
+ * Abstract base class for all provider adapters.
+ * Ensures consistent interfaces so the UnifiedOrchestrator can easily hot-swap adapters.
+ */
 export class BaseProvider {
+  /**
+   * Combines an optional client abort signal with an optional configured timeout signal.
+   * This is critical to ensure upstream requests don't hang indefinitely if the provider
+   * stalls or if the original client drops the connection prematurely.
+   * 
+   * @param {AbortSignal} [signal] - Client abort signal.
+   * @param {number} [timeoutMs] - Configured timeout in milliseconds.
+   * @returns {Object} Mapped signal and cleanup function.
+   */
+  getTimeoutSignal(signal, timeoutMs) {
+    if (!timeoutMs) {
+      return { signal, cleanup: () => {} };
+    }
+
+    const timeoutSignal = AbortSignal.timeout(timeoutMs);
+
+    if (!signal) {
+      return { signal: timeoutSignal, cleanup: () => {} };
+    }
+
+    // Try using the native AbortSignal.any if running on newer Node versions
+    if (typeof AbortSignal.any === 'function') {
+      try {
+        const combinedSignal = AbortSignal.any([signal, timeoutSignal]);
+        return { signal: combinedSignal, cleanup: () => {} };
+      } catch (err) {
+        // Fall back to manual combination
+      }
+    }
+
+    // Polyfill for AbortSignal.any
+    const controller = new AbortController();
+    const onAbort = () => controller.abort();
+
+    signal.addEventListener('abort', onAbort);
+    timeoutSignal.addEventListener('abort', onAbort);
+
+    if (signal.aborted || timeoutSignal.aborted) {
+      controller.abort();
+    }
+
+    const cleanup = () => {
+      signal.removeEventListener('abort', onAbort);
+      timeoutSignal.removeEventListener('abort', onAbort);
+    };
+
+    return { signal: controller.signal, cleanup };
+  }
+
   /**
    * Generates a non-streaming completion.
    * @param {UnifiedRequest} req - The normalized internal request.
@@ -129,6 +182,9 @@ export class BaseProvider {
   }
 }
 
+/**
+ * Default generic mapping for raw text completions.
+ */
 export const mapCompletionResult = (req, result) => ({
   id: `waypoint-${Date.now()}`,
   object: 'chat.completion',
@@ -173,6 +229,10 @@ export const mapStreamResult = async function* mapStreamResult(result) {
   }
 };
 
+/**
+ * Map provider HTTP errors to internal registry behavior codes.
+ * This ensures the KeyRegistry knows whether to immediately ban a key (403) or exponential backoff (429).
+ */
 const ERROR_MAP = {
   429: { code: 'upstream_rate_limited', httpStatus: 503 },
   402: { code: 'quota_exhausted', httpStatus: 503 },

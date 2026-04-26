@@ -10,6 +10,7 @@ import {
 import request from 'supertest';
 import fs from 'node:fs';
 import path from 'node:path';
+import { resetLifecycleState } from '../src/lifecycle.js';
 
 // Define the temporary configuration path for testing.
 const tempConfigPath = path.resolve('test/temp_cors_config.yaml');
@@ -115,6 +116,7 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
 
   afterAll(() => {
     process.on = originalProcessOn;
+    resetLifecycleState();
     vi.restoreAllMocks();
   });
 

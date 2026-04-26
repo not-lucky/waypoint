@@ -7,6 +7,7 @@ import {
   afterAll,
 } from 'vitest';
 import supertest from 'supertest';
+import { resetLifecycleState } from '../src/lifecycle.js';
 
 const request = (app) => {
   const req = supertest(app);
@@ -55,6 +56,7 @@ describe('Zod Request Validation Middleware - Edge Case Tests', () => {
   afterAll(async () => {
     // Restore environment and clear mocks after tests run
     process.env = originalEnv;
+    resetLifecycleState();
     vi.restoreAllMocks();
     if (server) {
       await new Promise((resolve) => { server.close(resolve); });

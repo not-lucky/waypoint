@@ -99,7 +99,7 @@ describe('ConfigLoader – Logger Integration', () => {
       providers: {
         gemini: {
           keys: ['key-1'],
-          models: [{ id: 'm1', actual_model_id: 'am1' }],
+          models: [{ id: 'm1' }],
         },
       },
     };
@@ -180,7 +180,7 @@ describe('ConfigLoader – Logger Integration', () => {
           gemini: {
             type: 'openai-compatible', // should trigger the reserved provider warning
             keys: ['key-1'],
-            models: [{ id: 'm1', actual_model_id: 'am1' }],
+            models: [{ id: 'm1' }],
           },
         },
       };
@@ -204,7 +204,7 @@ describe('ConfigLoader – Logger Integration', () => {
           gemini: {
             type: 'openai-compatible',
             keys: ['key-1'],
-            models: [{ id: 'm1', actual_model_id: 'am1' }],
+            models: [{ id: 'm1' }],
           },
         },
       };
@@ -302,7 +302,6 @@ providers:
       - "key-1"
     models:
       - id: "gemini-pro"
-        actual_model_id: "gemini-pro"
 `);
 
       configLoader.loadConfig(tempConfigPath);
@@ -335,7 +334,6 @@ providers:
       - "key-1"
     models:
       - id: "gemini-pro"
-        actual_model_id: "gemini-pro"
 `);
     }));
 
@@ -351,7 +349,6 @@ providers:
       - "key-1"
     models:
       - id: "gemini-pro"
-        actual_model_id: "gemini-pro"
 `);
 
       configLoader.loadConfig(tempConfigPath);
@@ -386,7 +383,6 @@ providers:
     keys: []
     models:
       - id: "gemini-pro"
-        actual_model_id: "gemini-pro"
 `);
     }));
 
@@ -402,7 +398,6 @@ providers:
       - "key-1"
     models:
       - id: "gemini-pro"
-        actual_model_id: "gemini-pro"
 `);
 
       configLoader.loadConfig(tempConfigPath);
@@ -439,7 +434,6 @@ providers:
       - "key-2"
     models:
       - id: "gemini-pro"
-        actual_model_id: "gemini-pro"
 `);
     }));
   });
@@ -466,7 +460,6 @@ providers:
       - "key-1"
     models:
       - id: "gemini-pro"
-        actual_model_id: "gemini-pro"
 `);
 
       configLoader.loadConfig(tempConfigPath);
@@ -505,7 +498,6 @@ providers:
       - "key-1"
     models:
       - id: "gemini-pro"
-        actual_model_id: "gemini-pro"
 `);
 
       configLoader.loadConfig(tempConfigPath);

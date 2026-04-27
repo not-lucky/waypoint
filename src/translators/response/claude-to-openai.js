@@ -61,7 +61,7 @@ export function translateClaudeToOpenAI(claudeRes, req = {}) {
 /**
  * Translates an Anthropic SSE event chunk to an OpenAI-shaped StreamChunk.
  *
- * Anthropic uses different event types (e.g. content_block_delta, message_delta). 
+ * Anthropic uses different event types (e.g. content_block_delta, message_delta).
  * This translates those disparate events into standard OpenAI chunk deltas.
  *
  * @param {Object} eventObj - The parsed SSE event object ({ event, data }).

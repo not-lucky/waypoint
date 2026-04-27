@@ -172,7 +172,7 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
         gemini: {
           keys: ['mock-gemini-key-1'],
           models: [
-            { id: 'gemini-pro', actual_model_id: 'gemini-2.5-pro-preview' },
+            { id: 'gemini-pro' },
           ],
         },
       },
@@ -246,7 +246,7 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
         anthropic: {
           keys: ['mock-anthropic-key-1'],
           models: [
-            { id: 'claude-sonnet', actual_model_id: 'claude-3-5-sonnet' },
+            { id: 'claude-sonnet' },
           ],
         },
       },
@@ -322,7 +322,7 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
         gemini: {
           keys: ['mock-gemini-key-1'],
           models: [
-            { id: 'gemini-pro', actual_model_id: 'gemini-2.5-pro-preview' },
+            { id: 'gemini-pro' },
           ],
         },
       },
@@ -382,7 +382,7 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
         anthropic: {
           keys: ['mock-anthropic-key-1'],
           models: [
-            { id: 'claude-sonnet', actual_model_id: 'claude-3-5-sonnet' },
+            { id: 'claude-sonnet' },
           ],
         },
       },
@@ -461,7 +461,6 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
           models: [
             {
               id: 'gemini-pro',
-              actual_model_id: 'gemini-2.5-pro-preview',
               fallback_model: 'openai/gpt-4o',
             },
           ],
@@ -469,7 +468,7 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
         openai: {
           keys: ['mock-openai-key-1'],
           models: [
-            { id: 'gpt-4o', actual_model_id: 'gpt-4o-actual' },
+            { id: 'gpt-4o' },
           ],
         },
       },
@@ -534,7 +533,7 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
         gemini: {
           keys: ['mock-gemini-key-1'],
           models: [
-            { id: 'gemini-pro', actual_model_id: 'gemini-2.5-pro-preview' },
+            { id: 'gemini-pro' },
           ],
         },
       },

@@ -37,7 +37,7 @@ const keyRegistry = new KeyRegistry(config);
 const providerFactory = new ProviderFactory(config);
 const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config, logger);
 
-// Controllers act as protocol translation boundaries. They parse incoming requests 
+// Controllers act as protocol translation boundaries. They parse incoming requests
 // for specific formats (OpenAI vs Anthropic) into a unified internal representation.
 const openAIController = new OpenAIController(orchestrator);
 const anthropicController = new AnthropicController(orchestrator);
@@ -46,7 +46,7 @@ const app = express();
 const { port } = config.gateway;
 
 /**
- * CORS configuration: 
+ * CORS configuration:
  * We extract allowed origins from the configuration to support both public
  * APIs (wildcard '*') and restricted enterprise deployments (specific arrays).
  */
@@ -74,7 +74,7 @@ const auth = authMiddleware(configLoader);
 /**
  * Health Check Endpoint (Section 6E specification)
  * Exposes key pool status metrics, routing configurations, and app uptime.
- * We require auth here because health check data can leak internal cluster 
+ * We require auth here because health check data can leak internal cluster
  * topologies and rate limit exhaustion states, which could be exploited.
  */
 app.get('/health', auth, (req, res) => {
@@ -146,13 +146,12 @@ openaiRouter.post(
 );
 
 /**
- * We mount `/openai/v1` BEFORE `/openai`. 
- * Express evaluates prefixes sequentially. If we mounted `/openai` first, it would 
+ * We mount `/openai/v1` BEFORE `/openai`.
+ * Express evaluates prefixes sequentially. If we mounted `/openai` first, it would
  * capture `/openai/v1/...` requests and strip the prefix incorrectly, causing 404s.
  */
 logger.debug('Mounting OpenAI routes at /openai/v1 and /openai');
 app.use(['/openai/v1', '/openai'], openaiRouter);
-
 
 // ==========================================
 // Anthropic Protocol Router

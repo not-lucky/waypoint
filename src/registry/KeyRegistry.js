@@ -90,7 +90,7 @@ export default class KeyRegistry {
     if (!key) return;
 
     switch (statusCode) {
-      // HTTP 429: Too Many Requests (Rate Limit). 
+      // HTTP 429: Too Many Requests (Rate Limit).
       // Apply exponential backoff to relieve pressure on the upstream provider.
       case 429: {
         key.consecutiveFailures += 1;

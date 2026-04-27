@@ -93,27 +93,24 @@ providers:
       - "${GEMINI_API_KEY_2}"
     # Models array (required)
     models:
-      - id: "gemini-2.5-pro"                            # The model ID exposed by the gateway (required, string)
-        aliases: ["gemini-pro", "pro"]                  # Alternative IDs to match this model (optional, array of strings)
-        actual_model_id: "gemini-2.5-pro-preview-05-06" # The underlying provider model ID (required, string)
+      - id: "gemini-2.5-pro-preview-05-06"              # The model ID exposed by the gateway (required, string)
+        aliases: ["gemini-2.5-pro", "gemini-pro", "pro"] # Alternative IDs to match this model (optional, array of strings)
         thinking_supported: true                        # Whether the model supports thinking/reasoning (optional, boolean)
         default_thinking_budget: 2048                   # Default thinking budget if supported (optional, positive integer)
         fallback_model: "openai/gpt-4o"                 # Model to use if all keys for this provider fail (optional format: provider/model-id)
       - id: "gemini-2.0-flash"
         aliases: ["flash"]
-        actual_model_id: "gemini-2.0-flash"
         thinking_supported: false
 
   anthropic:
     keys:
       - "${ANTHROPIC_API_KEY_1}"
     models:
-      - id: "claude-sonnet-4"
-        aliases: ["sonnet"]
-        actual_model_id: "claude-sonnet-4-20250514"
+      - id: "claude-sonnet-4-20250514"
+        aliases: ["claude-sonnet-4", "sonnet"]
         thinking_supported: true
         default_thinking_budget: 4096
-        fallback_model: "gemini/gemini-2.5-pro"
+        fallback_model: "gemini/gemini-2.5-pro-preview-05-06"
 
   openai:
     keys:
@@ -121,7 +118,6 @@ providers:
     models:
       - id: "gpt-4o"
         aliases: ["gpt4"]
-        actual_model_id: "gpt-4o"
         thinking_supported: false
 
   # Custom OpenAI-compatible provider example
@@ -131,8 +127,8 @@ providers:
     keys:
       - "${OPENAI_API_KEY_1}"
     models:
-      - id: "custom-gpt"
-        actual_model_id: "gpt-4o"
+      - id: "gpt-4o"
+        aliases: ["custom-gpt"]
         thinking_supported: false
 
   # Custom Anthropic-compatible provider example
@@ -142,8 +138,8 @@ providers:
     keys:
       - "${ANTHROPIC_API_KEY_1}"
     models:
-      - id: "custom-sonnet"
-        actual_model_id: "claude-sonnet-4"
+      - id: "claude-sonnet-4"
+        aliases: ["custom-sonnet"]
         thinking_supported: true
         default_thinking_budget: 12000
 
@@ -153,6 +149,6 @@ providers:
     keys:
       - "dummy-key-required-but-unused"           # A key is required even if unused by the endpoint
     models:
-      - id: "llama3"
-        actual_model_id: "llama3:70b"
+      - id: "llama3:70b"
+        aliases: ["llama3"]
         thinking_supported: false

@@ -14,9 +14,8 @@ describe('AnthropicController Edge Case Tests', () => {
         keys: ['gemini-key-1'],
         models: [
           {
-            id: 'gemini-2.5-pro',
-            aliases: ['gemini-pro', 'pro'],
-            actual_model_id: 'gemini-2.5-pro-preview-05-06',
+            id: 'gemini-2.5-pro-preview-05-06',
+            aliases: ['gemini-2.5-pro', 'gemini-pro', 'pro'],
             thinking_supported: true,
             default_thinking_budget: 2048,
             fallback_model: 'openai/gpt-4o',
@@ -29,7 +28,6 @@ describe('AnthropicController Edge Case Tests', () => {
           {
             id: 'gpt-4o',
             aliases: ['gpt4'],
-            actual_model_id: 'gpt-4o',
           },
         ],
       },

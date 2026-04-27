@@ -9,7 +9,7 @@
  */
 export function translateClaudeToOpenAIRequest(body) {
   const messages = [];
-  
+
   // Anthropic separates system messages at the root of the JSON.
   // We fold it back into the standard OpenAI messages array with role 'system'.
   if (body.system) {

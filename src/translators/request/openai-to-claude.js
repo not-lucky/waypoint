@@ -61,7 +61,7 @@ export function translateOpenAIToClaude(req) {
   const payload = {
     model: req.actualModelId || req.model,
     messages: nonSystemMessages,
-    // Provide a generous default max_tokens if not specified, 
+    // Provide a generous default max_tokens if not specified,
     // as Anthropic strictly requires this field.
     max_tokens: req.maxTokens || 4096,
   };

@@ -26,9 +26,9 @@ export const rateLimiterIntervals = new Set();
  * 3. If the count of remaining timestamps is greater than or equal to `max`, return 429.
  * 4. Otherwise, record the current request's timestamp and proceed.
  *
- * We chose an in-memory sliding window over a distributed store (like Redis) to 
- * optimize for minimal dependency overhead and maximum local performance, as this gateway 
- * is designed to be self-contained. 
+ * We chose an in-memory sliding window over a distributed store (like Redis) to
+ * optimize for minimal dependency overhead and maximum local performance, as this gateway
+ * is designed to be self-contained.
  *
  * Edge cases handled:
  * - If `req.client` or the rate limiting config is missing/invalid (e.g., non-numeric),

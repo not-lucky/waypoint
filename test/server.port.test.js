@@ -43,7 +43,6 @@ describe('Server Port Resolution', () => {
           models: [
             {
               id: 'mock-model',
-              actual_model_id: 'mock-model',
             },
           ],
         },

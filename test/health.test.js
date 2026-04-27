@@ -30,8 +30,8 @@ describe('Health Endpoint Integration Tests', () => {
     process.env.ANTHROPIC_API_KEY_1 = 'anthropic-key-1';
     process.env.OPENAI_API_KEY_1 = 'openai-key-1';
 
-    // Point the path environment variable to config.example.yml
-    process.env.WAYPOINT_CONFIG_PATH = 'config.example.yml';
+    // Point the path environment variable to config.example.yaml
+    process.env.WAYPOINT_CONFIG_PATH = 'config.example.yaml';
 
     // Clear module cache to allow fresh execution of index.js
     vi.resetModules();
@@ -106,7 +106,7 @@ describe('Health Endpoint Integration Tests', () => {
     expect(body).toHaveProperty('providers');
     expect(typeof body.providers).toBe('object');
 
-    // We expect gemini, anthropic, openai to be present since they are in config.example.yml
+    // We expect gemini, anthropic, openai to be present since they are in config.example.yaml
     ['gemini', 'anthropic', 'openai'].forEach((provider) => {
       expect(body.providers).toHaveProperty(provider);
       const p = body.providers[provider];
@@ -181,7 +181,7 @@ describe('Health Endpoint Integration Tests', () => {
     expect(coolingUntil).toBeGreaterThanOrEqual(Math.floor(beforeTime / 1000));
 
     // Advance time to expire the cooldown
-    // config.example.yml has base_seconds: 30 for cooldown
+    // config.example.yaml has base_seconds: 30 for cooldown
     await vi.advanceTimersByTimeAsync(30000);
 
     // Check status recovers to ok

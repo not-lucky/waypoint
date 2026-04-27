@@ -52,8 +52,8 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
           keys: ['key-gemini-1'],
           models: [
             {
-              id: 'gemini-1.5-flash',
-              actual_model_id: 'gemini-1.5-flash-actual',
+              id: 'gemini-1.5-flash-actual',
+              aliases: ['gemini-1.5-flash'],
               fallback_model: 'openai/gpt-4o',
             },
           ],
@@ -62,8 +62,8 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
           keys: ['key-openai-1'],
           models: [
             {
-              id: 'gpt-4o',
-              actual_model_id: 'gpt-4o-actual',
+              id: 'gpt-4o-actual',
+              aliases: ['gpt-4o'],
             },
           ],
         },
@@ -110,8 +110,8 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
           keys: ['key-gemini-1'],
           models: [
             {
-              id: 'gemini-1.5-flash',
-              actual_model_id: 'gemini-1.5-flash-actual',
+              id: 'gemini-1.5-flash-actual',
+              aliases: ['gemini-1.5-flash'],
               fallback_model: 'openai/gpt-4o',
             },
           ],
@@ -120,8 +120,8 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
           keys: ['key-openai-1'],
           models: [
             {
-              id: 'gpt-4o',
-              actual_model_id: 'gpt-4o-actual',
+              id: 'gpt-4o-actual',
+              aliases: ['gpt-4o'],
             },
           ],
         },
@@ -170,8 +170,8 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
           keys: ['key-gemini-1'],
           models: [
             {
-              id: 'gemini-1.5-flash',
-              actual_model_id: 'gemini-1.5-flash-actual',
+              id: 'gemini-1.5-flash-actual',
+              aliases: ['gemini-1.5-flash'],
               fallback_model: 'openai/gpt-4o',
             },
           ],
@@ -180,8 +180,8 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
           keys: ['key-openai-1'],
           models: [
             {
-              id: 'gpt-4o',
-              actual_model_id: 'gpt-4o-actual',
+              id: 'gpt-4o-actual',
+              aliases: ['gpt-4o'],
             },
           ],
         },
@@ -217,7 +217,7 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
     expect(res.error.httpStatus).toBe(503);
   });
 
-  it('assert: fallback config mapping matches by alias, actual_model_id, and id', async () => {
+  it('assert: fallback config mapping matches by alias and id', async () => {
     const config = {
       gateway: { global_retry_limit: 3 },
       providers: {
@@ -234,9 +234,8 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
           keys: ['key-openai'],
           models: [
             {
-              id: 'real-id',
-              aliases: ['model-alias'],
-              actual_model_id: 'openai-actual-mapped-id',
+              id: 'openai-actual-mapped-id',
+              aliases: ['model-alias', 'real-id'],
             },
           ],
         },
@@ -282,8 +281,8 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
           keys: ['key-openai'],
           models: [
             {
-              id: 'user/custom/model',
-              actual_model_id: 'deep-nested-id',
+              id: 'deep-nested-id',
+              aliases: ['user/custom/model'],
             },
           ],
         },
@@ -367,8 +366,8 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
           keys: ['key-openai'],
           models: [
             {
-              id: 'gpt-4o',
-              actual_model_id: 'gpt-4o-actual',
+              id: 'gpt-4o-actual',
+              aliases: ['gpt-4o'],
             },
           ],
         },

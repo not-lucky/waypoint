@@ -56,7 +56,6 @@ providers:
       - "openai-key-1"
     models:
       - id: "gpt-4o"
-        actual_model_id: "gpt-4o"
         thinking_supported: false
 `;
   fs.writeFileSync(tempConfigPath, content, 'utf8');

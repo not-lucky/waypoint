@@ -30,7 +30,7 @@ export class OpenAIController {
       const providersConfig = this.orchestrator.config?.providers || {};
 
       // Build the unified internal request from the OpenAI payload.
-      // We normalize differing OpenAI fields (e.g. max_tokens vs max_completion_tokens) 
+      // We normalize differing OpenAI fields (e.g. max_tokens vs max_completion_tokens)
       // into a single canonical source of truth for downstream processing.
       // max_tokens and max_completion_tokens are both accepted (OpenAI uses either
       // depending on API version); nullish coalescing picks whichever is present.

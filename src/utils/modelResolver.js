@@ -5,7 +5,7 @@
 export const THINKING_BUDGETS = { low: 512, medium: 2048, high: 8192 };
 
 /**
- * Finds a model entry in a provider's model list by id, alias, or actual_model_id.
+ * Finds a model entry in a provider's model list by id or alias.
  * This helper isolates the mapping logic to allow flexible addressing of models,
  * accommodating variations across API clients, fallback mappings, and internal IDs.
  *
@@ -14,29 +14,25 @@ export const THINKING_BUDGETS = { low: 512, medium: 2048, high: 8192 };
  * @returns {Object} The matched model config, or a passthrough default.
  */
 const findModelInProvider = (modelPart, models) => {
-  // Priority 1: match by configured id or alias (most common lookup path)
-  const match1 = models.find((m) => m.id === modelPart || m.aliases?.includes(modelPart));
-  if (match1) return match1;
+  // Match by configured id or alias (most common lookup path)
+  const match = models.find((m) => m.id === modelPart || m.aliases?.includes(modelPart));
+  if (match) return match;
 
-  // Priority 2: match by the upstream actual_model_id (allows using provider-native IDs)
-  const match2 = models.find((m) => m.actual_model_id === modelPart);
-  if (match2) return match2;
-
-  // Fallback: passthrough — treat the raw string as both id and actual_model_id
+  // Fallback: passthrough — treat the raw string as id
   // so unconfigured models can still be dispatched to known providers
-  return { id: modelPart, actual_model_id: modelPart };
+  return { id: modelPart };
 };
 
 // WeakMap resolution cache to hold resolved models. Keyed by the configuration object
 // reference (providersConfig). WeakMap allows the cached values to be garbage collected
-// when config reloads discard the old config reference, preventing memory leaks while 
+// when config reloads discard the old config reference, preventing memory leaks while
 // maintaining high throughput lookup performance for identical subsequent requests.
 const resolutionCache = new WeakMap();
 
 /**
  * Resolves the correct model configuration from the providers configuration object.
  * Parses modelName (e.g. "openai/gpt-4o" or "pro") and matches it against
- * configured models, aliases, or actual_model_ids.
+ * configured models or aliases.
  *
  * By caching this resolution operation, we significantly decrease the latency footprint
  * in high-concurrency environments since model resolution happens on every single request.
@@ -65,7 +61,7 @@ export const resolveModel = (modelName, providersConfig = {}) => {
 
   let resolved = null;
 
-  // Prefixed format: "provider/model-id" 
+  // Prefixed format: "provider/model-id"
   // Forces strict routing bypassing default ambiguity resolution.
   if (modelName.includes('/')) {
     const [providerPart, ...rest] = modelName.split('/');
@@ -78,8 +74,6 @@ export const resolveModel = (modelName, providersConfig = {}) => {
     }
   } else {
     // Bare name (no '/' prefix): search all providers for an id or alias match.
-    // Unlike prefixed resolution, bare names do NOT match actual_model_id to avoid
-    // ambiguous cross-provider collisions (e.g. two providers could share a raw model ID).
     const providerEntries = Object.entries(providersConfig);
     const matchEntry = providerEntries.find(([, pConf]) => (pConf.models || []).some(
       (m) => m.id === modelName || m.aliases?.includes(modelName),
@@ -115,9 +109,8 @@ export const applyModelConfig = (unifiedReq, resolved) => {
   const { modelConfig } = resolved;
 
   // Set the routing target: provider name determines which adapter is used,
-  // actualModelId is the ID sent to the upstream API (may differ from the user-facing id)
   unifiedReq.provider = resolved.provider;
-  unifiedReq.actualModelId = modelConfig.actual_model_id || modelConfig.id;
+  unifiedReq.actualModelId = modelConfig.id;
 
   // Attach fallback so the orchestrator can retry with a different provider on exhaustion
   if (modelConfig.fallback_model) {
@@ -141,7 +134,7 @@ export const applyModelConfig = (unifiedReq, resolved) => {
  * with those headers removed to prevent double-processing by the orchestrator.
  *
  * Isolating configuration to custom headers allows upstream clients strict behavioral
- * manipulation independent of static yaml defaults. 
+ * manipulation independent of static yaml defaults.
  *
  * @param {Object} unifiedReq - The request object to mutate with overrides.
  * @param {Object} rawReq - The raw Express request.

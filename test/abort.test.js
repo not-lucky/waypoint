@@ -96,7 +96,6 @@ describe('Abort and Request Cancellation Tests', () => {
           models: [
             {
               id: 'test-model',
-              actual_model_id: 'test-model-actual',
             },
           ],
         },
@@ -451,13 +450,13 @@ describe('Abort and Request Cancellation Tests', () => {
         'primary-provider': {
           keys: ['primary-key'],
           models: [
-            { id: 'model-a', actual_model_id: 'model-a', fallback_model: 'fallback-provider/model-b' },
+            { id: 'model-a', fallback_model: 'fallback-provider/model-b' },
           ],
         },
         'fallback-provider': {
           keys: ['fallback-key'],
           models: [
-            { id: 'model-b', actual_model_id: 'model-b' },
+            { id: 'model-b' },
           ],
         },
       },
@@ -618,7 +617,7 @@ describe('Abort and Request Cancellation Tests', () => {
       providers: {
         'mock-provider': {
           keys: ['key-1', 'key-2'],
-          models: [{ id: 'test-model', actual_model_id: 'test-model' }],
+          models: [{ id: 'test-model' }],
         },
       },
     };

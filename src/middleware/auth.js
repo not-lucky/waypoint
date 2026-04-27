@@ -11,7 +11,7 @@ const clientCache = new WeakMap();
  * Authentication middleware for client access control.
  * Validates the Authorization header format (Bearer <token>)
  * and verifies that <token> matches a configured client token.
- * 
+ *
  * We abstract auth to a middleware layer rather than controller layer to ensure
  * unified security enforcement across all routes, preventing accidental unauthorized exposure.
  *

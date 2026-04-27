@@ -34,7 +34,7 @@ export class ProviderFactory {
   constructor(config = {}) {
     const providers = config.providers || {};
     const timeoutMs = config.gateway?.http_timeout_ms;
-    
+
     // Pre-initialize all adapters during server boot so that runtime lookups
     // are strictly O(1) Map retrievals, avoiding expensive initialization per-request.
     this.adapters = new Map(

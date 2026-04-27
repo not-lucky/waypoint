@@ -22,7 +22,7 @@ export class KeyObject {
 
   /**
    * Determines if this key is eligible to serve requests.
-   * A key is available only if it is active, not permanently exhausted, 
+   * A key is available only if it is active, not permanently exhausted,
    * and any applied cooldown window has lapsed.
    */
   isAvailable() {

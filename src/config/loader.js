@@ -166,7 +166,7 @@ export const deepFreeze = (obj) => {
 
 /**
  * Compares critical structural gateway and logging configuration values.
- * Hot-reloading cannot safely apply structural changes like port reassignment or 
+ * Hot-reloading cannot safely apply structural changes like port reassignment or
  * log file rotation without a process restart. This detects those scenarios.
  *
  * @param {object} oldConf - Previous configuration state.
@@ -268,7 +268,7 @@ const validateFallbackModel = (
 
 /**
  * Exhaustive structural validation against the loaded YAML config.
- * Fails fast by design. An invalid configuration shouldn't run, as it could 
+ * Fails fast by design. An invalid configuration shouldn't run, as it could
  * silently misroute requests or expose unintended permissions.
  */
 export const validateConfig = (
@@ -465,13 +465,6 @@ export const validateConfig = (
       }
       if (!isNonEmptyString(model.id)) {
         logErrorAndExitOrThrow(`Missing or empty model 'id' at index ${j} for provider '${providerName}'.`, shouldExit, customLogger);
-      }
-      if (!isNonEmptyString(model.actual_model_id)) {
-        logErrorAndExitOrThrow(
-          `Missing or empty model 'actual_model_id' at index ${j} for provider '${providerName}'.`,
-          shouldExit,
-          customLogger,
-        );
       }
       if (model.aliases !== undefined && !Array.isArray(model.aliases)) {
         logErrorAndExitOrThrow(

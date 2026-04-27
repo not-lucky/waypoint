@@ -62,7 +62,7 @@ export class AnthropicAdapter extends BaseProvider {
       requestLog.logProviderRequest(sanitizeUrl(url), serializeHeaders(response.headers), payload);
     }
 
-    // Capture standard error responses returning HTTP context accurately so the 
+    // Capture standard error responses returning HTTP context accurately so the
     // orchestrator can trigger failovers or exponential backoff gracefully.
     if (!response.ok) {
       const errorText = await response.text();
@@ -84,7 +84,7 @@ export class AnthropicAdapter extends BaseProvider {
 
   /**
    * Generates a streaming text completion.
-   * Processes Anthropic's heavily typed stream message blocks translating them 
+   * Processes Anthropic's heavily typed stream message blocks translating them
    * via our shared translator format.
    *
    * @param {UnifiedRequest} req - Normalized request payload.

@@ -67,8 +67,8 @@ describe('Configuration Loader Tests', () => {
     process.env.ANTHROPIC_API_KEY_1 = 'anthropic-key-1';
     process.env.OPENAI_API_KEY_1 = 'openai-key-1';
 
-    // Point the path environment variable to config.example.yml
-    process.env.WAYPOINT_CONFIG_PATH = 'config.example.yml';
+    // Point the path environment variable to config.example.yaml
+    process.env.WAYPOINT_CONFIG_PATH = 'config.example.yaml';
   });
 
   // Restore the original environment and cleanup files after each test.
@@ -116,7 +116,7 @@ describe('Configuration Loader Tests', () => {
 
       // Assertion: process should fail-fast and abort execution immediately.
       expect(() => {
-        configLoader.loadConfig('config.example.yml');
+        configLoader.loadConfig('config.example.yaml');
       }).toThrow('process.exit called');
 
       expect(exitSpy).toHaveBeenCalledWith(1);
@@ -134,7 +134,7 @@ describe('Configuration Loader Tests', () => {
       // Simulate a single missing Gemini key, keeping the second key active.
       delete process.env.GEMINI_API_KEY_1;
 
-      const config = configLoader.loadConfig('config.example.yml');
+      const config = configLoader.loadConfig('config.example.yaml');
 
       // Assertion: The missing key should be filtered out, leaving the remaining valid key.
       expect(config.providers.gemini.keys).not.toContain('gemini-key-1');
@@ -160,7 +160,7 @@ describe('Configuration Loader Tests', () => {
       delete process.env.GEMINI_API_KEY_2;
 
       expect(() => {
-        configLoader.loadConfig('config.example.yml');
+        configLoader.loadConfig('config.example.yaml');
       }).toThrow('process.exit called');
 
       expect(exitSpy).toHaveBeenCalledWith(1);
@@ -185,7 +185,7 @@ describe('Configuration Loader Tests', () => {
       delete process.env.OPENAI_API_KEY_1;
 
       expect(() => {
-        configLoader.loadConfig('config.example.yml');
+        configLoader.loadConfig('config.example.yaml');
       }).toThrow('process.exit called');
 
       expect(exitSpy).toHaveBeenCalledWith(1);
@@ -215,7 +215,6 @@ providers:
       - "ollama-key"
     models:
       - id: "llama3"
-        actual_model_id: "llama3"
 `);
 
       // Assertion: Custom provider without base_url is a fatal error.
@@ -246,7 +245,6 @@ providers:
       - "ollama-key"
     models:
       - id: "llama3"
-        actual_model_id: "llama3"
 `);
 
       const config = configLoader.loadConfig(tempConfigPath);
@@ -269,7 +267,6 @@ providers:
       - "cohere-key"
     models:
       - id: "cohere-model"
-        actual_model_id: "cohere-model"
 `);
 
       const customReserved = new Set(['cohere']);
@@ -296,7 +293,6 @@ providers:
       - "key-2"
     models:
       - id: "gemini-2.5-pro"
-        actual_model_id: "gemini-2.5-pro"
 `);
 
       const config = configLoader.loadConfig(tempConfigPath);
@@ -320,7 +316,6 @@ providers:
       - "ollama-key"
     models:
       - id: "llama3"
-        actual_model_id: "llama3:70b"
 `);
 
       const config = configLoader.loadConfig(tempConfigPath);
@@ -343,7 +338,6 @@ providers:
       - "ollama-key"
     models:
       - id: "llama3"
-        actual_model_id: "llama3:70b"
 `);
 
       const config = configLoader.loadConfig(tempConfigPath);
@@ -365,7 +359,6 @@ providers:
       - "proxy-key"
     models:
       - id: "claude-proxy"
-        actual_model_id: "claude-sonnet-4-20250514"
 `);
 
       const config = configLoader.loadConfig(tempConfigPath);
@@ -389,7 +382,6 @@ providers:
       - "gemini-key"
     models:
       - id: "gemini-2.5-pro"
-        actual_model_id: "gemini-2.5-pro"
 `);
 
       const config = configLoader.loadConfig(tempConfigPath);
@@ -423,7 +415,6 @@ providers:
       - "some-key"
     models:
       - id: "model-1"
-        actual_model_id: "model-1"
 `);
 
       expect(() => {
@@ -453,7 +444,6 @@ providers:
       - "key-1"
     models:
       - id: "gemini-2.5-pro"
-        actual_model_id: "gemini-2.5-pro"
 `);
 
       const config = configLoader.loadConfig(tempConfigPath);
@@ -496,7 +486,6 @@ providers:
       - "key-2"
     models:
       - id: "gemini-2.5-pro"
-        actual_model_id: "gemini-2.5-pro"
 `);
     }));
 
@@ -512,7 +501,6 @@ providers:
       - "key-1"
     models:
       - id: "gemini-2.5-pro"
-        actual_model_id: "gemini-2.5-pro"
 `);
 
       configLoader.loadConfig(tempConfigPath);
@@ -548,7 +536,6 @@ providers:
       - "key-1"
     models:
       - id: "gemini-2.5-pro"
-        actual_model_id: "gemini-2.5-pro"
 `);
     }));
 
@@ -565,7 +552,6 @@ providers:
       - "key-1"
     models:
       - id: "gemini-2.5-pro"
-        actual_model_id: "gemini-2.5-pro"
 `);
 
       configLoader.loadConfig(tempConfigPath);
@@ -595,7 +581,6 @@ providers:
     keys: []
     models:
       - id: "gemini-2.5-pro"
-        actual_model_id: "gemini-2.5-pro"
 `);
 
       // Wait a short time to verify process.exit is not called and the error is logged
@@ -646,7 +631,6 @@ providers:
       - "gemini-key"
     models:
       - id: "gemini-2.5-pro"
-        actual_model_id: "gemini-2.5-pro"
 `);
 
       const config = configLoader.loadConfig(tempConfigPath);
@@ -674,7 +658,6 @@ providers:
       - "key-1"
     models:
       - id: "gemini-2.5-pro"
-        actual_model_id: "gemini-2.5-pro"
 `);
 
       const config = configLoader.loadConfig(tempConfigPath);
@@ -701,7 +684,6 @@ providers:
       - "key-3"
     models:
       - id: "gemini-2.5-pro"
-        actual_model_id: "gemini-2.5-pro"
 `);
           } else if (triggerCount === 2) {
             expect(newConfig.providers.gemini.keys).toContain('key-3');
@@ -729,7 +711,6 @@ providers:
       - "key-2"
     models:
       - id: "gemini-2.5-pro"
-        actual_model_id: "gemini-2.5-pro"
 `);
       // fs.watch triggers the rename event naturally on Linux when the file is unlinked.
     }));
@@ -749,7 +730,6 @@ providers:
       - "key-1"
     models:
       - id: "gemini-2.5-pro"
-        actual_model_id: "gemini-2.5-pro"
 `);
 
       expect(() => {
@@ -778,7 +758,6 @@ providers:
       - "key-1"
     models:
       - id: "gemini-2.5-pro"
-        actual_model_id: "gemini-2.5-pro"
 `);
 
       configLoader.loadConfig(tempConfigPath);

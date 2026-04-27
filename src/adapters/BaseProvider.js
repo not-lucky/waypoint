@@ -102,7 +102,7 @@ export class BaseProvider {
    * Combines an optional client abort signal with an optional configured timeout signal.
    * This is critical to ensure upstream requests don't hang indefinitely if the provider
    * stalls or if the original client drops the connection prematurely.
-   * 
+   *
    * @param {AbortSignal} [signal] - Client abort signal.
    * @param {number} [timeoutMs] - Configured timeout in milliseconds.
    * @returns {Object} Mapped signal and cleanup function.

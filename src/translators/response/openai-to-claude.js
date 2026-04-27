@@ -6,7 +6,7 @@ const STOP_REASON_MAP = {
 /**
  * Translates an OpenAI-shaped NormalizedResponse into Anthropic Messages response format.
  *
- * Converts unified data (like `reasoning_content`) back into Anthropic's block array 
+ * Converts unified data (like `reasoning_content`) back into Anthropic's block array
  * structure (with `type: 'thinking'` and `type: 'text'`).
  *
  * @param {Object} normalized - OpenAI-shaped NormalizedResponse.

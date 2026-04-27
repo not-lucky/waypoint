@@ -7,7 +7,7 @@ const logger = getAppLogger('validation');
  * Zod schema representing a single message within the conversation history.
  * Each message must possess a valid role and a text content string.
  *
- * We enforce structured typing at the ingress layer to catch malformed client 
+ * We enforce structured typing at the ingress layer to catch malformed client
  * requests early, preventing unpredictable upstream provider behavior or obscure parsing errors.
  */
 const messageSchema = z.object({
@@ -64,7 +64,7 @@ export const completionSchema = z.object({
  * Express middleware to validate request body payloads for chat completions/messages endpoints.
  * Compares incoming `req.body` against the `completionSchema`.
  *
- * By hooking into Express's middleware chain, we ensure that the business logic controllers 
+ * By hooking into Express's middleware chain, we ensure that the business logic controllers
  * only ever receive structurally sound payloads.
  *
  * On validation failure, returns a HTTP 400 Bad Request with a NormalizedError payload

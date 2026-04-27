@@ -3,8 +3,8 @@
 /**
  * Parses a ReadableStream or Node.js async iterable yielding binary chunks
  * into Server-Sent Events (SSE) containing { event, data } structures.
- * 
- * Handles split chunks and multibyte character buffers which naturally occur when fetching 
+ *
+ * Handles split chunks and multibyte character buffers which naturally occur when fetching
  * over the network. Network chunks do not align with SSE event boundaries, so this state
  * machine reassembles them.
  *
@@ -19,13 +19,13 @@ export async function* parseSSEStream(responseBody, signal) {
   let buffer = '';
 
   const processChunk = function* processChunk(chunk) {
-    // Decoding stream:true prevents multibyte Unicode characters (e.g. emoji) 
+    // Decoding stream:true prevents multibyte Unicode characters (e.g. emoji)
     // from being incorrectly parsed if split across the chunk byte boundary.
     buffer += decoder.decode(chunk, { stream: true });
-    
+
     // SSE messages are delimited by double newlines.
     const parts = buffer.split('\n\n');
-    
+
     // The final split piece is usually incomplete. Keep it in the buffer for the next chunk.
     buffer = parts.pop() || '';
 
@@ -72,7 +72,7 @@ export async function* parseSSEStream(responseBody, signal) {
         yield* processChunk(value);
       }
     } finally {
-      // Must explicitly release locks so the garbage collector can clean up 
+      // Must explicitly release locks so the garbage collector can clean up
       // the underlying socket data buffers.
       reader.releaseLock();
     }

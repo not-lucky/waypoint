@@ -43,7 +43,7 @@ describe('Configuration Validation Tests', () => {
         gemini: {
           keys: ['gemini-key-1'],
           models: [
-            { id: 'gemini-2.5-pro', actual_model_id: 'gemini-2.5-pro-preview-05-06' },
+            { id: 'gemini-2.5-pro-preview-05-06', aliases: ['gemini-2.5-pro'] },
           ],
         },
       },
@@ -254,20 +254,6 @@ describe('Configuration Validation Tests', () => {
     );
   });
 
-  it('should call process.exit(1) when provider model lacks actual_model_id', () => {
-    const invalidConfig = getBaseValidConfig();
-    delete invalidConfig.providers.gemini.models[0].actual_model_id;
-
-    expect(() => {
-      validateConfig(invalidConfig);
-    }).toThrow('process.exit called');
-
-    expect(exitSpy).toHaveBeenCalledWith(1);
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("FATAL ERROR: Missing or empty model 'actual_model_id' at index 0 for provider 'gemini'"),
-    );
-  });
-
   it('should call process.exit(1) when fallback_model format is invalid', () => {
     const invalidConfig = getBaseValidConfig();
     invalidConfig.providers.gemini.models[0].fallback_model = 'openai-gpt-4o';
@@ -300,7 +286,7 @@ describe('Configuration Validation Tests', () => {
     const invalidConfig = getBaseValidConfig();
     invalidConfig.providers.openai = {
       keys: ['openai-key'],
-      models: [{ id: 'gpt-3.5', actual_model_id: 'gpt-3.5' }],
+      models: [{ id: 'gpt-3.5' }],
     };
     invalidConfig.providers.gemini.models[0].fallback_model = 'openai/gpt-4o';
 
@@ -318,7 +304,7 @@ describe('Configuration Validation Tests', () => {
     const validConfig = getBaseValidConfig();
     validConfig.providers.openai = {
       keys: ['openai-key'],
-      models: [{ id: 'gpt-4o', aliases: ['gpt4'], actual_model_id: 'gpt-4o-actual' }],
+      models: [{ id: 'gpt-4o', aliases: ['gpt4'] }],
     };
     validConfig.providers.gemini.models[0].fallback_model = 'openai/gpt4';
     expect(() => {
@@ -401,7 +387,7 @@ describe('Configuration Validation Tests', () => {
     const config = getBaseValidConfig();
     config.providers['custom-provider'] = {
       keys: ['custom-key'],
-      models: [{ id: 'custom-model', actual_model_id: 'custom-model-actual' }],
+      models: [{ id: 'custom-model' }],
     };
 
     expect(() => {
@@ -419,7 +405,7 @@ describe('Configuration Validation Tests', () => {
     config.providers['custom-anthropic'] = {
       type: 'anthropic-compatible',
       keys: ['custom-key'],
-      models: [{ id: 'custom-model', actual_model_id: 'custom-model-actual' }],
+      models: [{ id: 'custom-model' }],
     };
 
     expect(() => {
@@ -438,7 +424,7 @@ describe('Configuration Validation Tests', () => {
       type: 'llm-compatible',
       base_url: 'http://localhost:8080',
       keys: ['custom-key'],
-      models: [{ id: 'custom-model', actual_model_id: 'custom-model-actual' }],
+      models: [{ id: 'custom-model' }],
     };
 
     expect(() => {

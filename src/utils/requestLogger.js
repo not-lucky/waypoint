@@ -90,7 +90,7 @@ const writeJsonFile = async (filePath, data) => {
   }
 };
 
-/** 
+/**
  * No-op stub returned when request logging is disabled.
  * The null object pattern prevents massive nested if checks in downstream operations.
  */
@@ -233,7 +233,7 @@ class RequestLog {
 
   /**
    * Finalizes the request log by flushing all pending writes.
-   * Must be called before the response is fully sent to guarantee logs are 
+   * Must be called before the response is fully sent to guarantee logs are
    * finalized synchronously with API closure.
    */
   async finalize() {

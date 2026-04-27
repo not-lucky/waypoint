@@ -22,7 +22,7 @@ export function getLongestPrefixSuffix(str, target) {
 
 /**
  * Processes buffered text from a stream and extracts thoughts enclosed in <thought> tags.
- * Because streaming tokens arrive in arbitrary splits, this state machine safely 
+ * Because streaming tokens arrive in arbitrary splits, this state machine safely
  * reassembles partial tags and emits reasoning vs text chunks correctly.
  */
 export function processThinkingBuffer(buffer, state, flush, sendThinking, sendText) {
@@ -235,7 +235,7 @@ export class GeminiAdapter extends BaseProvider {
         choices: (resultJson.choices || []).map((c) => {
           let contentText = c.message?.content || '';
           let reasoning = c.message?.reasoning_content || null;
-          
+
           // Google's proxy output might inject explicit <thought> tags into raw content
           // instead of splitting them properly into reasoning_content. We defensively extract them.
           const startIdx = contentText.indexOf('<thought>');

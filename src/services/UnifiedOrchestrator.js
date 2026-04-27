@@ -163,7 +163,7 @@ export class UnifiedOrchestrator {
 
           if (!apiKey) {
             logDebug(this.logger, 'No active keys available in pool for provider', { provider });
-            
+
             // If already on a fallback, we halt completely.
             if (req.isFallback) {
               return this.buildAllKeysExhaustedError(provider);
@@ -198,7 +198,7 @@ export class UnifiedOrchestrator {
 
           try {
             const providerStartTime = Date.now();
-            
+
             // Stream execution branch
             if (req.stream) {
               const stream = adapter.generateStream(

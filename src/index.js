@@ -17,7 +17,8 @@ import { registerLifecycle } from './lifecycle.js';
  * Entry point for the Waypoint API gateway.
  * We initialize the application by loading the configuration first because all downstream
  * services (logging, registries, adapters) depend on the configuration state.
- * This fail-fast approach ensures we don't start the server in an invalid or partially-configured state.
+ * This fail-fast approach ensures we don't start the server in an invalid or
+ * partially-configured state.
  */
 
 // Load configuration
@@ -54,13 +55,15 @@ const allowedOrigins = config.gateway.cors?.allowed_origins || ['*'];
 const corsOrigin = allowedOrigins.includes('*') ? '*' : allowedOrigins;
 logger.debug('CORS configuration applied', { corsOrigin });
 
-// Apply global CORS middleware before all routes to ensure preflights and headers are handled uniformly
+// Apply global CORS middleware before all routes to ensure preflights and
+// headers are handled uniformly
 app.use(cors({ origin: corsOrigin }));
 
 /**
  * Global Body Parsing:
  * We parse JSON payloads globally but strictly enforce a configurable maximum payload size.
- * This is crucial to prevent memory exhaustion (OOM) attacks from malicious clients sending massive payloads.
+ * This is crucial to prevent memory exhaustion (OOM) attacks from malicious
+ * clients sending massive payloads.
  * Large payloads are rejected at the edge before hitting any expensive schema validation logic.
  */
 const maxPayloadSize = config.gateway.max_payload_size || '10mb';
@@ -94,7 +97,8 @@ let lastConfig = null;
  * Extracts a deduplicated list of all model IDs and aliases from the current configuration.
  * We cache this extraction because recalculating it on every `/models` request is unnecessary
  * overhead when the configuration hasn't changed.
- * The output is prefixed (e.g. "provider/model") to eliminate cross-provider ambiguity when routing.
+ * The output is prefixed (e.g. "provider/model") to eliminate cross-provider
+ * ambiguity when routing.
  */
 const getUniqueModels = () => {
   const currentConfig = configLoader.loadConfig();

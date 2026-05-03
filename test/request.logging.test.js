@@ -1,3 +1,4 @@
+/* eslint-disable no-await-in-loop */
 import {
   vi, describe, it, expect, beforeEach, afterEach,
 } from 'vitest';
@@ -157,5 +158,120 @@ describe('Request Logging Format and Sanitization Tests', () => {
         messages: expect.any(Array),
       }),
     );
+  });
+
+  it('assert: GeminiAdapter generateStream logs provider stream summary on end of stream', async () => {
+    const adapter = new GeminiAdapter();
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode('data: {"candidates":[{"index":0,"content":{"role":"model","parts":[{"text":"Hello "}]}}]}\n\n');
+        yield encoder.encode('data: {"candidates":[{"index":0,"content":{"role":"model","parts":[{"text":"world"}]}}],"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":10,"totalTokenCount":15},"modelVersion":"gemini-3.1-flash-lite"}\n\n');
+      },
+    };
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Map([
+        ['content-type', 'text/event-stream'],
+      ]),
+      body: mockBody,
+    });
+    global.fetch = mockFetch;
+
+    const requestLog = {
+      logProviderRequest: vi.fn(),
+      logProviderStreamSummary: vi.fn(),
+    };
+
+    const req = {
+      model: 'gemini/gemini-flash-lite-latest',
+      actualModelId: 'gemini-flash-lite-latest',
+      messages: [{ role: 'user', content: 'test' }],
+    };
+
+    const streamGen = adapter.generateStream(req, 'api-key-abc', null, requestLog);
+    const iterator = streamGen[Symbol.asyncIterator]();
+    while (!(await iterator.next()).done) {
+      // consume
+    }
+
+    expect(requestLog.logProviderStreamSummary).toHaveBeenCalledWith({
+      _format: 'sse-json',
+      _eventCount: 2,
+      summary: {
+        candidates: [
+          {
+            index: 0,
+            content: {
+              role: 'model',
+              parts: [{ text: 'Hello world' }],
+            },
+            finishReason: 'STOP',
+          },
+        ],
+        usageMetadata: {
+          promptTokenCount: 5,
+          candidatesTokenCount: 10,
+          totalTokenCount: 15,
+        },
+        modelVersion: 'gemini-3.1-flash-lite',
+      },
+    });
+  });
+
+  it('assert: AnthropicAdapter generateStream logs provider stream summary on end of stream', async () => {
+    const adapter = new AnthropicAdapter();
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode('event: message_start\ndata: {"type":"message_start","message":{"id":"msg_1","model":"claude-3","usage":{"input_tokens":10}}}\n\n');
+        yield encoder.encode('event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n');
+        yield encoder.encode('event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}}\n\n');
+        yield encoder.encode('event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":20}}\n\n');
+      },
+    };
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Map([
+        ['content-type', 'text/event-stream'],
+      ]),
+      body: mockBody,
+    });
+    global.fetch = mockFetch;
+
+    const requestLog = {
+      logProviderRequest: vi.fn(),
+      logProviderStreamSummary: vi.fn(),
+    };
+
+    const req = {
+      model: 'anthropic/claude-3',
+      actualModelId: 'claude-3',
+      messages: [{ role: 'user', content: 'test' }],
+    };
+
+    const streamGen = adapter.generateStream(req, 'api-key-abc', null, requestLog);
+    const iterator = streamGen[Symbol.asyncIterator]();
+    while (!(await iterator.next()).done) {
+      // consume
+    }
+
+    expect(requestLog.logProviderStreamSummary).toHaveBeenCalledWith({
+      _format: 'anthropic-sse',
+      _eventCount: 4,
+      summary: {
+        id: 'msg_1',
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'text', text: 'Hi' }],
+        model: 'claude-3',
+        stop_reason: 'end_turn',
+        stop_sequence: null,
+        usage: {
+          input_tokens: 10,
+          output_tokens: 20,
+        },
+      },
+    });
   });
 });

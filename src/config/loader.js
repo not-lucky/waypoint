@@ -612,7 +612,8 @@ export class ConfigLoader {
     // Coerce numeric properties immutably
     const coerced = ConfigLoader.coerceNumericProperties(interpolated);
 
-    // Call validateConfig with shouldExit = false so hot reloads gracefully fail on invalid configs.
+    // Call validateConfig with shouldExit = false so hot reloads gracefully
+    // fail on invalid configs.
     validateConfig(coerced, false, reservedProviders, this.logger);
 
     return coerced;

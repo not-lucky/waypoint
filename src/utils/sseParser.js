@@ -78,7 +78,8 @@ export async function* parseSSEStream(responseBody, signal) {
     }
   }
 
-  // Handle EOF remaining buffer if the stream terminates exactly at an event boundary without trailing newlines
+  // Handle EOF remaining buffer if the stream terminates exactly at an event boundary
+  // without trailing newlines
   if (buffer.trim()) {
     const lines = buffer.split('\n');
     let event = null;

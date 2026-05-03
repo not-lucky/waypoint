@@ -83,7 +83,8 @@ export default class KeyRegistry {
   }
 
   /**
-   * Handles upstream error mapping and orchestrates the key lifecycle correctly based on HTTP error codes.
+   * Handles upstream error mapping and orchestrates the key lifecycle correctly
+   * based on HTTP error codes.
    */
   flagFailure(provider, keyStr, statusCode) {
     const key = this.findKey(provider, keyStr);

@@ -21,7 +21,8 @@ const createAdapter = (name, provider, timeoutMs) => {
       if (provider?.type === 'anthropic-compatible') {
         return new AnthropicAdapter(provider?.base_url, timeoutMs);
       }
-      // By default, assume all custom providers use the OpenAI-compatible spec (v1/chat/completions)
+      // By default, assume all custom providers use the OpenAI-compatible spec
+      // (v1/chat/completions)
       return new OpenAICompatibleAdapter(provider?.base_url, name, timeoutMs);
   }
 };

@@ -61,7 +61,8 @@ export class OpenAIController {
       const response = await this.orchestrator.executeCompletion(unifiedReq, cleanRawReq, reqLog);
 
       // Orchestrator returns { error: {...} } on failure rather than throwing,
-      // so we check and map the httpStatus for the client response cleanly without catching exceptions.
+      // so we check and map the httpStatus for the client response cleanly
+      // without catching exceptions.
       if (response?.error) {
         logger.debug('OpenAI completion failed', { error: response.error });
         const statusCode = response.error.httpStatus || 500;
@@ -71,7 +72,8 @@ export class OpenAIController {
       }
 
       // If the response is a stream (async generator), handle as SSE (Server-Sent Events).
-      // This streaming logic bridges the Node.js async iterator pattern with the Express HTTP chunked response.
+      // This streaming logic bridges the Node.js async iterator pattern with the
+      // Express HTTP chunked response.
       if (response && typeof response[Symbol.asyncIterator] === 'function') {
         logger.debug('Starting OpenAI SSE response stream');
         // Set standard headers for event streams to disable buffering and allow live streaming,
@@ -117,7 +119,8 @@ export class OpenAIController {
             error: err.message,
           });
           // Handle client disconnect or unexpected stream errors silently.
-          // In a streaming context, the HTTP headers are already sent, so we can't emit a 500 status.
+          // In a streaming context, the HTTP headers are already sent, so we
+          // can't emit a 500 status.
         } finally {
           // Always end the response stream to clean up connection resources
           await reqLog.finalize();

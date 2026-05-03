@@ -28,8 +28,9 @@ export function resetLifecycleState() {
 
 /**
  * Initiates the graceful teardown sequence in the exact order specified in Section 8.
- * A structured teardown is essential to prevent dropped client connections, orphaned
- * resources, and corrupted log files when the process receives termination signals (e.g. from Kubernetes).
+ * A structured teardown is essential to prevent dropped client connections,
+ * orphaned resources, and corrupted log files when the process receives
+ * termination signals (e.g. from Kubernetes).
  *
  * @param {Object} params
  * @param {Object} params.server - Node HTTP Server instance

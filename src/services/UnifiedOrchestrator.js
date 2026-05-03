@@ -145,7 +145,8 @@ export class UnifiedOrchestrator {
         let triggerFallback = false;
 
         // Inner loop for key rotation/retries. We loop here to rotate through available
-        // keys on the current provider before giving up and failing over to the outer fallback loop.
+        // keys on the current provider before giving up and failing over to the
+        // outer fallback loop.
         while (attempt < retryLimit) {
           if (abortController.signal.aborted) {
             logDebug(this.logger, 'Request aborted during retry loop check');

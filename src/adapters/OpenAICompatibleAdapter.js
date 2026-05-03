@@ -189,11 +189,20 @@ export class OpenAICompatibleAdapter extends BaseProvider {
     const chunkId = `waypoint-chunk-${Date.now()}`;
     const stream = parseSSEStream(response.body, fetchSignal);
 
+    let eventCount = 0;
+    let responseId = null;
+    let responseModel = null;
+    const choicesAccumulator = [];
+    let promptTokens = 0;
+    let completionTokens = 0;
+    let totalTokens = 0;
+
     try {
       for await (const sseEvent of stream) {
         if (fetchSignal?.aborted) {
           throw new Error('Stream aborted');
         }
+        eventCount += 1;
 
         if (sseEvent.data === '[DONE]') {
           continue;
@@ -204,6 +213,49 @@ export class OpenAICompatibleAdapter extends BaseProvider {
           parsedData = JSON.parse(sseEvent.data);
         } catch (err) {
           continue;
+        }
+
+        if (parsedData.id) {
+          responseId = parsedData.id;
+        }
+        if (parsedData.model) {
+          responseModel = parsedData.model;
+        }
+        if (parsedData.choices) {
+          for (const c of parsedData.choices) {
+            const idx = c.index ?? 0;
+            if (!choicesAccumulator[idx]) {
+              choicesAccumulator[idx] = {
+                index: idx,
+                message: {
+                  role: 'assistant',
+                  content: '',
+                  reasoning_content: null,
+                },
+                finish_reason: null,
+              };
+            }
+            const choice = choicesAccumulator[idx];
+            if (c.delta) {
+              if (c.delta.content) {
+                choice.message.content += c.delta.content;
+              }
+              if (c.delta.reasoning_content) {
+                if (choice.message.reasoning_content === null) {
+                  choice.message.reasoning_content = '';
+                }
+                choice.message.reasoning_content += c.delta.reasoning_content;
+              }
+            }
+            if (c.finish_reason || c.finishReason) {
+              choice.finish_reason = c.finish_reason || c.finishReason;
+            }
+          }
+        }
+        if (parsedData.usage) {
+          promptTokens = parsedData.usage.prompt_tokens ?? parsedData.usage.promptTokens ?? promptTokens;
+          completionTokens = parsedData.usage.completion_tokens ?? parsedData.usage.completionTokens ?? completionTokens;
+          totalTokens = parsedData.usage.total_tokens ?? parsedData.usage.totalTokens ?? totalTokens;
         }
 
         yield {
@@ -226,6 +278,29 @@ export class OpenAICompatibleAdapter extends BaseProvider {
       }
     } finally {
       cleanup();
+      if (requestLog && typeof requestLog.logProviderStreamSummary === 'function') {
+        const summary = {
+          id: responseId || chunkId,
+          object: 'chat.completion',
+          created: Math.floor(Date.now() / 1000),
+          model: responseModel || req.model,
+          choices: choicesAccumulator.filter(Boolean).map((c) => ({
+            index: c.index,
+            message: c.message,
+            finish_reason: c.finish_reason || 'stop',
+          })),
+          usage: {
+            prompt_tokens: promptTokens,
+            completion_tokens: completionTokens,
+            total_tokens: totalTokens || (promptTokens + completionTokens),
+          },
+        };
+        requestLog.logProviderStreamSummary({
+          _format: 'sse-json',
+          _eventCount: eventCount,
+          summary,
+        });
+      }
     }
   }
 

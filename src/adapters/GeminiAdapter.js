@@ -131,7 +131,8 @@ export class GeminiAdapter extends BaseProvider {
 
   /**
    * Generates a non-streaming text completion.
-   * Handles internal schema mapping and request execution, returning an OpenAI shaped NormalizedResponse.
+   * Handles internal schema mapping and request execution, returning an OpenAI
+   * shaped NormalizedResponse.
    *
    * @param {UnifiedRequest} req - Normalized request payload.
    * @param {string} apiKey - Upstream API key.
@@ -145,8 +146,9 @@ export class GeminiAdapter extends BaseProvider {
     let url;
     let headers;
 
-    // Gemini API natively supports a specialized OpenAI-compatible endpoint when using thinking modes
-    // because standard `generateContent` natively blends thinking/content in ways that are hard to cleanly separate.
+    // Gemini API natively supports a specialized OpenAI-compatible endpoint when
+    // using thinking modes because standard `generateContent` natively blends
+    // thinking/content in ways that are hard to cleanly separate.
     if (thinkingEnabled) {
       url = this.baseUrl
         ? `${this.baseUrl.replace(/\/$/, '')}/chat/completions`
@@ -373,6 +375,19 @@ export class GeminiAdapter extends BaseProvider {
     let streamState = 'text';
     let pendingBuffer = '';
 
+    let eventCount = 0;
+    let accumulatedText = '';
+    let lastFinishReason = null;
+    let finalUsageMetadata = null;
+    let modelVersion = null;
+
+    // For thinkingEnabled = true (OpenAI-compatible) accumulation:
+    let responseId = null;
+    let responseModel = null;
+    let accumulatedContent = '';
+    let accumulatedReasoningContent = '';
+    let finalUsage = null;
+
     try {
       for await (const sseEvent of stream) {
         if (fetchSignal?.aborted) {
@@ -383,6 +398,17 @@ export class GeminiAdapter extends BaseProvider {
           const parsedData = parseSSEEventData(sseEvent.data);
           if (!parsedData) {
             continue;
+          }
+          eventCount += 1;
+
+          if (parsedData.id) {
+            responseId = parsedData.id;
+          }
+          if (parsedData.model) {
+            responseModel = parsedData.model;
+          }
+          if (parsedData.usage) {
+            finalUsage = parsedData.usage;
           }
 
           const choices = parsedData.choices || [];
@@ -397,6 +423,16 @@ export class GeminiAdapter extends BaseProvider {
           }
 
           const c = choices[0];
+          if (c.delta?.content) {
+            accumulatedContent += c.delta.content;
+          }
+          if (c.delta?.reasoning_content) {
+            accumulatedReasoningContent += c.delta.reasoning_content;
+          }
+          if (c.finish_reason || c.finishReason) {
+            lastFinishReason = c.finish_reason || c.finishReason;
+          }
+
           const deltasToYield = [];
           const sendThinking = (text) => {
             if (!text) return;
@@ -460,6 +496,28 @@ export class GeminiAdapter extends BaseProvider {
           if (!parsedData) {
             continue;
           }
+          eventCount += 1;
+
+          // Accumulate for Gemini summary
+          if (parsedData.candidates?.[0]) {
+            const candidate = parsedData.candidates[0];
+            if (candidate.content?.parts) {
+              for (const part of candidate.content.parts) {
+                if (part.text) {
+                  accumulatedText += part.text;
+                }
+              }
+            }
+            if (candidate.finishReason) {
+              lastFinishReason = candidate.finishReason;
+            }
+          }
+          if (parsedData.usageMetadata) {
+            finalUsageMetadata = parsedData.usageMetadata;
+          }
+          if (parsedData.modelVersion) {
+            modelVersion = parsedData.modelVersion;
+          }
 
           const openaiChunk = translateStreamChunk(FORMATS.GEMINI, parsedData, chunkId, req);
           if (openaiChunk) {
@@ -506,6 +564,71 @@ export class GeminiAdapter extends BaseProvider {
       }
     } finally {
       cleanup();
+      if (requestLog && typeof requestLog.logProviderStreamSummary === 'function') {
+        let summary;
+        if (thinkingEnabled) {
+          summary = {
+            id: responseId || chunkId,
+            object: 'chat.completion',
+            created: Math.floor(Date.now() / 1000),
+            model: responseModel || req.model,
+            choices: [
+              {
+                index: 0,
+                message: {
+                  role: 'assistant',
+                  content: accumulatedContent,
+                  reasoning_content: accumulatedReasoningContent || null,
+                },
+                finish_reason: lastFinishReason || 'stop',
+              },
+            ],
+          };
+          if (finalUsage) {
+            summary.usage = {
+              prompt_tokens: finalUsage.prompt_tokens ?? finalUsage.promptTokens ?? 0,
+              completion_tokens: finalUsage.completion_tokens ?? finalUsage.completionTokens ?? 0,
+              total_tokens: finalUsage.total_tokens ?? finalUsage.totalTokens ?? 0,
+            };
+          }
+        } else {
+          summary = {
+            candidates: [
+              {
+                index: 0,
+                content: {
+                  role: 'model',
+                  parts: [
+                    {
+                      text: accumulatedText,
+                    },
+                  ],
+                },
+                finishReason: lastFinishReason || 'STOP',
+              },
+            ],
+          };
+          if (finalUsageMetadata) {
+            summary.usageMetadata = {
+              promptTokenCount: finalUsageMetadata.promptTokenCount ?? 0,
+              candidatesTokenCount: finalUsageMetadata.candidatesTokenCount ?? 0,
+              totalTokenCount: finalUsageMetadata.totalTokenCount ?? 0,
+            };
+            if (finalUsageMetadata.serviceTier) {
+              summary.usageMetadata.serviceTier = finalUsageMetadata.serviceTier;
+            }
+          }
+          if (modelVersion) {
+            summary.modelVersion = modelVersion;
+          }
+        }
+
+        requestLog.logProviderStreamSummary({
+          _format: 'sse-json',
+          _eventCount: eventCount,
+          summary,
+        });
+      }
     }
   }
 

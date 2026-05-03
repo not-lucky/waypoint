@@ -231,7 +231,8 @@ export const mapStreamResult = async function* mapStreamResult(result) {
 
 /**
  * Map provider HTTP errors to internal registry behavior codes.
- * This ensures the KeyRegistry knows whether to immediately ban a key (403) or exponential backoff (429).
+ * This ensures the KeyRegistry knows whether to immediately ban a key (403)
+ * or perform exponential backoff (429).
  */
 const ERROR_MAP = {
   429: { code: 'upstream_rate_limited', httpStatus: 503 },

@@ -1,3 +1,4 @@
+/* eslint-disable no-underscore-dangle */
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -52,7 +53,8 @@ const shortId = () => Math.random().toString(16).slice(2, 8);
 
 /**
  * Converts an ISO timestamp to a filesystem-safe string.
- * Replaces colons with dashes (e.g., "2026-06-06T10-19-30.123Z") so logs can be exported natively to Windows disks.
+ * Replaces colons with dashes (e.g., "2026-06-06T10-19-30.123Z") so logs can be
+ * exported natively to Windows disks.
  * @param {string} iso - ISO 8601 timestamp.
  * @returns {string} Filesystem-safe timestamp.
  */
@@ -60,7 +62,8 @@ const safeTimestamp = (iso) => iso.replace(/:/g, '-');
 
 /**
  * Redacts sensitive headers from a headers object.
- * Masks authorization, x-api-key, and similar auth headers to adhere to basic PII and credential safety standards.
+ * Masks authorization, x-api-key, and similar auth headers to adhere to basic
+ * PII and credential safety standards.
  * @param {Object} headers - Raw HTTP headers.
  * @returns {Object} Copy with sensitive values replaced by "[REDACTED]".
  */
@@ -97,6 +100,7 @@ const writeJsonFile = async (filePath, data) => {
 const NOOP_LOG = Object.freeze({
   logProviderRequest() {},
   logProviderResponse() {},
+  logProviderStreamSummary() {},
   logClientResponse() {},
   appendStreamEvent() {},
   finalize() { return Promise.resolve(); },
@@ -171,6 +175,25 @@ class RequestLog {
     }
 
     const p = writeJsonFile(path.join(this.dir, '03_provider_response.json'), data);
+    this.pendingWrites.push(p);
+  }
+
+  /**
+   * Logs the provider response summary at the end of a streaming request.
+   * Overwrites the initial stream stub file with the final counts and event summary.
+   *
+   * @param {Object} data - Streaming log data including _format, _eventCount, and summary.
+   */
+  logProviderStreamSummary(data) {
+    if (this.finalized) return;
+    const logData = {
+      _streamed: true,
+      _format: data._format || 'sse-json',
+      _stage: 'provider_response',
+      _eventCount: data._eventCount || 0,
+      summary: data.summary || {},
+    };
+    const p = writeJsonFile(path.join(this.dir, '03_provider_response.json'), logData);
     this.pendingWrites.push(p);
   }
 

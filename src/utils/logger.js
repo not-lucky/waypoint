@@ -6,9 +6,12 @@ import {
 import { getFileSink } from '@logtape/file';
 
 /**
- * Initializes early-boot default configuration.
- * Because reading config may fail, we want some base logging to capture why.
- * This ensures that logs are visible immediately upon startup before full configuration resolves.
+ * Early-boot logger initialization using synchronous configuration.
+ * Rationale: During system startup, application configuration (e.g., from YAML) may fail.
+ * We must guarantee a baseline logging mechanism is active before these async operations begin,
+ * ensuring any startup faults or configuration parsing errors are explicitly recorded
+ * rather than swallowed silently.
+ * Side Effect: Mutates the global LogTape configuration synchronously.
  */
 try {
   configureSync({
@@ -31,16 +34,29 @@ try {
     ],
   });
 } catch (err) {
-  // If already configured, ignore.
+  // Edge Case: If this module is evaluated multiple times or LogTape is already configured
+  // in a testing environment, configureSync throws. We silently swallow this error because
+  // re-configuration is harmless as long as baseline logging is active.
 }
 
 /**
- * Safely parses and stringifies logged payloads to prevent format-breaking output.
+ * Normalizes mixed-type log payloads into safe string representations.
+ * Rationale: Logging pipelines often break when encountering cyclic objects or unhandled data
+ * types within arrays. This function guarantees that arrays and primitive values are aggressively
+ * coerced into scalar strings, mitigating the risk of downstream log aggregator parsing failures
+ * or serialization crashes.
+ *
+ * @param {any} msg - The log payload to format.
+ * @returns {string} Safe stringified payload.
  */
 const formatMessage = (msg) => {
   if (Array.isArray(msg)) {
     return msg.map((m) => {
+      // Intent: Isolate native Error instances to extract their human-readable message
+      // without noisy object brackets.
       if (m instanceof Error) return m.message;
+      // Intent: Ensure objects are converted to strict JSON instead of "[object Object]"
+      // to retain observability.
       if (typeof m === 'object' && m !== null) return JSON.stringify(m);
       return String(m);
     }).join(' ');
@@ -49,9 +65,14 @@ const formatMessage = (msg) => {
 };
 
 /**
- * Formatter for structured JSON logs.
- * Emits single-line JSON representations of events for robust ingestion by log aggregators
- * like ELK or Splunk, preserving the original schema without whitespace fragmentation.
+ * JSON log formatter for structured telemetry.
+ * Rationale: In production environments, raw text logs lack queryable structure.
+ * This enforces a strict schema for all events, allowing deterministic ingestion by
+ * observability platforms (ELK, Datadog). It deliberately emits single-line JSON to prevent
+ * multi-line log fragmentation during transport over standard streams (stdout).
+ *
+ * @param {Object} record - The LogTape log record.
+ * @returns {string} Newline-terminated JSON string.
  */
 const customJsonFormatter = (record) => {
   const logObj = {
@@ -61,7 +82,9 @@ const customJsonFormatter = (record) => {
     category: record.category.join(':'),
     ...(record.properties || {}),
   };
-  // Handle Error objects in properties or messages robustly
+  // Edge Case: Native Error objects do not serialize to JSON via JSON.stringify()
+  // (properties are non-enumerable). We explicitly reconstruct Error shapes to ensure
+  // stack traces and messages are durably exported.
   Object.entries(logObj).forEach(([key, val]) => {
     if (val instanceof Error) {
       logObj[key] = {
@@ -74,7 +97,15 @@ const customJsonFormatter = (record) => {
 };
 
 /**
- * Human-readable string formatter designed for raw console or tail-f debugging.
+ * Text formatter optimized for local developer experience.
+ * Architectural Intent: During development, human readability is prioritized over machine
+ * parsability. This transforms structured records into dense, color-agnostic linear strings,
+ * appending metadata as key-value pairs. It defensively handles nested objects and
+ * un-serializable properties, ensuring the developer sees all context without the process
+ * crashing.
+ *
+ * @param {Object} record - The LogTape log record.
+ * @returns {string} Formatted log line.
  */
 const customTextFormatter = (record) => {
   const timestamp = new Date(record.timestamp).toISOString();
@@ -90,13 +121,19 @@ const customTextFormatter = (record) => {
         valStr = `[Error: ${val.message}]`;
       } else if (val && typeof val === 'object') {
         try {
+          // Attempt JSON stringification for nested context.
           valStr = JSON.stringify(val);
         } catch (err) {
+          // Edge case: Circular references or inaccessible getters will throw.
+          // Fallback to indicate failure.
           valStr = `[Unserializable Object: ${err.message}]`;
         }
       } else {
         valStr = String(val);
       }
+      // Formatting requirement: Safely escape values containing spaces, quotes, or
+      // control characters so that generic key-value log parsers (e.g., logfmt) do not
+      // misinterpret the bounds of the value.
       if (valStr.includes(' ') || valStr.includes('"') || valStr.includes('\n') || valStr.includes('\r') || valStr.includes('\t')) {
         valStr = `"${valStr.replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t')}"`;
       }
@@ -110,12 +147,14 @@ const customTextFormatter = (record) => {
 };
 
 /**
- * Applies the validated logger configuration over the default runtime.
- * We lazily execute this function so that the application can properly bootstrap
- * its initial configuration values from process args and yaml definition before
- * permanently mutating the logging sinks.
+ * Re-configures the logging subsystem using fully resolved application state.
+ * Architectural Intent: Logging requires configuration (levels, file paths, formats) that is
+ * unknown until the CLI/YAML config is parsed. We delay this binding to prevent dropping
+ * early logs, while ultimately re-routing sinks once definitive settings are available.
+ * Side Effect: Overwrites the early-boot sinks. If `reset: true` is executed, it purges
+ * existing LogTape configuration.
  *
- * @param {Object} config - The application configuration.
+ * @param {Object} config - The fully validated application configuration.
  */
 export async function configureLogging(config) {
   const loggingConfig = config?.logging || {};
@@ -138,13 +177,18 @@ export async function configureLogging(config) {
   if (enableFile && filePath) {
     const absolutePath = path.resolve(filePath);
     const directory = path.dirname(absolutePath);
-    // Explicitly guarantee the directory tree exists before attempting to write.
+    // Edge case: Users frequently provide arbitrary file paths for logs; failing to create the
+    // parent directory causes fatal startup crashes. Explicitly guarantee the directory tree
+    // exists before attempting to write.
     fs.mkdirSync(directory, { recursive: true });
 
     sinks.file = getFileSink(absolutePath, { formatter });
     activeSinks.push('file');
   }
 
+  // Intent: The `reset: true` flag ensures we cleanly swap the global singleton from our
+  // early-boot configuration to the runtime configuration without leaking duplicate sink
+  // registrations.
   await configure({
     sinks,
     loggers: [
@@ -164,17 +208,24 @@ export async function configureLogging(config) {
 }
 
 /**
- * Returns a configured child logger bound to a specific subsystem category.
+ * Factory for instantiating subsystem-specific child loggers.
+ * Rationale: Centralizing logger creation ensures all application modules inherit the same
+ * base category ('waypoint'). This enforces namespace consistency, which is critical for
+ * granular log filtering and routing in production.
  *
- * @param {string} category - The logger category.
- * @returns {Object} LogTape logger instance.
+ * @param {string} category - The specific subsystem category (e.g., 'http', 'auth').
+ * @returns {Object} LogTape logger instance bound to the namespace.
  */
 export function getAppLogger(category) {
   return getLogger(['waypoint', category]);
 }
 
 /**
- * Forces all buffered output out of internal buffers before system exit.
+ * Graceful termination hook for the logging pipeline.
+ * Rationale: File sinks and remote log aggregators often buffer output asynchronously for
+ * performance. During a SIGTERM or unhandled exception, failing to flush these buffers
+ * results in dropped logs, destroying post-mortem observability.
+ * Side Effect: Triggers an awaited reset across all active LogTape sinks.
  */
 export async function flushLogs() {
   await reset();

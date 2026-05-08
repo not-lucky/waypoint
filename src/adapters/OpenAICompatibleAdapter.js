@@ -3,9 +3,23 @@ import { BaseProvider, normalizeProviderError } from './BaseProvider.js';
 import { parseSSEStream } from '../utils/sseParser.js';
 import { sanitizeUrl, serializeHeaders } from '../utils/requestLogger.js';
 
+/**
+ * Extracts and categorizes reasoning/thinking effort from the incoming request.
+ *
+ * WHY: Some OpenAI-compatible providers require an explicit 'reasoning_effort'
+ * enum ('low', 'medium', 'high') instead of a token limit, while incoming client
+ * requests might only supply raw token bounds ('thinkingBudget'). This function
+ * acts as an impedance matcher, heuristically mapping token limits to categorical
+ * strings to ensure compatibility across disparate upstream reasoning APIs.
+ *
+ * WHAT: Returns 'low', 'medium', 'high', or the originally passed effort value.
+ */
 const getReasoningEffort = (req) => {
   const effort = req.thinkingLevel || req.reasoningEffort;
   const thinkingEnabled = req.thinkingEnabled || req.thinking_supported || false;
+
+  // If thinking is explicitly requested but no categorical effort is provided,
+  // we must infer the category from the token budget, if available.
   if (!effort && thinkingEnabled) {
     if (req.thinkingBudget !== undefined) {
       if (req.thinkingBudget <= 1024) {
@@ -16,12 +30,30 @@ const getReasoningEffort = (req) => {
       }
       return 'high';
     }
+    // Safe default to prevent rejection from strict upstream validation.
     return 'medium';
   }
   return effort;
 };
 
+/**
+ * Adapter for natively OpenAI-compatible APIs (e.g., Anyscale, Together, Groq, local vLLM).
+ *
+ * WHY: Instead of writing custom adapters for every new provider that mimics the OpenAI API,
+ * this generic adapter trusts that the upstream provider implements standard chat/completions
+ * endpoints. It serves as a transparent proxy while applying our unified logging, error handling,
+ * timeout signals, and ID normalization (ensuring globally unique 'waypoint-' prefixed IDs).
+ *
+ * WHAT: Implements BaseProvider for synchronous and streaming text completions.
+ */
 export class OpenAICompatibleAdapter extends BaseProvider {
+  /**
+   * Initializes the adapter for a specific provider instance.
+   *
+   * @param {string} baseUrl - The base URL of the OpenAI-compatible endpoint.
+   * @param {string} providerName - Identifier for logging and error tracking.
+   * @param {number|null} timeoutMs - Max execution time before aborting the request.
+   */
   constructor(baseUrl, providerName, timeoutMs = null) {
     super();
     this.baseUrl = baseUrl;
@@ -31,12 +63,21 @@ export class OpenAICompatibleAdapter extends BaseProvider {
 
   /**
    * Generates a non-streaming text completion.
+   *
+   * WHY: This handles single-turn request/response cycles. It ensures that the model ID
+   * actually sent downstream is the 'actualModelId' (resolved by the registry) rather than
+   * the generic user-facing alias. It also strictly manages network timeouts to prevent
+   * hanging requests from exhausting connection pools.
+   *
+   * WHAT: Sends a JSON POST to `/chat/completions` and normalizes the JSON response.
+   *
    * @param {UnifiedRequest} req - Normalized request payload.
    * @param {string} apiKey - Upstream API key.
    * @param {AbortSignal} [signal] - Optional signal to abort the completion request.
    * @returns {Promise<NormalizedResponse>}
    */
   async generateCompletion(req, apiKey, signal, requestLog = null) {
+    // We prioritize actualModelId as the true upstream identifier.
     const payload = {
       model: req.actualModelId || req.model,
       messages: req.messages,
@@ -55,6 +96,7 @@ export class OpenAICompatibleAdapter extends BaseProvider {
       payload.reasoning_effort = effort;
     }
 
+    // Ensure no double slashes when joining the endpoint path.
     const url = `${this.baseUrl.replace(/\/$/, '')}/chat/completions`;
 
     const { signal: fetchSignal, cleanup } = this.getTimeoutSignal(signal, this.timeoutMs);
@@ -75,6 +117,7 @@ export class OpenAICompatibleAdapter extends BaseProvider {
       }
       throw fetchErr;
     } finally {
+      // Always clean up the timeout to prevent memory leaks from lingering timers.
       cleanup();
     }
 
@@ -82,6 +125,8 @@ export class OpenAICompatibleAdapter extends BaseProvider {
       requestLog.logProviderRequest(sanitizeUrl(url), serializeHeaders(response.headers), payload);
     }
 
+    // Handle non-2xx responses gracefully by attempting to parse JSON errors.
+    // WHY: Upstream APIs often return HTML or plain text on proxy/gateway errors.
     if (!response.ok) {
       const errorText = await response.text();
       let errorJson;
@@ -97,6 +142,10 @@ export class OpenAICompatibleAdapter extends BaseProvider {
     }
 
     const resultJson = await response.json();
+
+    // Normalize the response object format to guarantee standard fields.
+    // WHY: We prepend 'waypoint-' to track which requests passed through our infrastructure.
+    // Also, some providers inconsistently use camelCase versus snake_case for usage stats.
     return {
       id: resultJson.id ? (resultJson.id.startsWith('waypoint-') ? resultJson.id : `waypoint-${resultJson.id}`) : `waypoint-${Date.now()}`,
       object: 'chat.completion',
@@ -121,6 +170,16 @@ export class OpenAICompatibleAdapter extends BaseProvider {
 
   /**
    * Generates a streaming text completion.
+   *
+   * WHY: Streaming requests require significantly more complex state management than
+   * synchronous completions. We must parse SSE events as they arrive to minimize TTFT
+   * (Time To First Token). Crucially, we enforce 'include_usage: true' so we can accurately
+   * attribute token costs for streamed traffic, and we accumulate choices in memory to
+   * reconstruct the full payload for the audit logs at the end of the stream.
+   *
+   * WHAT: Posts a request with stream=true, parses Server-Sent Events, yields chunks,
+   * and logs a synthesized summary upon completion.
+   *
    * @param {UnifiedRequest} req - Normalized request payload.
    * @param {string} apiKey - Upstream API key.
    * @param {AbortSignal} [signal] - Optional signal to abort the streaming connection.
@@ -131,6 +190,10 @@ export class OpenAICompatibleAdapter extends BaseProvider {
       model: req.actualModelId || req.model,
       messages: req.messages,
       stream: true,
+      // Essential for obtaining token consumption metrics in streaming responses.
+      stream_options: {
+        include_usage: true,
+      },
     };
 
     if (req.temperature !== undefined) {
@@ -189,6 +252,7 @@ export class OpenAICompatibleAdapter extends BaseProvider {
     const chunkId = `waypoint-chunk-${Date.now()}`;
     const stream = parseSSEStream(response.body, fetchSignal);
 
+    // State required to synthesize the final loggable payload from transient chunks.
     let eventCount = 0;
     let responseId = null;
     let responseModel = null;
@@ -212,6 +276,7 @@ export class OpenAICompatibleAdapter extends BaseProvider {
         try {
           parsedData = JSON.parse(sseEvent.data);
         } catch (err) {
+          // Ignore malformed JSON chunks from upstream to keep the stream alive.
           continue;
         }
 
@@ -221,6 +286,10 @@ export class OpenAICompatibleAdapter extends BaseProvider {
         if (parsedData.model) {
           responseModel = parsedData.model;
         }
+
+        // Accumulate delta content so we can reconstruct the full response string.
+        // WHY: The client receives the stream incrementally, but our observability/logging
+        // systems require a complete text block at the end of execution.
         if (parsedData.choices) {
           for (const c of parsedData.choices) {
             const idx = c.index ?? 0;
@@ -277,7 +346,11 @@ export class OpenAICompatibleAdapter extends BaseProvider {
         };
       }
     } finally {
+      // Must guarantee fetch aborts if generator returns early or throws,
+      // avoiding memory leaks and keeping network connections healthy.
       cleanup();
+
+      // We log the complete reconstructed response once the stream is fully consumed or aborted.
       if (requestLog && typeof requestLog.logProviderStreamSummary === 'function') {
         const summary = {
           id: responseId || chunkId,
@@ -304,6 +377,13 @@ export class OpenAICompatibleAdapter extends BaseProvider {
     }
   }
 
+  /**
+   * Transforms raw provider errors into our standardized error format.
+   *
+   * WHY: This ensures upper layers (like UnifiedOrchestrator) don't need to know
+   * the specifics of provider-level errors and can uniformly retry or fallback.
+   * WHAT: Standardizes error properties using BaseProvider logic.
+   */
   normalizeError(error) {
     return normalizeProviderError(error, this.providerName);
   }

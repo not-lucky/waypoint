@@ -8,6 +8,14 @@ import { sanitizeUrl, serializeHeaders } from '../utils/requestLogger.js';
 
 /**
  * Finds the longest overlapping prefix between the end of str and beginning of target.
+ *
+ * @param {string} str - The buffer ending.
+ * @param {string} target - The tag to match against.
+ * @returns {string} The longest matching suffix, or empty string.
+ *
+ * WHY: When streaming, chunk boundaries might cut a tag in half (e.g., `<tho` in chunk A,
+ * `ught>` in chunk B). This prevents us from prematurely emitting a partial tag as raw text
+ * by identifying potential boundaries at the end of the current buffer.
  */
 export function getLongestPrefixSuffix(str, target) {
   const maxLen = Math.min(str.length, target.length - 1);
@@ -24,6 +32,18 @@ export function getLongestPrefixSuffix(str, target) {
  * Processes buffered text from a stream and extracts thoughts enclosed in <thought> tags.
  * Because streaming tokens arrive in arbitrary splits, this state machine safely
  * reassembles partial tags and emits reasoning vs text chunks correctly.
+ *
+ * @param {string} buffer - The current text buffer to parse.
+ * @param {'text'|'thinking'} state - The current extraction state.
+ * @param {boolean} flush - If true, forces the buffer to empty (used on stream end).
+ * @param {function} sendThinking - Callback to emit reasoning tokens.
+ * @param {function} sendText - Callback to emit standard content tokens.
+ * @returns {{ buffer: string, state: 'text'|'thinking' }} Updated buffer and state.
+ *
+ * WHY: The Gemini API does not guarantee that XML-like tags arrive in a single chunk.
+ * We must hold back partial matches of `<thought>` or `</thought>` until the next chunk
+ * clarifies if it's a legitimate tag or just similar text. Flushing is required on stream
+ * termination to prevent dropping trailing text that looked like a partial tag.
  */
 export function processThinkingBuffer(buffer, state, flush, sendThinking, sendText) {
   let pendingBuffer = buffer;
@@ -85,6 +105,13 @@ export function processThinkingBuffer(buffer, state, flush, sendThinking, sendTe
   return { buffer: pendingBuffer, state: streamState };
 }
 
+/**
+ * Normalizes provider token usage metrics into standard snake_case formats.
+ *
+ * WHY: Upstream APIs inconsistently return metrics as either camelCase (`promptTokens`)
+ * or snake_case (`prompt_tokens`) depending on the SDK format and model version.
+ * This ensures downstream orchestrators always receive a predictable schema.
+ */
 export function translateUsage(usage) {
   if (!usage) return undefined;
   return {
@@ -94,6 +121,13 @@ export function translateUsage(usage) {
   };
 }
 
+/**
+ * Safely parses Server-Sent Events (SSE) string data payloads into JSON.
+ *
+ * WHY: SSE streams use the literal string `[DONE]` as a termination signal instead of
+ * valid JSON. Malformed network chunks could also crash the parsing cycle. By intercepting
+ * these safely, we prevent terminating the entire iterator on edge cases or expected closes.
+ */
 export function parseSSEEventData(data) {
   if (data === '[DONE]') {
     return null;
@@ -107,6 +141,11 @@ export function parseSSEEventData(data) {
 
 /**
  * Resolves the internal thinking level mapping to upstream specific levels.
+ *
+ * WHY: Gemini's API strictly expects categorical enum values ('low', 'medium', 'high')
+ * to control reasoning depth. Since the Unified API supports numeric budgets (e.g., for Anthropic),
+ * we must dynamically map integer thresholds to the closest Gemini categorical tier to
+ * maintain cross-provider compatibility.
  */
 const getThinkingLevel = (req) => {
   if (req.thinkingLevel) return req.thinkingLevel;
@@ -121,6 +160,11 @@ const getThinkingLevel = (req) => {
 /**
  * Provider adapter for Google's Gemini API endpoints.
  * Implements the BaseProvider interface to generate structured content from Gemini models.
+ *
+ * WHY: Abstracts away the complexities of Google's dual-endpoint architecture.
+ * It manages payload translation, dynamic endpoint routing (standard REST vs OpenAI-compatible),
+ * token mapping, and asynchronous stream parsing so the UnifiedOrchestrator can interact
+ * with Gemini just like any other generic provider.
  */
 export class GeminiAdapter extends BaseProvider {
   constructor(baseUrl = null, timeoutMs = null) {
@@ -137,7 +181,14 @@ export class GeminiAdapter extends BaseProvider {
    * @param {UnifiedRequest} req - Normalized request payload.
    * @param {string} apiKey - Upstream API key.
    * @param {AbortSignal} [signal] - Optional signal to abort the completion request.
+   * @param {RequestLogger} [requestLog] - Optional logger instance for telemetry.
    * @returns {Promise<NormalizedResponse>}
+   *
+   * WHY: Supports two operational modes. For standard requests, it routes to Gemini's
+   * native `generateContent`. For reasoning models (thinkingEnabled), it routes to
+   * Gemini's OpenAI-compatible endpoint because standard `generateContent` natively blends
+   * thinking/content in ways that are hard to cleanly separate, and the compatibility
+   * endpoint natively handles reasoning output fields.
    */
   async generateCompletion(req, apiKey, signal, requestLog = null) {
     const thinkingEnabled = req.thinkingEnabled || req.thinking_supported || false;
@@ -146,9 +197,10 @@ export class GeminiAdapter extends BaseProvider {
     let url;
     let headers;
 
-    // Gemini API natively supports a specialized OpenAI-compatible endpoint when
-    // using thinking modes because standard `generateContent` natively blends
-    // thinking/content in ways that are hard to cleanly separate.
+    // WHY: Gemini API natively supports a specialized OpenAI-compatible endpoint when
+    // using thinking modes. We use it because standard `generateContent` natively blends
+    // thinking/content in ways that are hard to cleanly separate, and the compatibility
+    // endpoint natively handles reasoning output fields.
     if (thinkingEnabled) {
       url = this.baseUrl
         ? `${this.baseUrl.replace(/\/$/, '')}/chat/completions`
@@ -238,8 +290,10 @@ export class GeminiAdapter extends BaseProvider {
           let contentText = c.message?.content || '';
           let reasoning = c.message?.reasoning_content || null;
 
-          // Google's proxy output might inject explicit <thought> tags into raw content
-          // instead of splitting them properly into reasoning_content. We defensively extract them.
+          // WHY: Google's proxy output might inject explicit <thought> tags into raw content
+          // instead of splitting them properly into the `reasoning_content` field.
+          // We defensively extract them here to ensure the client receives clean structural
+          // separation regardless of upstream proxy bugs.
           const startIdx = contentText.indexOf('<thought>');
           if (startIdx !== -1) {
             const endIdx = contentText.indexOf('</thought>', startIdx + 9);
@@ -289,7 +343,14 @@ export class GeminiAdapter extends BaseProvider {
    * @param {UnifiedRequest} req - Normalized request payload.
    * @param {string} apiKey - Upstream API key.
    * @param {AbortSignal} [signal] - Optional signal to abort the streaming connection.
+   * @param {RequestLogger} [requestLog] - Optional logger instance for telemetry.
    * @returns {AsyncGenerator<StreamChunk>}
+   *
+   * WHY: Yields chunks immediately to reduce perceived latency for end-users.
+   * For reasoning models, we route to the OpenAI-compatible endpoint and pipe chunks
+   * through `processThinkingBuffer` to reconstruct `<thought>` boundaries across chunk
+   * splits. For standard models, we hit `streamGenerateContent` and translate proprietary
+   * payload chunks into standard OpenAI-compatible chunks on the fly.
    */
   async* generateStream(req, apiKey, signal, requestLog = null) {
     const thinkingEnabled = req.thinkingEnabled || req.thinking_supported || false;
@@ -312,6 +373,9 @@ export class GeminiAdapter extends BaseProvider {
         model: req.actualModelId || req.model,
         messages: req.messages,
         stream: true,
+        stream_options: {
+          include_usage: true,
+        },
         extra_body: {
           google: {
             thinking_config: {
@@ -459,6 +523,9 @@ export class GeminiAdapter extends BaseProvider {
             streamState = result.state;
           }
 
+          // WHY: A single network chunk might contain both reasoning and text if a tag boundary
+          // was crossed in the state machine. We iterate and yield them as separate stream
+          // events to maintain strict schema separation downstream.
           if (deltasToYield.length > 0) {
             for (const delta of deltasToYield) {
               yield {
@@ -526,7 +593,8 @@ export class GeminiAdapter extends BaseProvider {
         }
       }
 
-      // If we finished iterating but thinking buffer holds state, flush the remaining.
+      // WHY: If we finished iterating but the thinking buffer holds state (e.g., partial text
+      // that looked like a tag), we must forcefully flush it to prevent data loss on stream close.
       if (thinkingEnabled) {
         const deltasToYield = [];
         const sendThinking = (text) => {
@@ -632,6 +700,13 @@ export class GeminiAdapter extends BaseProvider {
     }
   }
 
+  /**
+   * Normalizes provider-specific errors into standard formats.
+   *
+   * WHY: Ensures that HTTP status codes and API error messages are standardized
+   * so the UnifiedOrchestrator can reliably trigger fallbacks (e.g., 429 Rate Limit)
+   * regardless of Gemini's internal error schema.
+   */
   normalizeError(error) {
     return normalizeProviderError(error, 'gemini');
   }

@@ -288,6 +288,9 @@ describe('GeminiAdapter Tests', () => {
           model: 'gemini-2.5-pro',
           messages: [],
           stream: true,
+          stream_options: {
+            include_usage: true,
+          },
           extra_body: {
             google: {
               thinking_config: {

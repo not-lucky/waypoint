@@ -1,11 +1,13 @@
-/* eslint-disable no-await-in-loop */
+/* eslint-disable no-await-in-loop, no-underscore-dangle, no-restricted-syntax */
 import {
   vi, describe, it, expect, beforeEach, afterEach,
 } from 'vitest';
 import { GeminiAdapter } from '../src/adapters/GeminiAdapter.js';
 import { AnthropicAdapter } from '../src/adapters/AnthropicAdapter.js';
 import { OpenAICompatibleAdapter } from '../src/adapters/OpenAICompatibleAdapter.js';
-import { sanitizeUrl, serializeHeaders } from '../src/utils/requestLogger.js';
+import { RequestLog, sanitizeUrl, serializeHeaders } from '../src/utils/requestLogger.js';
+import { OpenAIController } from '../src/controllers/OpenAIController.js';
+import { AnthropicController } from '../src/controllers/AnthropicController.js';
 
 describe('Request Logging Format and Sanitization Tests', () => {
   let originalFetch;
@@ -273,5 +275,164 @@ describe('Request Logging Format and Sanitization Tests', () => {
         },
       },
     });
+  });
+
+  it('assert: RequestLog logClientStreamSummary writes structured data to 04_client_response.json', async () => {
+    const tempDir = `./logs/requests/test-temp-${Date.now()}`;
+    await import('node:fs/promises').then((fsp) => fsp.mkdir(tempDir, { recursive: true }));
+    const log = new RequestLog(tempDir, 'test-id', Date.now());
+
+    const summaryData = {
+      _format: 'sse-json',
+      _eventCount: 42,
+      summary: {
+        choices: [
+          {
+            message: { role: 'assistant', content: 'test content' },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+      },
+    };
+
+    log.logClientStreamSummary(summaryData);
+    await log.finalize();
+
+    const filePath = `${tempDir}/04_client_response.json`;
+    const content = await import('node:fs/promises').then((fsp) => fsp.readFile(filePath, 'utf8'));
+    const parsed = JSON.parse(content);
+
+    expect(parsed._streamed).toBe(true);
+    expect(parsed._format).toBe('sse-json');
+    expect(parsed._stage).toBe('client_response');
+    expect(parsed._eventCount).toBe(42);
+    expect(parsed.summary.choices[0].message.content).toBe('test content');
+
+    await import('node:fs/promises').then((fsp) => fsp.rm(tempDir, { recursive: true, force: true }));
+  });
+
+  it('assert: OpenAIController handleCompletion aggregates stream and calls logClientStreamSummary', async () => {
+    const mockChunks = [
+      {
+        id: 'chatcmpl-123',
+        model: 'gpt-4o',
+        choices: [{ index: 0, delta: { content: 'Hello ' }, finish_reason: null }],
+        usage: { prompt_tokens: 5, completion_tokens: 1, total_tokens: 6 },
+      },
+      {
+        id: 'chatcmpl-123',
+        model: 'gpt-4o',
+        choices: [{ index: 0, delta: { content: 'world' }, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 },
+      },
+    ];
+
+    const mockOrchestrator = {
+      config: {
+        logging: {
+          log_requests: true,
+          request_log_path: `./logs/requests-test-openai-${Date.now()}`,
+        },
+      },
+      executeCompletion: vi.fn().mockResolvedValue({
+        async* [Symbol.asyncIterator]() {
+          for (const chunk of mockChunks) {
+            yield chunk;
+          }
+        },
+      }),
+    };
+
+    const spy = vi.spyOn(RequestLog.prototype, 'logClientStreamSummary');
+
+    const controller = new OpenAIController(mockOrchestrator);
+    const req = {
+      body: { model: 'gpt-4o', stream: true },
+      headers: {},
+      url: '/v1/chat/completions',
+      method: 'POST',
+    };
+    const res = {
+      setHeader: vi.fn(),
+      write: vi.fn(),
+      end: vi.fn(),
+      status: vi.fn().mockReturnThis(),
+      json: vi.fn(),
+    };
+
+    await controller.handleCompletion(req, res);
+
+    expect(spy).toHaveBeenCalled();
+    const loggedData = spy.mock.calls[0][0];
+    expect(loggedData._format).toBe('sse-json');
+    expect(loggedData._eventCount).toBe(2);
+    expect(loggedData.summary.choices[0].message.content).toBe('Hello world');
+    expect(loggedData.summary.usage.completion_tokens).toBe(2);
+
+    spy.mockRestore();
+    await import('node:fs/promises').then((fsp) => fsp.rm(mockOrchestrator.config.logging.request_log_path, { recursive: true, force: true }));
+  });
+
+  it('assert: AnthropicController handleCompletion aggregates stream and calls logClientStreamSummary', async () => {
+    const mockChunks = [
+      {
+        id: 'msg-123',
+        model: 'claude-3-5-sonnet',
+        choices: [{ index: 0, delta: { content: 'Hello ' }, finish_reason: null }],
+        usage: { prompt_tokens: 5, completion_tokens: 1, total_tokens: 6 },
+      },
+      {
+        id: 'msg-123',
+        model: 'claude-3-5-sonnet',
+        choices: [{ index: 0, delta: { content: 'world' }, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 },
+      },
+    ];
+
+    const mockOrchestrator = {
+      config: {
+        logging: {
+          log_requests: true,
+          request_log_path: `./logs/requests-test-anthropic-${Date.now()}`,
+        },
+      },
+      executeCompletion: vi.fn().mockResolvedValue({
+        async* [Symbol.asyncIterator]() {
+          for (const chunk of mockChunks) {
+            yield chunk;
+          }
+        },
+      }),
+    };
+
+    const spy = vi.spyOn(RequestLog.prototype, 'logClientStreamSummary');
+
+    const controller = new AnthropicController(mockOrchestrator);
+    const req = {
+      body: { model: 'claude-3-5-sonnet', stream: true },
+      headers: {},
+      url: '/v1/messages',
+      method: 'POST',
+    };
+    const res = {
+      setHeader: vi.fn(),
+      write: vi.fn(),
+      end: vi.fn(),
+      status: vi.fn().mockReturnThis(),
+      json: vi.fn(),
+    };
+
+    await controller.handleCompletion(req, res);
+
+    expect(spy).toHaveBeenCalled();
+    const loggedData = spy.mock.calls[0][0];
+    expect(loggedData._format).toBe('anthropic-sse');
+    expect(loggedData._eventCount).toBe(2);
+    expect(loggedData.summary.content[0].text).toBe('Hello world');
+    expect(loggedData.summary.usage.output_tokens).toBe(2);
+
+    spy.mockRestore();
+    await import('node:fs/promises').then((fsp) => fsp.rm(mockOrchestrator.config.logging.request_log_path, { recursive: true, force: true }));
   });
 });

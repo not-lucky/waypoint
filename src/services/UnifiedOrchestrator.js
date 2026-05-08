@@ -25,13 +25,38 @@ function logWarning(logger, msg, meta) {
   else fallbackLogger.warning(msg);
 }
 
+/**
+ * WHAT: Global registry of all active request AbortControllers.
+ * WHY: During a graceful shutdown (e.g., SIGINT/SIGTERM), we need a centralized way
+ * to cancel all in-flight requests immediately. If we don't sever these connections,
+ * the gateway could hang waiting for upstream LLMs to respond, or worse, consume
+ * unnecessary quota from provider APIs when the client has already disconnected.
+ * SIDE EFFECTS: Adding to this Set creates a strong reference to the AbortController.
+ * It is critical that controllers are removed from this Set in a `finally` block
+ * for every request to prevent memory leaks over the lifetime of the Node process.
+ */
 // Global registry of all active request AbortControllers.
 // Used during graceful shutdown (in index.js) to cancel all in-flight
 // requests and prevent upstream quota bleed. We maintain this centrally
 // so the process can quickly drain sockets on SIGINT.
 export const activeControllers = new Set();
 
+/**
+ * WHAT: The central execution engine for the gateway.
+ * WHY: This class abstracts the complexities of multi-provider routing, load balancing,
+ * rate limiting, and failure recovery. By centralizing this logic, the HTTP layer (controllers)
+ * remains stateless and isolated from upstream provider network quirks. It acts as the "brain"
+ * that translates a generalized request into a provider-specific execution while
+ * applying resilience patterns (retries, failover).
+ */
 export class UnifiedOrchestrator {
+  /**
+   * WHAT: Initializes the orchestrator with necessary dependencies.
+   * WHY: We use dependency injection here (keyRegistry, providerFactory, config) to make
+   * the orchestrator fully testable without needing actual network calls or file system access.
+   * It allows us to mock key exhaustion, config parsing, or provider failures seamlessly
+   * in unit tests.
+   */
   constructor(keyRegistry, providerFactory, config = {}, logger = null) {
     this.keyRegistry = keyRegistry;
     this.providerFactory = providerFactory;
@@ -40,6 +65,16 @@ export class UnifiedOrchestrator {
   }
 
   /**
+   * WHAT: Executes an LLM completion by dispatching the request to the appropriate
+   * provider adapter.
+   * WHY: This method isolates the HTTP layer from the provider layer. It implements a robust
+   * double-loop architecture: an inner loop for rotating through available API keys within a
+   * chosen provider, and an outer loop for failing over to entirely different providers if the
+   * primary provider is fully exhausted or unresponsive.
+   * EDGE CASES:
+   * - Client disconnects mid-request: Caught via `AbortController` to stop upstream billing.
+   * - Key exhaustion: Triggers provider-level failover if `fallbackModel` is defined.
+   *
    * Executes LLM completion by dispatching the request to the configured provider adapter,
    * handling key rotation, retries, overrides, and automatic fallback routing.
    *
@@ -53,7 +88,11 @@ export class UnifiedOrchestrator {
   async executeCompletion(unifiedReq, rawReq, requestLog) {
     const req = { isFallback: false, ...unifiedReq };
 
-    // Apply header-based overrides if rawReq is provided and has headers.
+    // WHAT: Apply header-based overrides from the raw request.
+    // WHY: We allow clients to dynamically override standard gateway configurations (like
+    // temperature or thinking budget) on a per-request basis via specific HTTP headers. This
+    // gives advanced users fine-grained control for specific workloads without needing to
+    // deploy new YAML configurations.
     // Client-supplied gateway headers allow per-request override of YAML config values.
     if (rawReq?.headers) {
       const thinkingLevelHeader = rawReq.headers['x-gateway-thinking-level'];
@@ -80,6 +119,11 @@ export class UnifiedOrchestrator {
     // Rely on global retry limit from gateway configuration.
     const retryLimit = this.config.gateway?.global_retry_limit ?? 3;
 
+    // WHAT: Create an abort signal and listen to the request close event.
+    // WHY: LLM requests are notoriously long-running. If a client drops their connection
+    // (e.g., closing their browser, timing out), we must immediately notify the upstream provider
+    // to stop generating tokens. This is a critical cost-saving measure to prevent "zombie"
+    // requests from draining API credits.
     // Create an abort signal and listen to the request close event.
     // This allows us to instantly terminate upstream queries if the client drops the connection,
     // conserving external API limits.
@@ -119,6 +163,11 @@ export class UnifiedOrchestrator {
     let isStreamingResponse = false;
 
     try {
+      // WHAT: Outer loop to handle provider-level fallbacks.
+      // WHY: If a provider is experiencing a widespread outage or all our API keys for it
+      // are exhausted/rate-limited, we need the ability to seamlessly pivot the request
+      // to a completely different provider (e.g., from OpenAI to Anthropic) as configured
+      // by the `fallbackModel` routing rules without failing the client's request.
       // Outer loop to handle fallbacks. This allows us to jump entirely between
       // different configured providers if one provider is completely unresponsive.
       while (true) {
@@ -144,10 +193,19 @@ export class UnifiedOrchestrator {
         let attempt = 0;
         let triggerFallback = false;
 
+        // WHAT: Inner loop for key rotation and retries within the same provider.
+        // WHY: Rate limits (429s) or temporary server errors (500s) are common with LLM APIs.
+        // Instead of immediately failing the request, we iteratively try other available API keys
+        // from the registry pool for the current provider. If all keys fail or max retries are hit,
+        // we break out to the outer fallback loop.
         // Inner loop for key rotation/retries. We loop here to rotate through available
         // keys on the current provider before giving up and failing over to the
         // outer fallback loop.
         while (attempt < retryLimit) {
+          // WHAT: Check if the client disconnected during the retry delay.
+          // WHY: Retries add latency. A client might give up and close the connection
+          // before we even attempt the next key. Checking this here prevents us from firing
+          // a network request whose response will never be read.
           if (abortController.signal.aborted) {
             logDebug(this.logger, 'Request aborted during retry loop check');
             return {
@@ -165,11 +223,19 @@ export class UnifiedOrchestrator {
           if (!apiKey) {
             logDebug(this.logger, 'No active keys available in pool for provider', { provider });
 
+            // WHAT: Halt execution if we are already in a fallback state.
+            // WHY: To prevent infinite loops. If we've already fallen back and still can't
+            // find a key, we must definitively fail the request rather than bouncing back and forth
+            // between providers endlessly.
             // If already on a fallback, we halt completely.
             if (req.isFallback) {
               return this.buildAllKeysExhaustedError(provider);
             }
 
+            // WHAT: Switch routing context to the fallback model.
+            // WHY: The primary provider is out of valid keys. We mutate the request object
+            // to target the fallback model and break the inner loop, signaling the outer loop
+            // to re-evaluate and spin up the adapter for the new provider.
             // If a fallback model is configured for this specific model, we switch contexts.
             if (req.fallbackModel) {
               logDebug(this.logger, 'Triggering fallback routing from key exhaustion', {
@@ -200,6 +266,11 @@ export class UnifiedOrchestrator {
           try {
             const providerStartTime = Date.now();
 
+            // WHAT: Stream execution branch.
+            // WHY: Streaming requires fundamentally different lifecycle management than standard
+            // unary requests. We must keep the AbortController alive for the entire duration
+            // of the stream (which can take minutes) and carefully yield chunks to ensure
+            // backpressure is maintained and client disconnects are caught mid-stream.
             // Stream execution branch
             if (req.stream) {
               const stream = adapter.generateStream(
@@ -222,6 +293,11 @@ export class UnifiedOrchestrator {
                 );
               }
 
+              // WHAT: Flag that we are returning a stream.
+              // WHY: The `executeCompletion` method uses a `finally` block to clean up the
+              // AbortController. For streams, we return an async iterator and exit this method
+              // *before* the stream finishes. This flag prevents the `finally` block from
+              // destroying the controller prematurely.
               // Flag that we are returning a stream so the outer executeCompletion
               // finally block does not prematurely delete the controller.
               isStreamingResponse = true;
@@ -233,6 +309,11 @@ export class UnifiedOrchestrator {
                   if (!firstResult.done) {
                     yield firstResult.value;
                     while (true) {
+                      // WHAT: Continuous abort checks during iteration.
+                      // WHY: The async generator might pause while waiting for network I/O.
+                      // Checking the abort signal both before requesting a chunk and after
+                      // receiving it ensures we exit the loop as close to the exact moment
+                      // of client disconnection as possible, maximizing API resource savings.
                       // Check abort signal before requesting the next chunk
                       if (abortController.signal.aborted) {
                         logDebug(self.logger, 'Stream abort detected before chunk retrieval');
@@ -292,6 +373,11 @@ export class UnifiedOrchestrator {
                 },
               };
             }
+            // WHAT: Handle adapter errors and trigger exponential backoff.
+            // WHY: By flagging the failure in the key registry, the registry will place the
+            // failed key on cooldown (based on the HTTP status code, e.g., longer cooldown
+            // for 429).
+            // The loop will then `continue` to attempt the next available key in the pool.
             // An error occurred from the adapter. Flag the failure in the key registry,
             // which will handle exponential backoff, and allow the while loop to retry if possible.
             const statusCode = error?.status || error?.statusCode || error?.response?.status || 500;
@@ -303,6 +389,10 @@ export class UnifiedOrchestrator {
 
         if (triggerFallback) continue;
 
+        // WHAT: Handle fallback if retries are exhausted but keys still exist.
+        // WHY: We might hit `retryLimit` without exhausting the key pool (e.g., getting
+        // repeated 500 errors from the provider). If a fallback is configured, we route
+        // there instead of blindly failing the user's request, maximizing availability.
         // If retries are exhausted and a fallback is configured, initiate outer loop cycle
         if (req.fallbackModel && !req.isFallback) {
           logDebug(this.logger, 'Triggering fallback routing from retry exhaustion', {
@@ -325,6 +415,10 @@ export class UnifiedOrchestrator {
         return this.buildAllKeysExhaustedError(provider);
       }
     } finally {
+      // WHAT: Clean up the abort controller for non-streaming requests.
+      // WHY: Unary requests are fully resolved by the time we hit this block. Failing to remove
+      // the controller from the global `activeControllers` Set would cause a severe memory leak,
+      // eventually crashing the Node process as the Set grows indefinitely.
       // For non-streaming requests, clean up the abort controller immediately
       // upon completion (whether successful or failed).
       if (!isStreamingResponse) {
@@ -334,6 +428,12 @@ export class UnifiedOrchestrator {
   }
 
   /**
+   * WHAT: Constructs a 503 error payload when all keys are unavailable.
+   * WHY: When rate-limited across all keys, we must communicate exactly when the client
+   * should try again. We calculate the minimum cooldown time across the entire key pool
+   * and expose it via the `retryAfterSeconds` property, allowing upstream load balancers
+   * or clients to intelligently pause their traffic.
+   *
    * Helper to build the normalized 503 all_keys_exhausted error payload.
    * Scans the active cooldowns to inform the client of a 'retryAfterSeconds' delay.
    *

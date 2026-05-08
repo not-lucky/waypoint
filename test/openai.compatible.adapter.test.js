@@ -257,6 +257,9 @@ describe('OpenAICompatibleAdapter Tests', () => {
           model: 'gpt-4o',
           messages: [{ role: 'user', content: 'hello' }],
           stream: true,
+          stream_options: {
+            include_usage: true,
+          },
           max_tokens: 100,
         }),
       }),

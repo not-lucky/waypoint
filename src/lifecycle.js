@@ -2,21 +2,31 @@ import { activeControllers } from './services/UnifiedOrchestrator.js';
 import { rateLimiterIntervals } from './middleware/rateLimiter.js';
 import { flushLogs } from './utils/logger.js';
 
+// Module-level guard to enforce idempotency. Prevents race conditions and duplicate
+// teardown execution if multiple termination signals (e.g., SIGTERM followed by SIGINT)
+// are received in rapid succession.
 let isTearingDown = false;
 
-// Store listeners globally so they survive module cache resets during unit/integration tests
-// This is critical for preventing memory leaks and duplicate handlers during test suite runs
+// Store listeners globally so they survive module cache resets during unit/integration tests.
+// This is critical for preventing memory leaks (MaxListenersExceededWarning) and duplicate
+// handlers across test suite runs, which can artificially trigger teardowns mid-test.
 global.waypointSigint = global.waypointSigint || null;
 global.waypointSigterm = global.waypointSigterm || null;
 
 /**
- * Resets the in-progress teardown state. Primarily used for unit testing.
- * Testing environments need to simulate start/stop lifecycles without actually
- * killing the host process. This resets the module state cleanly.
+ * Resets the in-progress teardown state and removes signal handlers.
+ *
+ * WHY: Testing environments need to simulate start/stop lifecycles without actually
+ * killing the host process. By unregistering the global handlers and dropping the
+ * teardown lock, this guarantees test idempotency and prevents cross-contamination
+ * between isolated test cases.
+ *
+ * WHAT: Resets module state and unbinds process listeners.
  */
 export function resetLifecycleState() {
   isTearingDown = false;
   if (global.waypointSigint) {
+    // Unbind to prevent handler accumulation across test files
     process.off('SIGINT', global.waypointSigint);
     global.waypointSigint = null;
   }
@@ -27,10 +37,16 @@ export function resetLifecycleState() {
 }
 
 /**
- * Initiates the graceful teardown sequence in the exact order specified in Section 8.
- * A structured teardown is essential to prevent dropped client connections,
- * orphaned resources, and corrupted log files when the process receives
- * termination signals (e.g. from Kubernetes).
+ * Initiates a structured, idempotent graceful teardown sequence.
+ *
+ * WHY: A rigid teardown sequence is essential in distributed systems to prevent dropped
+ * client connections, orphaned event loop resources (like watchers), and corrupted or lost
+ * logs when the process receives termination signals (e.g., from Kubernetes scaling down).
+ * The order of operations ensures that inbound traffic stops before we sever active streams,
+ * and we flush telemetry only after all logic halts.
+ *
+ * WHAT: Coordinates server shutdown, aborts in-flight requests, clears intervals, flushes
+ * logs, and finally exits the process.
  *
  * @param {Object} params
  * @param {Object} params.server - Node HTTP Server instance
@@ -46,7 +62,7 @@ export async function teardown({
   logger,
 }) {
   // Prevent duplicate teardown invocations if multiple signals are received rapidly.
-  // This guarantees teardown idempotency.
+  // This guarantees teardown idempotency, preventing overlapping file flushes.
   if (isTearingDown) return;
   isTearingDown = true;
 
@@ -54,9 +70,12 @@ export async function teardown({
     logger.info('Graceful shutdown initiated...');
   }
 
-  // Register a safety fallback timer. If the server connections fail to drain or
-  // logger flush hangs for more than 10 seconds, we forcefully exit with code 1.
-  // This prevents the application from hanging indefinitely in a zombie state during scaling down.
+  // Register a safety fallback timer.
+  // WHY: If the server connections fail to drain or logger flush hangs for more than
+  // 10 seconds, we forcefully exit with code 1. This prevents the application from
+  // hanging indefinitely in a zombie state during container orchestration evictions,
+  // which would otherwise result in a hard SIGKILL from the OS.
+  // WHAT: 10s timeout to process.exit(1).
   const safetyTimeout = setTimeout(async () => {
     if (logger && typeof logger.fatal === 'function') {
       logger.fatal('Could not close connections in time, forcefully shutting down');
@@ -69,16 +88,20 @@ export async function teardown({
     process.exit(1);
   }, 10000);
 
-  // Unreference the safety timer so that it does not keep the Node event loop alive
-  // if all other handles have been cleared successfully.
+  // Unreference the safety timer.
+  // WHY: If all other teardown tasks complete successfully, an active Timeout object
+  // will artificially keep the Node event loop alive. Unreferencing allows the process
+  // to exit naturally if it's the only task left.
+  // WHAT: Removes timeout from active event loop handles.
   if (typeof safetyTimeout.unref === 'function') {
     safetyTimeout.unref();
   }
 
   try {
     // 1. server.close() - refuse new socket connects.
-    // We initiate server closure first so that no new HTTP requests are accepted.
-    // We wrap it in a Promise so we can await its complete close after aborting in-flight work.
+    // WHY: We initiate server closure first so that no new HTTP requests are accepted
+    // by the OS while we are tearing down internal state.
+    // WHAT: Wraps the callback-based close() in a Promise.
     if (logger && typeof logger.debug === 'function') {
       logger.debug('Graceful shutdown: closing server to new connections');
     }
@@ -94,9 +117,11 @@ export async function teardown({
     });
 
     // 2. abort all active AbortControllers (from global Set)
-    // Aborting in-flight streams will cause their connection handlers to complete and close,
-    // which in turn allows the server.close() callback to fire.
-    // If we didn't do this, long-polling SSE streams would keep the server alive forever.
+    // WHY: Aborting in-flight streams will cause their connection handlers to complete
+    // and close, which in turn allows the server.close() callback to fire. If we didn't
+    // do this, long-polling SSE streams would hold open sockets, keeping the server
+    // alive indefinitely and triggering our fallback timeout.
+    // WHAT: Calls abort() on all active request controllers.
     if (logger && typeof logger.debug === 'function') {
       logger.debug(`Graceful shutdown: aborting ${activeControllers.size} active connections`);
     }
@@ -112,7 +137,9 @@ export async function teardown({
     activeControllers.clear();
 
     // 3. watcher.close() (fs.watch configuration watcher)
-    // Release the configuration file watcher handle to avoid file system locks.
+    // WHY: Release the configuration file watcher handle to avoid file system locks and
+    // clear the native OS watcher resources.
+    // WHAT: Stops the configLoader's fs.watch instance.
     if (logger && typeof logger.debug === 'function') {
       logger.debug('Graceful shutdown: stopping configuration file watcher');
     }
@@ -121,7 +148,9 @@ export async function teardown({
     }
 
     // 4. clearTimeout all cooldown timer handles
-    // Cancel any active key cooldown restoration timers to clear the event loop.
+    // WHY: Cancel any active key cooldown restoration timers. Without this, pending timeouts
+    // would keep the event loop active, delaying process exit.
+    // WHAT: Cleans up registry timeouts.
     if (logger && typeof logger.debug === 'function') {
       logger.debug('Graceful shutdown: cleaning up key registry cooldown timers');
     }
@@ -130,7 +159,9 @@ export async function teardown({
     }
 
     // 5. clearInterval all rate limiter handles
-    // Clear any token-bucket or request intervals registered by client rate limiters.
+    // WHY: Clear any token-bucket or request intervals registered by client rate limiters.
+    // Intervals are persistent event loop blockers.
+    // WHAT: Clears all collected setInterval IDs.
     if (logger && typeof logger.debug === 'function') {
       logger.debug(`Graceful shutdown: clearing ${rateLimiterIntervals.size} rate limiter intervals`);
     }
@@ -142,13 +173,19 @@ export async function teardown({
     }
 
     // Wait for the server connections to close fully
+    // WHY: Now that we've stopped new connections and aborted active ones, the server
+    // should have drained. We await this to ensure all sockets are closed before tearing
+    // down the logging system.
     await serverClosePromise;
 
     // Clear the safety timeout since shutdown succeeded
     clearTimeout(safetyTimeout);
 
     // 6. flushLogs() - write buffered logs to disk using LogTape
-    // Log flushing must happen last to ensure all teardown steps are successfully recorded.
+    // WHY: Log flushing must happen last to ensure all teardown steps (success or failure)
+    // are successfully recorded to persistent storage. If we flushed earlier, subsequent
+    // teardown events would be lost in an in-memory buffer.
+    // WHAT: Flushes memory buffers to disk.
     if (logger && typeof logger.debug === 'function') {
       logger.debug('Graceful shutdown: flushing logs and shutting down logging system');
     }
@@ -158,9 +195,12 @@ export async function teardown({
     await flushLogs();
 
     // 7. process.exit(0)
+    // WHY: Explicitly exit with 0 to signal a successful graceful termination to the host OS.
     process.exit(0);
   } catch (err) {
-    // If any step throws during graceful shutdown, log the fatal error and force exit 1.
+    // WHY: If any step throws during graceful shutdown, we risk being in a partially-torn-down
+    // state. We must log the fatal error and force exit 1 so orchestrators know the
+    // shutdown failed.
     if (logger && typeof logger.fatal === 'function') {
       logger.fatal('Fatal error during graceful teardown:', err);
       if (typeof logger.flush === 'function') {
@@ -182,8 +222,13 @@ export async function teardown({
 
 /**
  * Registers SIGINT and SIGTERM lifecycle hooks.
- * These listeners intercept OS termination signals allowing us to gracefully
- * tear down before the OS forcefully terminates the process.
+ *
+ * WHY: These listeners intercept OS termination signals (e.g., from Ctrl+C or Docker stop)
+ * allowing us to gracefully tear down before the OS forcefully terminates the process.
+ * We must unbind previous instances first to avoid double-firing if this function is
+ * called multiple times (e.g., during tests or module reloads).
+ *
+ * WHAT: Binds OS process signals to the teardown handler.
  *
  * @param {Object} params
  * @param {Object} params.server - Node HTTP Server instance
@@ -198,6 +243,7 @@ export function registerLifecycle({
   logger,
 }) {
   if (global.waypointSigint) {
+    // WHY: Unregistering prevents memory leaks and duplicate handler execution.
     process.off('SIGINT', global.waypointSigint);
   }
   if (global.waypointSigterm) {

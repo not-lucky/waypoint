@@ -102,6 +102,7 @@ const NOOP_LOG = Object.freeze({
   logProviderResponse() {},
   logProviderStreamSummary() {},
   logClientResponse() {},
+  logClientStreamSummary() {},
   appendStreamEvent() {},
   finalize() { return Promise.resolve(); },
   id: null,
@@ -113,7 +114,7 @@ const NOOP_LOG = Object.freeze({
  * Each instance manages a timestamped folder containing the 5 debug log files.
  * Tracks the complete lifecycle of a single proxy event across multiple asynchronous boundaries.
  */
-class RequestLog {
+export class RequestLog {
   /**
    * @param {string} dir - Absolute path to the request log folder.
    * @param {string} id - Short request identifier.
@@ -194,6 +195,25 @@ class RequestLog {
       summary: data.summary || {},
     };
     const p = writeJsonFile(path.join(this.dir, '03_provider_response.json'), logData);
+    this.pendingWrites.push(p);
+  }
+
+  /**
+   * Logs the client response summary at the end of a streaming request.
+   * Overwrites the client response file with the final counts and event summary.
+   *
+   * @param {Object} data - Streaming log data including _format, _eventCount, and summary.
+   */
+  logClientStreamSummary(data) {
+    if (this.finalized) return;
+    const logData = {
+      _streamed: true,
+      _format: data._format || 'sse-json',
+      _stage: 'client_response',
+      _eventCount: data._eventCount || 0,
+      summary: data.summary || {},
+    };
+    const p = writeJsonFile(path.join(this.dir, '04_client_response.json'), logData);
     this.pendingWrites.push(p);
   }
 

@@ -435,4 +435,39 @@ describe('Request Logging Format and Sanitization Tests', () => {
     spy.mockRestore();
     await import('node:fs/promises').then((fsp) => fsp.rm(mockOrchestrator.config.logging.request_log_path, { recursive: true, force: true }));
   });
+
+  it('assert: RequestLog groups provider and client events and writes them with headers to 05_event_stream.jsonl', async () => {
+    const tempDir = `./logs/requests/test-temp-${Date.now()}`;
+    await import('node:fs/promises').then((fsp) => fsp.mkdir(tempDir, { recursive: true }));
+    const log = new RequestLog(tempDir, 'test-id', Date.now());
+
+    log.appendStreamEvent('provider', { id: 'chunk-1', value: 'hello' });
+    log.appendStreamEvent('client', 'data: {"id":"chatcmpl-1"}\n\n');
+    log.appendStreamEvent('provider', { id: 'chunk-2', value: 'world' });
+    log.appendStreamEvent('client', 'data: [DONE]\n\n');
+
+    await log.finalize();
+
+    const filePath = `${tempDir}/05_event_stream.jsonl`;
+    const content = await import('node:fs/promises').then((fsp) => fsp.readFile(filePath, 'utf8'));
+
+    const expectedContent = [
+      '--- provider ---',
+      'data: {"id":"chunk-1","value":"hello"}',
+      '',
+      'data: {"id":"chunk-2","value":"world"}',
+      '',
+      '',
+      '--- client ---',
+      'data: {"id":"chatcmpl-1"}',
+      '',
+      'data: [DONE]',
+      '',
+      '',
+    ].join('\n');
+
+    expect(content).toBe(expectedContent);
+
+    await import('node:fs/promises').then((fsp) => fsp.rm(tempDir, { recursive: true, force: true }));
+  });
 });

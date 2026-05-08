@@ -238,8 +238,7 @@ export class RequestLog {
 
   /**
    * Appends a single SSE event to the event stream log (stage 5).
-   * Buffers events and flushes periodically for performance.
-   * This prevents high I/O overhead locking up the event loop during rapid streaming.
+   * Buffers events in memory to be written sequentially upon request finalization.
    *
    * @param {"provider" | "client"} direction - Whether this event is from
    * the provider or to the client.
@@ -247,31 +246,78 @@ export class RequestLog {
    */
   appendStreamEvent(direction, data) {
     if (this.finalized) return;
-    const line = JSON.stringify({
+    this.streamBuffer.push({
       direction,
       timestamp: new Date().toISOString(),
       data,
     });
-    this.streamBuffer.push(line);
-
-    // Flush every 20 events to balance write frequency and memory
-    if (this.streamBuffer.length >= 20) {
-      this.flushStreamBuffer();
-    }
   }
 
   /**
-   * Flushes the stream event buffer to disk.
+   * Formats and writes the accumulated event stream to disk.
+   * Groups provider events first under a "--- provider ---" header, followed by
+   * client events under a "--- client ---" header, mimicking standard SSE streams.
    * @private
+   * @returns {Promise<void>}
    */
-  flushStreamBuffer() {
-    if (this.streamBuffer.length === 0) return;
-    const lines = `${this.streamBuffer.join('\n')}\n`;
-    this.streamBuffer = [];
-    const p = fsp.appendFile(this.streamFilePath, lines, 'utf8').catch((err) => {
-      logger.error('Failed to flush stream event buffer', { error: err.message });
-    });
-    this.pendingWrites.push(p);
+  async writeStreamLog() {
+    const providerEvents = this.streamBuffer.filter((e) => e.direction === 'provider');
+    const clientEvents = this.streamBuffer.filter((e) => e.direction === 'client');
+
+    let content = '';
+
+    if (providerEvents.length > 0) {
+      content += '--- provider ---\n';
+      providerEvents.forEach((event) => {
+        let line = '';
+        if (typeof event.data === 'string') {
+          line = event.data;
+        } else {
+          line = `data: ${JSON.stringify(event.data)}\n\n`;
+        }
+
+        if (!line.startsWith('data: ') && !line.startsWith('event: ')) {
+          line = `data: ${line}`;
+        }
+        if (!line.endsWith('\n')) {
+          line += '\n';
+        }
+        if (line.endsWith('\n') && !line.endsWith('\n\n')) {
+          line += '\n';
+        }
+        content += line;
+      });
+      content += '\n';
+    }
+
+    if (clientEvents.length > 0) {
+      content += '--- client ---\n';
+      clientEvents.forEach((event) => {
+        let line = '';
+        if (typeof event.data === 'string') {
+          line = event.data;
+        } else {
+          line = `data: ${JSON.stringify(event.data)}\n\n`;
+        }
+
+        if (!line.startsWith('data: ') && !line.startsWith('event: ')) {
+          line = `data: ${line}`;
+        }
+        if (!line.endsWith('\n')) {
+          line += '\n';
+        }
+        if (line.endsWith('\n') && !line.endsWith('\n\n')) {
+          line += '\n';
+        }
+        content += line;
+      });
+    }
+
+    try {
+      await fsp.writeFile(this.streamFilePath, content, 'utf8');
+    } catch (err) {
+      logger.error('Failed to write stream log file', { error: err.message });
+    }
   }
 
   /**
@@ -282,8 +328,13 @@ export class RequestLog {
   async finalize() {
     if (this.finalized) return;
     this.finalized = true;
-    // Flush any remaining stream events
-    this.flushStreamBuffer();
+
+    // Write any buffered stream events
+    if (this.streamBuffer.length > 0) {
+      const p = this.writeStreamLog();
+      this.pendingWrites.push(p);
+    }
+
     // Wait for all pending async writes to complete
     await Promise.all(this.pendingWrites);
     this.pendingWrites = [];

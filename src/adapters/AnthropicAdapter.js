@@ -210,6 +210,9 @@ export class AnthropicAdapter extends BaseProvider {
 
         try {
           const dataJson = JSON.parse(sseEvent.data);
+          if (requestLog && typeof requestLog.appendStreamEvent === 'function') {
+            requestLog.appendStreamEvent('provider', dataJson);
+          }
 
           // State Machine: Anthropic streams iterate through discrete event types.
           // We extract metadata and incrementally build our representation of the response content.

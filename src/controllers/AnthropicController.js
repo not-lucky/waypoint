@@ -138,8 +138,7 @@ export class AnthropicController {
           for await (const chunk of response) {
             chunkCount += 1;
 
-            // Log provider-side chunk for telemetry.
-            reqLog.appendStreamEvent('provider', chunk);
+            // Provider-side chunk is logged at the adapter level.
 
             // What: Accumulate metadata and choices.
             // Why: We extract IDs, models, and tokens as they arrive. OpenAI chunk structures

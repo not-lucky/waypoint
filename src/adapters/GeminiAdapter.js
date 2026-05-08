@@ -463,6 +463,9 @@ export class GeminiAdapter extends BaseProvider {
           if (!parsedData) {
             continue;
           }
+          if (requestLog && typeof requestLog.appendStreamEvent === 'function') {
+            requestLog.appendStreamEvent('provider', parsedData);
+          }
           eventCount += 1;
 
           if (parsedData.id) {
@@ -562,6 +565,9 @@ export class GeminiAdapter extends BaseProvider {
           const parsedData = parseSSEEventData(sseEvent.data);
           if (!parsedData) {
             continue;
+          }
+          if (requestLog && typeof requestLog.appendStreamEvent === 'function') {
+            requestLog.appendStreamEvent('provider', parsedData);
           }
           eventCount += 1;
 

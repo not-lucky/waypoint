@@ -192,8 +192,7 @@ export class OpenAIController {
                 ?? totalTokens;
             }
 
-            // WHAT: Log both directions of the stream event.
-            reqLog.appendStreamEvent('provider', chunk);
+            // WHAT: Log client stream event.
             reqLog.appendStreamEvent('client', sseData);
 
             res.write(sseData);

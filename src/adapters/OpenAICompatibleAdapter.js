@@ -275,6 +275,9 @@ export class OpenAICompatibleAdapter extends BaseProvider {
         let parsedData;
         try {
           parsedData = JSON.parse(sseEvent.data);
+          if (requestLog && typeof requestLog.appendStreamEvent === 'function') {
+            requestLog.appendStreamEvent('provider', parsedData);
+          }
         } catch (err) {
           // Ignore malformed JSON chunks from upstream to keep the stream alive.
           continue;

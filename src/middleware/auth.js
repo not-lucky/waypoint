@@ -18,76 +18,80 @@ const clientCache = new WeakMap();
  * @param {Object} configLoader - The configuration loader instance to fetch the current config.
  * @returns {Function} Express middleware function.
  */
-export const authMiddleware = (configLoader) => (req, res, next) => {
-  logger.debug('Auth attempt: checking credentials');
-  const authHeader = req.headers.authorization;
-  const xApiKey = req.headers['x-api-key'];
+/**
+ * Extracts authentication token from request headers.
+ * Supports both Authorization: Bearer <token> and x-api-key header formats.
+ *
+ * @param {Object} headers - Express request headers
+ * @returns {Object} Result object with {token: string|null, error: Object|null}
+ */
+const extractAuthToken = (headers) => {
+  const authHeader = headers.authorization;
+  const xApiKey = headers['x-api-key'];
 
-  // Reject immediately if both standard Authorization and Anthropic x-api-key are missing.
-  // This fails fast, reducing processing overhead for unauthenticated bot scanners.
-  if (authHeader === undefined && xApiKey === undefined) {
-    logger.debug('Auth failed: missing credentials');
-    res.status(401).json({
-      error: {
-        code: 'unauthorized',
-        message: 'Unauthorized: Missing Authorization header.',
-        httpStatus: 401,
-      },
-    });
-    return;
-  }
-
-  let token;
+  // Prefer Authorization header over x-api-key
   if (authHeader !== undefined) {
-    // Split by one or more whitespace characters to tolerate multiple spaces gracefully.
-    // RFC 7235 specifies authentication schemes case-insensitively, so "bearer" is acceptable.
     const parts = authHeader.trim().split(/\s+/);
     if (parts.length !== 2 || parts[0].toLowerCase() !== 'bearer') {
-      logger.debug('Auth failed: invalid Authorization header format');
-      res.status(401).json({
+      return {
+        token: null,
         error: {
           code: 'unauthorized',
           message: 'Unauthorized: Invalid Authorization header format. Expected "Bearer <token>".',
           httpStatus: 401,
         },
-      });
-      return;
+      };
     }
-    // Destructure the parts array to extract the token and satisfy prefer-destructuring.
-    [, token] = parts;
-  } else {
-    // Extract the client token directly from x-api-key when Authorization is not provided.
-    // This allows seamless integration for Anthropic SDK clients.
+    return { token: parts[1], error: null };
+  }
+
+  // Check x-api-key header
+  if (xApiKey !== undefined) {
     const trimmedToken = xApiKey.trim();
     if (!trimmedToken) {
-      logger.debug('Auth failed: empty x-api-key header');
-      res.status(401).json({
+      return {
+        token: null,
         error: {
           code: 'unauthorized',
           message: 'Unauthorized: Empty x-api-key header.',
           httpStatus: 401,
         },
-      });
-      return;
+      };
     }
-    token = trimmedToken;
+    return { token: trimmedToken, error: null };
   }
 
-  // We dynamically call configLoader.loadConfig() on each request to ensure
-  // hot-reloaded configuration updates (such as newly added client tokens)
-  // are picked up immediately without requiring a server process restart.
+  // No auth headers provided
+  return {
+    token: null,
+    error: {
+      code: 'unauthorized',
+      message: 'Unauthorized: Missing Authorization header.',
+      httpStatus: 401,
+    },
+  };
+};
+
+export const authMiddleware = (configLoader) => (req, res, next) => {
+  logger.debug('Auth attempt: checking credentials');
+
+  // Extract token from request headers
+  const { token, error } = extractAuthToken(req.headers);
+  if (error) {
+    logger.debug('Auth failed: invalid or missing credentials');
+    res.status(error.httpStatus).json({ error });
+    return;
+  }
+
+  // Load client configuration with hot-reload support
   const config = configLoader.loadConfig() || {};
-  // Handle case where config.clients is missing or not an array.
   const clients = Array.isArray(config.clients) ? config.clients : [];
 
-  // Retrieve or initialize the cache map for the current clients array reference.
-  // Using an O(1) Map lookup instead of Array.find() on every request significantly
-  // reduces CPU overhead in high-throughput environments with many clients.
+  // Build or retrieve cached token map for O(1) lookup
   let tokenMap = clientCache.get(clients);
   if (!tokenMap) {
     tokenMap = new Map();
     clients.forEach((c) => {
-      // Safeguard against null, undefined, or non-object entries inside config.clients array.
       if (c && typeof c === 'object' && c.token && !tokenMap.has(c.token)) {
         tokenMap.set(c.token, c);
       }
@@ -96,7 +100,6 @@ export const authMiddleware = (configLoader) => (req, res, next) => {
   }
 
   const client = tokenMap.get(token);
-
   if (!client) {
     logger.debug('Auth failed: invalid client token');
     res.status(401).json({
@@ -110,8 +113,6 @@ export const authMiddleware = (configLoader) => (req, res, next) => {
   }
 
   logger.debug('Auth successful', { clientName: client.name });
-  // Attach client profile to request context for downstream rate limiting, auditing, or logging.
-  // This avoids redundant token lookups in subsequent middleware.
   req.client = client;
   next();
 };

@@ -1,3 +1,4 @@
+/* eslint-disable max-len */
 import { FORMATS, translateRequest, translateResponse } from '../translators/index.js';
 import { sanitizeUrl, serializeHeaders } from '../utils/requestLogger.js';
 import { getThinkingLevel, extractThoughtTags } from './geminiFormatter.js';
@@ -6,7 +7,7 @@ import { getThinkingLevel, extractThoughtTags } from './geminiFormatter.js';
  * WHAT: Executes standard unary text completion for Gemini.
  * WHY: Supports two different upstream endpoints based on whether reasoning (thinking) is active.
  */
-export async function executeCompletion(req, apiKey, signal, requestLog, adapter) {
+export const executeCompletion = async (req, apiKey, signal, requestLog, adapter) => {
   const thinkingEnabled = req.thinkingEnabled || req.thinking_supported || false;
 
   let payload;
@@ -139,4 +140,4 @@ export async function executeCompletion(req, apiKey, signal, requestLog, adapter
 
   // For standard completions, use the default translator mapping
   return translateResponse(FORMATS.OPENAI, FORMATS.GEMINI, resultJson, req);
-}
+};

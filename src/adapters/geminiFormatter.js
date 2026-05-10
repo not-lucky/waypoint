@@ -22,7 +22,7 @@ export function translateUsage(usage) {
  * @param {Object} req - The unified request.
  * @returns {string} Gemini thinking level.
  */
-export function getThinkingLevel(req) {
+export const getThinkingLevel = (req) => {
   if (req.thinkingLevel) return req.thinkingLevel;
   if (req.thinkingBudget !== undefined) {
     // Tiered conversion from numeric reasoning budgets to categorical tiers
@@ -31,7 +31,7 @@ export function getThinkingLevel(req) {
     return 'high';
   }
   return 'medium';
-}
+};
 
 /**
  * WHAT: Parses and extracts <thought> tags from raw content.

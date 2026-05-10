@@ -10,7 +10,7 @@
  * @param {Object} req - The standard UnifiedRequest object (derived from OpenAI format).
  * @returns {Object} A structured payload compatible with the Gemini API.
  */
-export function translateOpenAIToGemini(req) {
+export const translateOpenAIToGemini = (req) => {
   const messages = req.messages || [];
 
   // Rationale: Gemini explicitly separates foundational context from the conversational
@@ -123,6 +123,6 @@ export function translateOpenAIToGemini(req) {
   }
 
   return payload;
-}
+};
 
 export default translateOpenAIToGemini;

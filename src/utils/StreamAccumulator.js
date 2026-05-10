@@ -1,3 +1,4 @@
+/* eslint-disable max-len */
 export class StreamAccumulator {
   constructor(defaultId = null, defaultModel = null) {
     this.responseId = defaultId;

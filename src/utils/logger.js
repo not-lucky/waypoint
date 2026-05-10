@@ -97,6 +97,37 @@ const customJsonFormatter = (record) => {
 };
 
 /**
+ * Escapes special characters in log values for safe formatting.
+ * @param {string} val - Value to escape
+ * @returns {string} Escaped value
+ */
+const escapeLogValue = (val) => {
+  if (val.includes(' ') || val.includes('"') || val.includes('\n') || val.includes('\r') || val.includes('\t')) {
+    return `"${val.replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t')}"`;
+  }
+  return val;
+};
+
+/**
+ * Formats a single property value for log output.
+ * @param {*} val - Value to format
+ * @returns {string} Formatted value string
+ */
+const formatPropertyValue = (val) => {
+  if (val instanceof Error) {
+    return `[Error: ${val.message}]`;
+  }
+  if (val && typeof val === 'object') {
+    try {
+      return JSON.stringify(val);
+    } catch (err) {
+      return `[Unserializable Object: ${err.message}]`;
+    }
+  }
+  return String(val);
+};
+
+/**
  * Text formatter optimized for local developer experience.
  * Architectural Intent: During development, human readability is prioritized over machine
  * parsability. This transforms structured records into dense, color-agnostic linear strings,
@@ -112,37 +143,16 @@ const customTextFormatter = (record) => {
   const category = record.category.join(':');
   const level = record.level.toUpperCase();
   const message = formatMessage(record.message);
-  let metaStr = '';
+
+  const pairs = [];
   if (record.properties && Object.keys(record.properties).length > 0) {
-    const pairs = [];
     Object.entries(record.properties).forEach(([key, val]) => {
-      let valStr;
-      if (val instanceof Error) {
-        valStr = `[Error: ${val.message}]`;
-      } else if (val && typeof val === 'object') {
-        try {
-          // Attempt JSON stringification for nested context.
-          valStr = JSON.stringify(val);
-        } catch (err) {
-          // Edge case: Circular references or inaccessible getters will throw.
-          // Fallback to indicate failure.
-          valStr = `[Unserializable Object: ${err.message}]`;
-        }
-      } else {
-        valStr = String(val);
-      }
-      // Formatting requirement: Safely escape values containing spaces, quotes, or
-      // control characters so that generic key-value log parsers (e.g., logfmt) do not
-      // misinterpret the bounds of the value.
-      if (valStr.includes(' ') || valStr.includes('"') || valStr.includes('\n') || valStr.includes('\r') || valStr.includes('\t')) {
-        valStr = `"${valStr.replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t')}"`;
-      }
+      const valStr = escapeLogValue(formatPropertyValue(val));
       pairs.push(`${key}=${valStr}`);
     });
-    if (pairs.length > 0) {
-      metaStr = ` ${pairs.join(' ')}`;
-    }
   }
+
+  const metaStr = pairs.length > 0 ? ` ${pairs.join(' ')}` : '';
   return `[${level}] ${timestamp} ${category}: ${message}${metaStr}\n`;
 };
 
@@ -216,9 +226,7 @@ export async function configureLogging(config) {
  * @param {string} category - The specific subsystem category (e.g., 'http', 'auth').
  * @returns {Object} LogTape logger instance bound to the namespace.
  */
-export function getAppLogger(category) {
-  return getLogger(['waypoint', category]);
-}
+export const getAppLogger = (category) => getLogger(['waypoint', category]);
 
 /**
  * Graceful termination hook for the logging pipeline.

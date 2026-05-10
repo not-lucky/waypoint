@@ -1,16 +1,6 @@
 import { applyRequestOverrides } from './requestOverrides.js';
 import { runOrchestrationLoop } from './orchestrationEngine.js';
-import { getAppLogger } from '../utils/logger.js';
-
-const fallbackLogger = getAppLogger('orchestrator');
-
-function logDebug(logger, msg, meta) {
-  if (logger && typeof logger.debug === 'function') {
-    logger.debug(msg, meta);
-  } else {
-    fallbackLogger.debug(msg, meta);
-  }
-}
+import { logDebug } from '../utils/loggerHelpers.js';
 
 // Central registry of all active request AbortControllers.
 // Used during graceful shutdown (in index.js) to cancel all in-flight requests.
@@ -111,5 +101,3 @@ export class UnifiedOrchestrator {
     }
   }
 }
-
-export default UnifiedOrchestrator;

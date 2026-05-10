@@ -1,27 +1,6 @@
+/* eslint-disable max-len */
 /* eslint-disable no-restricted-syntax, no-await-in-loop */
-import { getAppLogger } from '../utils/logger.js';
-
-const fallbackLogger = getAppLogger('orchestrator');
-
-function logDebug(logger, msg, meta) {
-  if (logger && typeof logger.debug === 'function') {
-    logger.debug(msg, meta);
-  } else {
-    fallbackLogger.debug(msg, meta);
-  }
-}
-
-function logWarning(logger, msg, meta) {
-  if (logger) {
-    if (typeof logger.warning === 'function') {
-      logger.warning(msg, meta);
-    } else if (typeof logger.warn === 'function') {
-      logger.warn(msg, meta);
-    }
-  } else {
-    fallbackLogger.warning(msg, meta);
-  }
-}
+import { logDebug, logWarning } from '../utils/loggerHelpers.js';
 
 /**
  * WHAT: Constructs a 503 error payload when all keys are unavailable.
@@ -59,7 +38,7 @@ export function buildAllKeysExhaustedError(provider, keyRegistry) {
  * WHAT: Abstracts the retry/key-rotation loop for a single provider.
  * WHY: Encapsulates key lifecycle tracking and error backoff logic.
  */
-export async function executeWithRetry({
+export const executeWithRetry = async ({
   provider,
   req,
   adapter,
@@ -69,7 +48,7 @@ export async function executeWithRetry({
   retryLimit,
   logger,
   onStreamResponse,
-}) {
+}) => {
   let attempt = 0;
 
   // Inner retry loop: rotates keys within the current provider up to the global retry limit.
@@ -214,4 +193,4 @@ export async function executeWithRetry({
 
   // Return final exhausted error.
   return buildAllKeysExhaustedError(provider, keyRegistry);
-}
+};

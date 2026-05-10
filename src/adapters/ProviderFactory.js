@@ -54,5 +54,3 @@ export class ProviderFactory {
     return this.adapters.get(name);
   }
 }
-
-export default ProviderFactory;

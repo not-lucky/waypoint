@@ -105,7 +105,7 @@ export class AnthropicController {
       // Why: We must check for the asyncIterator Symbol to identify streams because
       // the orchestrator might force a fallback to a synchronous provider even if the client requested a stream.
       if (response && typeof response[Symbol.asyncIterator] === 'function') {
-        return this._handleStreamingResponse(res, response, unifiedReq, reqLog, body);
+        return this.handleStreamingResponse(res, response, unifiedReq, reqLog, body);
       }
 
       // What: Handle synchronous (non-streaming) responses.
@@ -135,7 +135,8 @@ export class AnthropicController {
     }
   }
 
-  async _handleStreamingResponse(res, response, unifiedReq, reqLog, body) {
+  // eslint-disable-next-line class-methods-use-this
+  async handleStreamingResponse(res, response, unifiedReq, reqLog, body) {
     logger.debug('Starting Anthropic SSE response stream');
 
     // What: Set SSE headers.

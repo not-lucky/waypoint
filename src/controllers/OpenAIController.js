@@ -106,7 +106,7 @@ export class OpenAIController {
       // chunked responses. We must manually bridge them to support Server-Sent Events (SSE).
       // WHAT: If the response is a stream (async generator), handle as SSE (Server-Sent Events).
       if (response && typeof response[Symbol.asyncIterator] === 'function') {
-        return this._handleStream(res, response, reqLog);
+        return this.handleStream(res, response, reqLog);
       }
 
       // RATIONALE: For non-streaming requests, the orchestrator guarantees that the response
@@ -140,7 +140,8 @@ export class OpenAIController {
   /**
    * Handles the Server-Sent Events (SSE) stream for an OpenAI response.
    */
-  async _handleStream(res, response, reqLog) {
+  // eslint-disable-next-line class-methods-use-this
+  async handleStream(res, response, reqLog) {
     logger.debug('Starting OpenAI SSE response stream');
 
     // EDGE CASE / RATIONALE: Standard reverse proxies (like NGINX) will buffer

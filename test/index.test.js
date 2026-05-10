@@ -1,5 +1,5 @@
 import {
-  describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi,
+  describe, it, expect, afterAll, beforeEach, afterEach, vi,
 } from 'vitest';
 import request from 'supertest';
 import { app, server } from '../src/index.js';
@@ -7,10 +7,8 @@ import { UnifiedOrchestrator } from '../src/services/UnifiedOrchestrator.js';
 import { ConfigLoader } from '../src/config/loader.js';
 
 describe('Index Endpoints Coverage', () => {
-  let executeCompletionSpy;
-
   beforeEach(() => {
-    executeCompletionSpy = vi.spyOn(UnifiedOrchestrator.prototype, 'executeCompletion').mockResolvedValue({
+    vi.spyOn(UnifiedOrchestrator.prototype, 'executeCompletion').mockResolvedValue({
       id: 'mock-id',
       object: 'chat.completion',
       model: 'openai/gpt-4o',
@@ -39,7 +37,7 @@ describe('Index Endpoints Coverage', () => {
 
   afterAll(async () => {
     if (server) {
-      await new Promise((resolve) => server.close(resolve));
+      await new Promise((resolve) => { server.close(resolve); });
     }
   });
 

@@ -95,7 +95,7 @@ export function translateResponse(targetFormat, sourceFormat, payload, req = {})
  * @param {Object} [req] - The original request.
  * @returns {Object|null} Mapped OpenAI stream chunk, or null if filtered.
  */
-export function translateStreamChunk(sourceFormat, chunk, chunkId, req = {}) {
+export const translateStreamChunk = (sourceFormat, chunk, chunkId, req = {}) => {
   if (sourceFormat === FORMATS.OPENAI) {
     return chunk;
   }
@@ -107,4 +107,4 @@ export function translateStreamChunk(sourceFormat, chunk, chunkId, req = {}) {
   }
 
   return null;
-}
+};

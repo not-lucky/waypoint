@@ -107,14 +107,17 @@ const getUniqueModels = () => {
   }
 
   const providers = currentConfig.providers || {};
-  const models = Object.entries(providers).flatMap(([providerName, providerConfig]) => providerConfig.models.flatMap((modelConfig) => {
-    const list = [];
-    if (modelConfig.id) list.push(`${providerName}/${modelConfig.id}`);
-    if (Array.isArray(modelConfig.aliases)) {
-      list.push(...modelConfig.aliases.map((alias) => `${providerName}/${alias}`));
-    }
-    return list;
-  }));
+  // eslint-disable-next-line arrow-body-style
+  const models = Object.entries(providers).flatMap(([providerName, providerConfig]) => {
+    return providerConfig.models.flatMap((modelConfig) => {
+      const list = [];
+      if (modelConfig.id) list.push(`${providerName}/${modelConfig.id}`);
+      if (Array.isArray(modelConfig.aliases)) {
+        list.push(...modelConfig.aliases.map((alias) => `${providerName}/${alias}`));
+      }
+      return list;
+    });
+  });
 
   lastConfig = currentConfig;
   cachedUniqueModels = [...new Set(models)];

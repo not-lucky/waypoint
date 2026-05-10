@@ -254,6 +254,26 @@ export class RequestLog {
   }
 
   /**
+   * Formats a single stream event into SSE format.
+   * @param {*} eventData - The event data (chunk object or raw SSE string)
+   * @returns {string} Formatted SSE line
+   */
+  static formatStreamEvent(eventData) {
+    let line = typeof eventData === 'string' ? eventData : `data: ${JSON.stringify(eventData)}\n\n`;
+
+    if (!line.startsWith('data: ') && !line.startsWith('event: ')) {
+      line = `data: ${line}`;
+    }
+    if (!line.endsWith('\n')) {
+      line += '\n';
+    }
+    if (!line.endsWith('\n\n')) {
+      line += '\n';
+    }
+    return line;
+  }
+
+  /**
    * Formats and writes the accumulated event stream to disk.
    * Groups provider events first under a "--- provider ---" header, followed by
    * client events under a "--- client ---" header, mimicking standard SSE streams.
@@ -264,54 +284,19 @@ export class RequestLog {
     const providerEvents = this.streamBuffer.filter((e) => e.direction === 'provider');
     const clientEvents = this.streamBuffer.filter((e) => e.direction === 'client');
 
-    let content = '';
+    const sections = [];
 
     if (providerEvents.length > 0) {
-      content += '--- provider ---\n';
-      providerEvents.forEach((event) => {
-        let line = '';
-        if (typeof event.data === 'string') {
-          line = event.data;
-        } else {
-          line = `data: ${JSON.stringify(event.data)}\n\n`;
-        }
-
-        if (!line.startsWith('data: ') && !line.startsWith('event: ')) {
-          line = `data: ${line}`;
-        }
-        if (!line.endsWith('\n')) {
-          line += '\n';
-        }
-        if (line.endsWith('\n') && !line.endsWith('\n\n')) {
-          line += '\n';
-        }
-        content += line;
-      });
-      content += '\n';
+      const providerContent = providerEvents.map((e) => this.constructor.formatStreamEvent(e.data)).join('');
+      sections.push(`--- provider ---\n${providerContent}`);
     }
 
     if (clientEvents.length > 0) {
-      content += '--- client ---\n';
-      clientEvents.forEach((event) => {
-        let line = '';
-        if (typeof event.data === 'string') {
-          line = event.data;
-        } else {
-          line = `data: ${JSON.stringify(event.data)}\n\n`;
-        }
-
-        if (!line.startsWith('data: ') && !line.startsWith('event: ')) {
-          line = `data: ${line}`;
-        }
-        if (!line.endsWith('\n')) {
-          line += '\n';
-        }
-        if (line.endsWith('\n') && !line.endsWith('\n\n')) {
-          line += '\n';
-        }
-        content += line;
-      });
+      const clientContent = clientEvents.map((e) => this.constructor.formatStreamEvent(e.data)).join('');
+      sections.push(`--- client ---\n${clientContent}`);
     }
+
+    const content = sections.join('\n');
 
     try {
       await fsp.writeFile(this.streamFilePath, content, 'utf8');

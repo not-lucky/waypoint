@@ -23,6 +23,7 @@ export class GeminiAdapter extends BaseProvider {
     yield* executeStream(req, apiKey, signal, requestLog, this);
   }
 
+  // eslint-disable-next-line class-methods-use-this
   normalizeError(error) {
     // Convert upstream Google API error messages and status codes to normalized internal codes
     return normalizeProviderError(error, 'gemini');

@@ -12,7 +12,7 @@ const STOP_REASON_MAP = {
  * @param {Object} normalized - OpenAI-shaped NormalizedResponse.
  * @returns {Object} Anthropic Messages API compatible JSON response.
  */
-export function translateOpenAIToClaudeResponse(normalized) {
+export const translateOpenAIToClaudeResponse = (normalized) => {
   const choice = normalized.choices?.[0] || {};
   const message = choice.message || {};
 
@@ -60,6 +60,6 @@ export function translateOpenAIToClaudeResponse(normalized) {
       output_tokens: normalized.usage?.completion_tokens ?? 0,
     },
   };
-}
+};
 
 export default translateOpenAIToClaudeResponse;

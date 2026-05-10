@@ -8,7 +8,7 @@
  * @param {Object} req - The UnifiedRequest object or OpenAI request body.
  * @returns {Object} Anthropic compatible request payload body.
  */
-export function translateOpenAIToClaude(req) {
+export const translateOpenAIToClaude = (req) => {
   const messages = req.messages || [];
 
   // Architectural Intent: OpenAI permits multiple 'system' messages interleaved anywhere
@@ -119,6 +119,6 @@ export function translateOpenAIToClaude(req) {
   }
 
   return payload;
-}
+};
 
 export default translateOpenAIToClaude;

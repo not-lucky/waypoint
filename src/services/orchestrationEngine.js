@@ -1,24 +1,14 @@
 /* eslint-disable no-restricted-syntax, no-constant-condition */
 import { resolveModel, applyModelConfig } from '../utils/modelResolver.js';
 import { executeWithRetry } from './retryExecutor.js';
-import { getAppLogger } from '../utils/logger.js';
-
-const fallbackLogger = getAppLogger('orchestrator');
-
-function logDebug(logger, msg, meta) {
-  if (logger && typeof logger.debug === 'function') {
-    logger.debug(msg, meta);
-  } else {
-    fallbackLogger.debug(msg, meta);
-  }
-}
+import { logDebug } from '../utils/loggerHelpers.js';
 
 /**
  * WHAT: Implements the outer fallback loop across providers.
  * WHY: Resolves the model routing configuration, checks adapter support, and initiates
  * execution. Fails over to fallback models if primary provider runs out of keys or errors out.
  */
-export async function runOrchestrationLoop({
+export const runOrchestrationLoop = async ({
   req,
   unifiedReq,
   keyRegistry,
@@ -29,7 +19,7 @@ export async function runOrchestrationLoop({
   requestLog,
   retryLimit,
   onStreamResponse,
-}) {
+}) => {
   // Loop infinitely until either a successful completion is returned,
   // all retries/keys are exhausted, or an unsupported provider/error is thrown.
   while (true) {
@@ -55,6 +45,7 @@ export async function runOrchestrationLoop({
     }
 
     // Execute key rotation and exponential backoff retry flow on the current provider.
+    // eslint-disable-next-line no-await-in-loop
     const result = await executeWithRetry({
       provider,
       req,
@@ -91,4 +82,4 @@ export async function runOrchestrationLoop({
 
     return result;
   }
-}
+};

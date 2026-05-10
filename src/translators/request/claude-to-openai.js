@@ -7,7 +7,7 @@
  * @param {Object} body - Claude Messages API request body.
  * @returns {Object} OpenAI-compatible request structure.
  */
-export function translateClaudeToOpenAIRequest(body) {
+export const translateClaudeToOpenAIRequest = (body) => {
   const messages = [];
 
   // Anthropic separates system messages at the root of the JSON.
@@ -37,6 +37,6 @@ export function translateClaudeToOpenAIRequest(body) {
     stream: body.stream || false,
     isFallback: false,
   };
-}
+};
 
 export default translateClaudeToOpenAIRequest;

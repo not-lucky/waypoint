@@ -100,7 +100,7 @@ export function translateGeminiToOpenAI(geminiRes, req = {}) {
  * @param {Object} req - The original request.
  * @returns {Object|null} Mapped OpenAI chunk or null if empty/metadata only.
  */
-export function translateGeminiChunkToOpenAI(chunkJson, chunkId, req = {}) {
+export const translateGeminiChunkToOpenAI = (chunkJson, chunkId, req = {}) => {
   const candidate = chunkJson.candidates?.[0] || {};
   const content = candidate.content || {};
   const parts = content.parts || [];
@@ -157,4 +157,4 @@ export function translateGeminiChunkToOpenAI(chunkJson, chunkId, req = {}) {
   }
 
   return chunk;
-}
+};

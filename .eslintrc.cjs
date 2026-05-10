@@ -17,6 +17,14 @@ module.exports = {
       cjs: 'always',
     }],
     'no-console': 'off',
+    'import/prefer-default-export': 'off',
+    'no-restricted-syntax': [
+      'error',
+      'ForInStatement',
+      'LabeledStatement',
+      'WithStatement',
+    ],
+    'no-continue': 'off',
   },
   overrides: [
     {
@@ -29,6 +37,9 @@ module.exports = {
       files: ['test/**/*.js'],
       rules: {
         'no-console': 'off',
+        'no-unused-vars': ['error', { 'argsIgnorePattern': '^_', 'varsIgnorePattern': '^(_|chunk)$' }],
+        'no-empty': 'off',
+        'no-plusplus': 'off',
       },
     },
   ],

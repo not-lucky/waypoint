@@ -1,3 +1,4 @@
+/* eslint-disable max-len */
 /* eslint-disable no-await-in-loop, no-underscore-dangle, no-restricted-syntax */
 import {
   vi, describe, it, expect, beforeEach, afterEach,

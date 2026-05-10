@@ -8,7 +8,7 @@ import {
 import { translateClaudeToOpenAIRequest } from '../src/translators/request/claude-to-openai.js';
 import { translateOpenAIToClaude } from '../src/translators/request/openai-to-claude.js';
 import { translateOpenAIToGemini } from '../src/translators/request/openai-to-gemini.js';
-import { translateClaudeToOpenAI, translateClaudeChunkToOpenAI } from '../src/translators/response/claude-to-openai.js';
+import { translateClaudeChunkToOpenAI } from '../src/translators/response/claude-to-openai.js';
 import { translateGeminiToOpenAI, translateGeminiChunkToOpenAI } from '../src/translators/response/gemini-to-openai.js';
 import { translateOpenAIToClaudeResponse } from '../src/translators/response/openai-to-claude.js';
 

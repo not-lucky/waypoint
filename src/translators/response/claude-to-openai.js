@@ -30,7 +30,7 @@ const FINISH_REASON_MAP = {
  * @param {Object} req - The original request info to preserve parameters like model.
  * @returns {Object} OpenAI-shaped NormalizedResponse.
  */
-export function translateClaudeToOpenAI(claudeRes, req = {}) {
+export const translateClaudeToOpenAI = (claudeRes, req = {}) => {
   const contentArray = claudeRes.content || [];
   let textContent = '';
   let reasoningContent = null;
@@ -79,7 +79,7 @@ export function translateClaudeToOpenAI(claudeRes, req = {}) {
       total_tokens: promptTokens + completionTokens,
     },
   };
-}
+};
 
 /**
  * Translates an Anthropic SSE event chunk into an OpenAI-shaped StreamChunk.

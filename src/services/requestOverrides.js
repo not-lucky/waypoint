@@ -6,7 +6,7 @@
  * @param {Object} req - The unified request payload to mutate.
  * @param {Object} rawReq - The raw incoming Express request.
  */
-export function applyRequestOverrides(req, rawReq) {
+export const applyRequestOverrides = (req, rawReq) => {
   if (!rawReq?.headers) {
     return;
   }
@@ -37,4 +37,4 @@ export function applyRequestOverrides(req, rawReq) {
       req.temperature = parsedTemp;
     }
   }
-}
+};

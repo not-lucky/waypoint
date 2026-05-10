@@ -21,7 +21,7 @@ export function getLongestPrefixSuffix(str, target) {
 /**
  * Processes buffered text from a stream and extracts thoughts enclosed in <thought> tags.
  */
-export function processThinkingBuffer(buffer, state, flush, sendThinking, sendText) {
+export const processThinkingBuffer = (buffer, state, flush, sendThinking, sendText) => {
   let pendingBuffer = buffer;
   let streamState = state;
   const START_TAG = '<thought>';
@@ -79,7 +79,7 @@ export function processThinkingBuffer(buffer, state, flush, sendThinking, sendTe
   }
 
   return { buffer: pendingBuffer, state: streamState };
-}
+};
 
 /**
  * Safely parses Server-Sent Events (SSE) string data payloads into JSON.

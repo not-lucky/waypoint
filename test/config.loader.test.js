@@ -775,5 +775,108 @@ providers:
       fsWatchSpy.mockRestore();
       vi.useRealTimers();
     });
+
+    it('should handle config watch reload when the file is deleted before the debounce timer fires', () => new Promise((resolve) => {
+      writeTempConfig(`
+gateway:
+  port: 20128
+providers:
+  gemini:
+    keys: ["key-1"]
+    models: [{ id: "gemini-2.5-pro" }]
+`);
+      configLoader.loadConfig(tempConfigPath);
+
+      // We do not subscribe to config change because we expect it NOT to fire when deleted.
+      // Trigger reload by touching the config
+      writeTempConfig(`
+gateway:
+  port: 20128
+providers:
+  gemini:
+    keys: ["key-2"]
+    models: [{ id: "gemini-2.5-pro" }]
+`);
+
+      // Immediately delete the file so that when debounce fires in 100ms, it is missing
+      removeTempConfig();
+
+      setTimeout(() => {
+        // Assert loader did not crash and kept the current config intact
+        expect(configLoader.currentConfig.providers.gemini.keys).toContain('key-1');
+        resolve();
+      }, 200);
+    }));
+  });
+
+  describe('Configuration Validation Edge Cases', () => {
+    it('should throw validation error when gateway field is missing and shouldExit is false', () => {
+      // eslint-disable-next-line global-require
+      const { validateConfig } = require('../src/config/loader.js');
+      expect(() => {
+        validateConfig({}, false);
+      }).toThrow("Missing structural field 'gateway'.");
+    });
+
+    it('should throw validation error when gateway.http_timeout_ms is invalid and shouldExit is false', () => {
+      // eslint-disable-next-line global-require
+      const { validateConfig } = require('../src/config/loader.js');
+      const invalidConfig = {
+        gateway: {
+          port: 8080,
+          http_timeout_ms: -5,
+        },
+      };
+      expect(() => {
+        validateConfig(invalidConfig, false);
+      }).toThrow("Invalid 'gateway.http_timeout_ms'. Must be a positive integer.");
+    });
+
+    it('should allow fallback model reference to a provider that exists structurally but was deleted/omitted during validation', () => {
+      // eslint-disable-next-line global-require
+      const { validateConfig } = require('../src/config/loader.js');
+      const config = {
+        gateway: {
+          port: 20128,
+          routing: { strategy: 'round-robin' },
+        },
+        logging: {
+          enable_console: true,
+          enable_file: false,
+          format: 'json',
+        },
+        clients: [
+          {
+            name: 'open-webui',
+            token: 'some-token',
+            rate_limit: { window_ms: 60000, max: 100 },
+          },
+        ],
+        providers: {
+          'primary-provider': {
+            base_url: 'http://localhost:8080',
+            keys: ['key-a'],
+            get models() {
+              delete config.providers['fallback-provider'];
+              return [
+                {
+                  id: 'model-a',
+                  fallback_model: 'fallback-provider/model-b',
+                },
+              ];
+            },
+          },
+          'fallback-provider': {
+            base_url: 'http://localhost:8080',
+            keys: ['key-b'],
+            models: [{ id: 'model-b' }],
+          },
+        },
+      };
+
+      expect(() => {
+        validateConfig(config, false);
+      }).not.toThrow();
+    });
   });
 });

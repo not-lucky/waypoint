@@ -469,9 +469,10 @@ describe('AnthropicAdapter Tests', () => {
       async* [Symbol.asyncIterator]() {
         const encoder = new TextEncoder();
         yield encoder.encode('event: message_start\ndata: {"type":"message_start","message":{"id":"msg_1","model":"claude-3","usage":{"input_tokens":10}}}\n\n');
-        yield encoder.encode('event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n');
-        yield encoder.encode('event: content_block_start\ndata: {"type":"content_block_start","index":1,"content_block":{"type":"thinking","thinking":""}}\n\n');
-        yield encoder.encode('event: content_block_delta\ndata: {"type":"content_block_delta","index":1,"delta":{"type":"thinking_delta","thinking":"thoughts"}}\n\n');
+        yield encoder.encode(
+          'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n'
+          + 'event: content_block_start\ndata: {"type":"content_block_start","index":1,"content_block":{"type":"thinking","thinking":""}}\n\n',
+        );
       },
     };
     mockFetch.mockResolvedValue({
@@ -484,8 +485,12 @@ describe('AnthropicAdapter Tests', () => {
     const fakeSignal = {
       get aborted() {
         checks++;
-        // Allow sseParser to yield one event, then abort before AnthropicAdapter loop checks it
-        return checks > 2;
+        // Check 1: parseSSEStream loop (chunk 1)
+        // Check 2: message_start
+        // Check 3: content_block_start (text) -> executes line 227
+        // Check 4: parseSSEStream loop (chunk 2)
+        // Check 5: content_block_start (thinking) -> aborts in AnthropicAdapter at line 207
+        return checks > 4;
       },
     };
 
@@ -535,5 +540,164 @@ describe('AnthropicAdapter Tests', () => {
 
     expect(chunks).toHaveLength(1);
     expect(chunks[0].choices[0].delta.reasoning_content).toBe('out-of-order-thought');
+  });
+
+  it('asserts: generateStream handles text_delta out of order and empty/unknown deltas', async () => {
+    const adapter = new AnthropicAdapter();
+    const req = {
+      model: 'anthropic/claude-3-5-sonnet',
+      actualModelId: 'claude-3-5-sonnet',
+      messages: [],
+    };
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        // 1. message_start with usage undefined
+        yield encoder.encode('event: message_start\ndata: {"type":"message_start","message":{"id":"msg_1","model":"claude-3"}}\n\n');
+        // 2. content_block_start with content_block undefined
+        yield encoder.encode('event: content_block_start\ndata: {"type":"content_block_start","index":0}\n\n');
+        // 3. content_block_start with unknown block type
+        yield encoder.encode('event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"unsupported"}}\n\n');
+        // 4. text_delta out of order (no content_block_start text yielded)
+        yield encoder.encode('event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hello"}}\n\n');
+        // 5. empty text_delta and empty thinking_delta (falsy delta.text/delta.thinking)
+        yield encoder.encode('event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":""}}\n\n');
+        yield encoder.encode('event: content_block_delta\ndata: {"type":"content_block_delta","index":1,"delta":{"type":"thinking_delta","thinking":""}}\n\n');
+        // 6. unknown delta type (block remains undefined, if (block) false branch)
+        yield encoder.encode('event: content_block_delta\ndata: {"type":"content_block_delta","index":2,"delta":{"type":"unknown_delta"}}\n\n');
+        // 7. index undefined, delta undefined (defaults to index=0, delta={})
+        yield encoder.encode('event: content_block_delta\ndata: {"type":"content_block_delta"}\n\n');
+        // 8. message_delta with delta undefined
+        yield encoder.encode('event: message_delta\ndata: {"type":"message_delta"}\n\n');
+        // 9. message_delta with delta as {} but no stop_reason
+        yield encoder.encode('event: message_delta\ndata: {"type":"message_delta","delta":{}}\n\n');
+      },
+    };
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: new Map(),
+      body: mockBody,
+    });
+
+    const chunks = [];
+    for await (const chunk of adapter.generateStream(req, 'key')) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks.length).toBeGreaterThan(0);
+  });
+
+  it('assert: generateCompletion error path fallbacks when error message is missing', async () => {
+    const adapter = new AnthropicAdapter();
+    const req = {
+      model: 'anthropic/claude-3-5-sonnet',
+      actualModelId: 'claude-3-5-sonnet',
+      messages: [],
+    };
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 400,
+      text: async () => JSON.stringify({}),
+    });
+
+    await expect(adapter.generateCompletion(req, 'key')).rejects.toThrow('Upstream error');
+  });
+
+  it('assert: generateStream error path fallbacks when error message is missing', async () => {
+    const adapter = new AnthropicAdapter();
+    const req = {
+      model: 'anthropic/claude-3-5-sonnet',
+      actualModelId: 'claude-3-5-sonnet',
+      messages: [],
+    };
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 400,
+      text: async () => JSON.stringify({}),
+    });
+
+    const streamGen = adapter.generateStream(req, 'key');
+    await expect(async () => {
+      for await (const _ of streamGen) {}
+    }).rejects.toThrow('Upstream error');
+  });
+
+  it('assert: generateStream handles fetch throws and logs to requestLog', async () => {
+    const adapter = new AnthropicAdapter();
+    const req = {
+      model: 'anthropic/claude-3-5-sonnet',
+      actualModelId: 'claude-3-5-sonnet',
+      messages: [],
+    };
+    mockFetch.mockRejectedValue(new Error('Network error'));
+
+    const requestLog = {
+      logProviderRequest: vi.fn(),
+    };
+
+    const streamGen = adapter.generateStream(req, 'key', null, requestLog);
+    await expect(async () => {
+      for await (const _ of streamGen) {}
+    }).rejects.toThrow('Network error');
+
+    expect(requestLog.logProviderRequest).toHaveBeenCalled();
+  });
+
+  it('assert: generateCompletion handles fetch error without requestLog', async () => {
+    const adapter = new AnthropicAdapter();
+    const req = { model: 'claude-3', actualModelId: 'claude-3', messages: [] };
+    mockFetch.mockRejectedValue(new Error('Fetch failed'));
+
+    await expect(adapter.generateCompletion(req, 'key')).rejects.toThrow('Fetch failed');
+  });
+
+  it('assert: generateStream handles fetch error without requestLog', async () => {
+    const adapter = new AnthropicAdapter();
+    const req = { model: 'claude-3', actualModelId: 'claude-3', messages: [] };
+    mockFetch.mockRejectedValue(new Error('Fetch failed'));
+
+    const streamGen = adapter.generateStream(req, 'key');
+    await expect(async () => {
+      for await (const _ of streamGen) {}
+    }).rejects.toThrow('Fetch failed');
+  });
+
+  it('assert: generateStream ignores unknown/ping events', async () => {
+    const adapter = new AnthropicAdapter();
+    const req = { model: 'claude-3', actualModelId: 'claude-3', messages: [] };
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode('event: ping\ndata: {"type":"ping"}\n\n');
+        yield encoder.encode('event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}\n\n');
+      },
+    };
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: mockBody,
+    });
+
+    const chunks = [];
+    for await (const chunk of adapter.generateStream(req, 'key')) {
+      chunks.push(chunk);
+    }
+    expect(chunks.length).toBeGreaterThan(0);
+  });
+
+  it('assert: generateStream with custom baseUrl option', async () => {
+    const adapter = new AnthropicAdapter('https://custom.anthropic.api/v2');
+    const req = { model: 'claude-3', actualModelId: 'claude-3', messages: [] };
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: {
+        async* [Symbol.asyncIterator]() {
+          yield new TextEncoder().encode('event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}\n\n');
+        },
+      },
+    });
+
+    const streamGen = adapter.generateStream(req, 'key');
+    for await (const _ of streamGen) {}
+    expect(mockFetch).toHaveBeenCalledWith('https://custom.anthropic.api/v2/messages', expect.any(Object));
   });
 });

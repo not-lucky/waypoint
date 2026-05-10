@@ -1,5 +1,5 @@
 /* eslint-disable no-restricted-syntax, class-methods-use-this */
-import { BaseProvider, normalizeProviderError } from './BaseProvider.js';
+import { BaseProvider, normalizeProviderError, parseUpstreamError } from './BaseProvider.js';
 import { parseSSEStream } from '../utils/sseParser.js';
 import {
   FORMATS, translateRequest, translateResponse, translateStreamChunk,
@@ -94,17 +94,7 @@ export class AnthropicAdapter extends BaseProvider {
     // This allows the UnifiedOrchestrator to distinguish between rate limits (429)
     // and server errors (500) to execute precise retry or failover strategies.
     if (!response.ok) {
-      const errorText = await response.text();
-      let errorJson;
-      try {
-        errorJson = JSON.parse(errorText);
-      } catch (e) {
-        errorJson = { message: errorText };
-      }
-      const err = new Error(errorJson.error?.message || errorJson.message || 'Upstream error');
-      err.statusCode = response.status;
-      err.response = response;
-      throw err;
+      throw await parseUpstreamError(response);
     }
 
     const resultJson = await response.json();
@@ -169,16 +159,7 @@ export class AnthropicAdapter extends BaseProvider {
 
     // Fail-fast on HTTP error codes before attempting to consume the response as a stream
     if (!response.ok) {
-      const errorText = await response.text();
-      let errorJson;
-      try {
-        errorJson = JSON.parse(errorText);
-      } catch (e) {
-        errorJson = { message: errorText };
-      }
-      const err = new Error(errorJson.error?.message || errorJson.message || 'Upstream error');
-      err.statusCode = response.status;
-      err.response = response;
+      const err = await parseUpstreamError(response);
       cleanup();
       throw err;
     }

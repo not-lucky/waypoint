@@ -119,7 +119,7 @@ describe('SSE Parser Tests', () => {
 
     it('should parse EOF remaining buffer if it is not empty and lacks final double newlines', async () => {
       const chunks = [
-        Buffer.from('data: final_value_no_newlines'),
+        Buffer.from('event: final_event\ndata: final_value_no_newlines'),
       ];
 
       const stream = {
@@ -136,7 +136,7 @@ describe('SSE Parser Tests', () => {
       }
 
       expect(events).toHaveLength(1);
-      expect(events[0]).toEqual({ event: null, data: 'final_value_no_newlines' });
+      expect(events[0]).toEqual({ event: 'final_event', data: 'final_value_no_newlines' });
     });
   });
 });

@@ -382,4 +382,67 @@ describe('Streaming End-to-End Tests', () => {
     expect(capturedReq.thinkingBudget).toBe(4096);
     expect(capturedReq.temperature).toBe(1.2);
   });
+
+  it('assert: abort controller cancels loop mid-retry after chunk retrieval', async () => {
+    let triggerAbort = null;
+    mockAdapter.generateStream = async function* (req, apiKey, signal) {
+      yield { id: 'chunk-1', choices: [{ index: 0, delta: { content: 'hello' } }] };
+      if (triggerAbort) triggerAbort();
+      yield { id: 'chunk-2', choices: [{ index: 0, delta: { content: 'world' } }] };
+    };
+
+    const mockReq = {
+      res: { writableEnded: false, on: () => {} },
+      on(event, cb) {
+        if (event === 'close') triggerAbort = cb;
+      },
+    };
+
+    const orchestratorRes = await orchestrator.executeCompletion({
+      model: 'mock-provider/test-model',
+      messages: [],
+      stream: true,
+    }, mockReq);
+
+    const iterator = orchestratorRes[Symbol.asyncIterator]();
+    const first = await iterator.next();
+    expect(first.value.choices[0].delta.content).toBe('hello');
+
+    const second = await iterator.next();
+    expect(second.done).toBe(true); // cancelled mid-stream!
+  });
+
+  it('assert: fallback loop prevention with bare fallback model (no slash)', async () => {
+    const localConfig = {
+      providers: {
+        'primary-provider': {
+          keys: ['key-primary'],
+          models: [{ id: 'model-a', fallback_model: 'bare-fallback-model' }],
+        },
+      },
+    };
+    const localKeyRegistry = new KeyRegistry(localConfig);
+    const localFactory = new ProviderFactory(localConfig);
+
+    const primaryAdapter = {
+      async* generateStream(req, apiKey, signal) {
+        throw new Error('Primary failed');
+      },
+      normalizeError(error) {
+        return { code: 'rate_limited', httpStatus: 503, provider: 'primary-provider' };
+      },
+    };
+
+    localFactory.register('primary-provider', primaryAdapter);
+
+    const localOrchestrator = new UnifiedOrchestrator(localKeyRegistry, localFactory, localConfig);
+
+    const res = await localOrchestrator.executeCompletion({
+      model: 'primary-provider/model-a',
+      messages: [],
+      stream: true,
+    }, {});
+
+    expect(res.error.code).toBe('all_keys_exhausted');
+  });
 });

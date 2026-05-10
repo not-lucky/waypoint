@@ -406,4 +406,30 @@ describe('Zod Request Validation Middleware - Edge Case Tests', () => {
     expect(res.body.error.code).toBe('validation_error');
     expect(res.body.error.details.some((d) => d.field === 'model')).toBe(true);
   });
+
+  it('edge case: schema safeParse returns success:false but error.issues is null/undefined', async () => {
+    const { completionSchema: freshSchema } = await import('../src/middleware/zod.validation.js');
+    const originalSafeParse = freshSchema.safeParse;
+    freshSchema.safeParse = () => ({
+      success: false,
+      error: {
+        issues: null,
+      },
+    });
+
+    try {
+      const res = await request(app)
+        .post('/openai/chat/completions')
+        .send({
+          model: 'openai/gpt-4o',
+          messages: [{ role: 'user', content: 'hi' }],
+        })
+        .expect(400);
+
+      expect(res.body.error.code).toBe('validation_error');
+      expect(res.body.error.details).toEqual([]);
+    } finally {
+      freshSchema.safeParse = originalSafeParse;
+    }
+  });
 });

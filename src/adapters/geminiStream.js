@@ -3,6 +3,7 @@ import { FORMATS, translateRequest, translateStreamChunk } from '../translators/
 import { parseSSEStream } from '../utils/sseParser.js';
 import { sanitizeUrl, serializeHeaders } from '../utils/requestLogger.js';
 import { translateUsage, getThinkingLevel } from './geminiFormatter.js';
+import { parseUpstreamError } from './BaseProvider.js';
 
 /**
  * Finds the longest overlapping prefix between the end of str and beginning of target.
@@ -31,50 +32,35 @@ export const processThinkingBuffer = (buffer, state, flush, sendThinking, sendTe
   while (processed) {
     processed = false;
 
-    if (streamState === 'text') {
-      const idx = pendingBuffer.indexOf(START_TAG);
-      if (idx !== -1) {
-        const before = pendingBuffer.slice(0, idx);
-        sendText(before);
-        streamState = 'thinking';
-        pendingBuffer = pendingBuffer.slice(idx + START_TAG.length);
-        processed = true;
-      } else if (!flush) {
-        const partial = getLongestPrefixSuffix(pendingBuffer, START_TAG);
-        if (partial) {
-          const before = pendingBuffer.slice(0, -partial.length);
-          sendText(before);
-          pendingBuffer = partial;
-        } else {
-          sendText(pendingBuffer);
-          pendingBuffer = '';
-        }
+    if (streamState !== 'text' && streamState !== 'thinking') {
+      break;
+    }
+
+    const isText = streamState === 'text';
+    const targetTag = isText ? START_TAG : END_TAG;
+    const sendFn = isText ? sendText : sendThinking;
+    const nextState = isText ? 'thinking' : 'text';
+
+    const idx = pendingBuffer.indexOf(targetTag);
+    if (idx !== -1) {
+      const before = pendingBuffer.slice(0, idx);
+      sendFn(before);
+      streamState = nextState;
+      pendingBuffer = pendingBuffer.slice(idx + targetTag.length);
+      processed = true;
+    } else if (!flush) {
+      const partial = getLongestPrefixSuffix(pendingBuffer, targetTag);
+      if (partial) {
+        const before = pendingBuffer.slice(0, -partial.length);
+        sendFn(before);
+        pendingBuffer = partial;
       } else {
-        sendText(pendingBuffer);
+        sendFn(pendingBuffer);
         pendingBuffer = '';
       }
-    } else if (streamState === 'thinking') {
-      const idx = pendingBuffer.indexOf(END_TAG);
-      if (idx !== -1) {
-        const before = pendingBuffer.slice(0, idx);
-        sendThinking(before);
-        streamState = 'text';
-        pendingBuffer = pendingBuffer.slice(idx + END_TAG.length);
-        processed = true;
-      } else if (!flush) {
-        const partial = getLongestPrefixSuffix(pendingBuffer, END_TAG);
-        if (partial) {
-          const before = pendingBuffer.slice(0, -partial.length);
-          sendThinking(before);
-          pendingBuffer = partial;
-        } else {
-          sendThinking(pendingBuffer);
-          pendingBuffer = '';
-        }
-      } else {
-        sendThinking(pendingBuffer);
-        pendingBuffer = '';
-      }
+    } else {
+      sendFn(pendingBuffer);
+      pendingBuffer = '';
     }
   }
 
@@ -178,16 +164,7 @@ export async function* executeStream(req, apiKey, signal, requestLog, adapter) {
 
   // Handle upstream connection failures
   if (!response.ok) {
-    const errorText = await response.text();
-    let errorJson;
-    try {
-      errorJson = JSON.parse(errorText);
-    } catch (e) {
-      errorJson = { message: errorText };
-    }
-    const err = new Error(errorJson.error?.message || errorJson.message || 'Upstream error');
-    err.statusCode = response.status;
-    err.response = response;
+    const err = await parseUpstreamError(response);
     cleanup();
     throw err;
   }

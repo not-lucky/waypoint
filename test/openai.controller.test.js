@@ -430,6 +430,23 @@ describe('OpenAIController Edge Case Tests', () => {
       }));
     });
 
+    it('should fallback to status 500 when orchestrator response error is missing httpStatus', async () => {
+      mockOrchestrator.executeCompletion.mockResolvedValue({
+        error: {
+          code: 'generic_error',
+          message: 'Generic failure without http status',
+        },
+      });
+
+      const controller = new OpenAIController(mockOrchestrator);
+      const req = { body: { model: 'gpt-4o' }, headers: {} };
+      const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+
+      await controller.handleCompletion(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+    });
+
     it('should catch unhandled exceptions and respond with 500', async () => {
       mockOrchestrator.executeCompletion.mockRejectedValue(new Error('Database crash'));
 
@@ -444,6 +461,24 @@ describe('OpenAIController Edge Case Tests', () => {
         error: expect.objectContaining({
           code: 'internal_server_error',
           message: 'Database crash',
+        }),
+      }));
+    });
+
+    it('should use String(err) fallback when catch error message is empty', async () => {
+      mockOrchestrator.executeCompletion.mockRejectedValue(new Error(''));
+
+      const controller = new OpenAIController(mockOrchestrator);
+      const req = { body: { model: 'gpt-4o' }, headers: {} };
+      const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+
+      await controller.handleCompletion(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+        error: expect.objectContaining({
+          code: 'internal_server_error',
+          message: 'Error',
         }),
       }));
     });

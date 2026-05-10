@@ -117,4 +117,66 @@ describe('Index Endpoints Coverage', () => {
     expect(res.status).toBe(413);
     expect(res.body.error.code).toBe('payload_too_large');
   });
+
+  it('GET /openai/models with missing providers config', async () => {
+    vi.spyOn(ConfigLoader.prototype, 'loadConfig').mockReturnValue({
+      gateway: { port: 20128, max_payload_size: '10mb', cors: { allowed_origins: ['*'] } },
+      clients: [{ name: 'open-webui', token: 'mock-webui-token' }],
+    });
+    const res = await request(app)
+      .get('/openai/models')
+      .set('Authorization', 'Bearer mock-webui-token')
+      .expect(200);
+    expect(res.body.object).toBe('list');
+    expect(res.body.data).toEqual([]);
+  });
+
+  describe('Global Error Handler - status and statusCode variations', () => {
+    it('should handle error with status property', async () => {
+      const err = new Error('Status 400 Error');
+      err.status = 400;
+      vi.spyOn(ConfigLoader.prototype, 'loadConfig').mockImplementation(() => {
+        throw err;
+      });
+
+      const res = await request(app)
+        .get('/openai/models')
+        .set('Authorization', 'Bearer mock-webui-token')
+        .expect(400);
+
+      expect(res.body.error.code).toBe('bad_request');
+      expect(res.body.error.message).toBe('Status 400 Error');
+    });
+
+    it('should handle error with statusCode property', async () => {
+      const err = new Error('StatusCode 413 Error');
+      err.statusCode = 413;
+      vi.spyOn(ConfigLoader.prototype, 'loadConfig').mockImplementation(() => {
+        throw err;
+      });
+
+      const res = await request(app)
+        .get('/openai/models')
+        .set('Authorization', 'Bearer mock-webui-token')
+        .expect(413);
+
+      expect(res.body.error.code).toBe('payload_too_large');
+      expect(res.body.error.message).toBe('StatusCode 413 Error');
+    });
+
+    it('should handle error with default 500 status', async () => {
+      const err = new Error('Default 500 Error');
+      vi.spyOn(ConfigLoader.prototype, 'loadConfig').mockImplementation(() => {
+        throw err;
+      });
+
+      const res = await request(app)
+        .get('/openai/models')
+        .set('Authorization', 'Bearer mock-webui-token')
+        .expect(500);
+
+      expect(res.body.error.code).toBe('internal_server_error');
+      expect(res.body.error.message).toBe('Default 500 Error');
+    });
+  });
 });

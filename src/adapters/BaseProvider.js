@@ -253,4 +253,18 @@ export const normalizeProviderError = (error, providerName) => {
   };
 };
 
+export const parseUpstreamError = async (response, fallbackMessage = 'Upstream error') => {
+  const errorText = await response.text();
+  let errorJson;
+  try {
+    errorJson = JSON.parse(errorText);
+  } catch (e) {
+    errorJson = { message: errorText };
+  }
+  const err = new Error(errorJson.error?.message || errorJson.message || fallbackMessage);
+  err.statusCode = response.status;
+  err.response = response;
+  return err;
+};
+
 export default BaseProvider;

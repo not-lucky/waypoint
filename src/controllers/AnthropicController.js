@@ -159,6 +159,36 @@ export class AnthropicController {
 
     const accumulator = new StreamAccumulator(msgId, unifiedReq.model);
 
+    const transitionBlock = (newBlockType) => {
+      if (activeBlockType === newBlockType) return;
+
+      if (activeBlockType !== null) {
+        const stopEvent = `event: content_block_stop\ndata: ${JSON.stringify({
+          type: 'content_block_stop',
+          index: currentBlockIndex,
+        })}\n\n`;
+        reqLog.appendStreamEvent('client', stopEvent);
+        res.write(stopEvent);
+        currentBlockIndex += 1;
+      }
+
+      if (newBlockType !== null) {
+        const contentBlock = newBlockType === 'thinking'
+          ? { type: 'thinking', thinking: '' }
+          : { type: 'text', text: '' };
+
+        const startEvent = `event: content_block_start\ndata: ${JSON.stringify({
+          type: 'content_block_start',
+          index: currentBlockIndex,
+          content_block: contentBlock,
+        })}\n\n`;
+        reqLog.appendStreamEvent('client', startEvent);
+        res.write(startEvent);
+      }
+
+      activeBlockType = newBlockType;
+    };
+
     try {
       /* eslint-disable no-restricted-syntax */
       for await (const chunk of response) {
@@ -202,28 +232,7 @@ export class AnthropicController {
         // If the orchestrator provides reasoning content, we must transition the state
         // machine into 'thinking' mode, closing any previous blocks to satisfy the SDK's parser.
         if (delta.reasoning_content) {
-          if (activeBlockType !== 'thinking') {
-            if (activeBlockType !== null) {
-              const stopEvent = `event: content_block_stop\ndata: ${JSON.stringify({
-                type: 'content_block_stop',
-                index: currentBlockIndex,
-              })}\n\n`;
-              reqLog.appendStreamEvent('client', stopEvent);
-              res.write(stopEvent);
-              currentBlockIndex += 1;
-            }
-            const startEvent = `event: content_block_start\ndata: ${JSON.stringify({
-              type: 'content_block_start',
-              index: currentBlockIndex,
-              content_block: {
-                type: 'thinking',
-                thinking: '',
-              },
-            })}\n\n`;
-            reqLog.appendStreamEvent('client', startEvent);
-            res.write(startEvent);
-            activeBlockType = 'thinking';
-          }
+          transitionBlock('thinking');
 
           const thinkingDelta = `event: content_block_delta\ndata: ${JSON.stringify({
             type: 'content_block_delta',
@@ -242,28 +251,7 @@ export class AnthropicController {
         // thinking to answering, we emit a stop for thinking and a start for text. This
         // segregation is mandatory for Anthropic's UI components to render correctly.
         if (delta.content) {
-          if (activeBlockType !== 'text') {
-            if (activeBlockType !== null) {
-              const stopEvent = `event: content_block_stop\ndata: ${JSON.stringify({
-                type: 'content_block_stop',
-                index: currentBlockIndex,
-              })}\n\n`;
-              reqLog.appendStreamEvent('client', stopEvent);
-              res.write(stopEvent);
-              currentBlockIndex += 1;
-            }
-            const startEvent = `event: content_block_start\ndata: ${JSON.stringify({
-              type: 'content_block_start',
-              index: currentBlockIndex,
-              content_block: {
-                type: 'text',
-                text: '',
-              },
-            })}\n\n`;
-            reqLog.appendStreamEvent('client', startEvent);
-            res.write(startEvent);
-            activeBlockType = 'text';
-          }
+          transitionBlock('text');
 
           const textDelta = `event: content_block_delta\ndata: ${JSON.stringify({
             type: 'content_block_delta',
@@ -282,15 +270,7 @@ export class AnthropicController {
         // close any open content blocks before emitting `message_delta` containing the
         // stop reason. Failing to close the block first results in SDK parse exceptions.
         if (choice.finish_reason) {
-          if (activeBlockType !== null) {
-            const stopEvent = `event: content_block_stop\ndata: ${JSON.stringify({
-              type: 'content_block_stop',
-              index: currentBlockIndex,
-            })}\n\n`;
-            reqLog.appendStreamEvent('client', stopEvent);
-            res.write(stopEvent);
-            activeBlockType = null;
-          }
+          transitionBlock(null);
 
           const stopReason = STOP_REASON_MAP[choice.finish_reason] || choice.finish_reason || 'end_turn';
           const messageDelta = `event: message_delta\ndata: ${JSON.stringify({
@@ -312,14 +292,7 @@ export class AnthropicController {
       // What: Ensure all blocks are closed.
       // Why: If the upstream stream died ungracefully without a finish_reason, we still
       // need to seal the currently open block to prevent lingering unclosed state in the client.
-      if (activeBlockType !== null) {
-        const stopEvent = `event: content_block_stop\ndata: ${JSON.stringify({
-          type: 'content_block_stop',
-          index: currentBlockIndex,
-        })}\n\n`;
-        reqLog.appendStreamEvent('client', stopEvent);
-        res.write(stopEvent);
-      }
+      transitionBlock(null);
 
       // What: Emit the final message_stop event.
       // Why: Anthropic's protocol mandates a final `message_stop` event to definitively

@@ -704,4 +704,252 @@ describe('OpenAICompatibleAdapter Tests', () => {
     expect(chunks[0].choices[0].delta.content).toBe('chunk 1');
     expect(chunks[1].choices[0].delta.content).toBe('chunk 2');
   });
+
+  it('assert: generateCompletion handles missing responseId, responseModel, and usage token fallbacks', async () => {
+    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+
+    // Missing id, model, usage fields in upstream response
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [
+          {
+            index: 0,
+            message: {
+              content: 'hello response',
+            },
+          },
+        ],
+      }),
+    });
+
+    const mockReqLog = {
+      logProviderRequest: vi.fn(),
+    };
+
+    const response = await adapter.generateCompletion({ messages: [] }, 'test-key', null, mockReqLog);
+    expect(mockReqLog.logProviderRequest).toHaveBeenCalled();
+    expect(response.id).toMatch(/^waypoint-\d+/); // Fallback to waypoint-Date.now()
+    expect(response.model).toBeUndefined(); // Fallback to req.model which is undefined
+    expect(response.usage).toEqual({
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      total_tokens: 0,
+    });
+  });
+
+  it('assert: generateStream logs summary with default ID/model/token fallbacks', async () => {
+    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode('data: {"choices":[{"delta":{"content":"part 1"}}]}\n\n');
+        yield encoder.encode('data: {"usage":{"prompt_tokens":5,"completion_tokens":15}}\n\n');
+      },
+    };
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: mockBody,
+    });
+
+    const requestLog = {
+      logProviderRequest: vi.fn(),
+      logProviderStreamSummary: vi.fn(),
+      appendStreamEvent: vi.fn(),
+    };
+
+    const stream = adapter.generateStream({ messages: [], model: 'req-model-name' }, 'key', null, requestLog);
+    for await (const chunk of stream) {}
+
+    expect(requestLog.logProviderStreamSummary).toHaveBeenCalledWith(
+      expect.objectContaining({
+        summary: expect.objectContaining({
+          id: expect.stringMatching(/^waypoint-chunk-/), // responseId fallback
+          model: 'req-model-name', // responseModel fallback
+          usage: {
+            prompt_tokens: 5,
+            completion_tokens: 15,
+            total_tokens: 20, // totalTokens fallback: promptTokens + completionTokens
+          },
+        }),
+      }),
+    );
+  });
+
+  it('assert: generateStream maps promptTokens and completionTokens camelCase keys correctly', async () => {
+    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode('data: {"choices":[{"delta":{"content":"part 1"}}]}\n\n');
+        yield encoder.encode('data: {"usage":{"promptTokens":6,"completionTokens":16,"totalTokens":22}}\n\n');
+      },
+    };
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: mockBody,
+    });
+
+    const requestLog = {
+      logProviderRequest: vi.fn(),
+      logProviderStreamSummary: vi.fn(),
+      appendStreamEvent: vi.fn(),
+    };
+
+    const stream = adapter.generateStream({ messages: [], model: 'req-model-name' }, 'key', null, requestLog);
+    const chunks = [];
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks[1].usage).toEqual({
+      prompt_tokens: 6,
+      completion_tokens: 16,
+      total_tokens: 22,
+    });
+  });
+
+  it('assert: generateStream handles empty usage object to cover final fallback branches', async () => {
+    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode('data: {"choices":[{"delta":{"content":"part 1","reasoning_content":"t1"}}]}\n\n');
+        yield encoder.encode('data: {"choices":[{"delta":{"reasoning_content":"t2"}}]}\n\n');
+        yield encoder.encode('data: {"choices":[{"finishReason":"length"}]}\n\n');
+        yield encoder.encode('data: {"usage":{}}\n\n');
+      },
+    };
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: mockBody,
+    });
+
+    const requestLog = {
+      logProviderRequest: vi.fn(),
+      logProviderStreamSummary: vi.fn(),
+      appendStreamEvent: vi.fn(),
+    };
+
+    const stream = adapter.generateStream({ messages: [], model: 'req-model-name' }, 'key', null, requestLog);
+    const chunks = [];
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks[3].usage).toEqual({
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      total_tokens: 0,
+    });
+  });
+
+  it('assert: generateStream handles JSON error response parsing formats', async () => {
+    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+
+    // Case 1: error.message
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      text: async () => JSON.stringify({ error: { message: 'invalid payload' } }),
+    });
+    await expect(async () => {
+      const stream = adapter.generateStream({ messages: [] }, 'key');
+      for await (const chunk of stream) {}
+    }).rejects.toThrow('invalid payload');
+
+    // Case 2: message
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      text: async () => JSON.stringify({ message: 'access denied' }),
+    });
+    await expect(async () => {
+      const stream = adapter.generateStream({ messages: [] }, 'key');
+      for await (const chunk of stream) {}
+    }).rejects.toThrow('access denied');
+
+    // Case 3: empty plain text (fallback to Upstream error)
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      text: async () => '',
+    });
+    await expect(async () => {
+      const stream = adapter.generateStream({ messages: [] }, 'key');
+      for await (const chunk of stream) {}
+    }).rejects.toThrow('Upstream error');
+  });
+
+  it('assert: OpenAICompatibleAdapter edge case branches for choices, content fallbacks and stream fetch errors', async () => {
+    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+
+    // 1. generateCompletion choices/content fallback
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        id: 'waypoint-custom-id',
+        choices: null, // triggers || []
+      }),
+    });
+    const res1 = await adapter.generateCompletion({ messages: [] }, 'key');
+    expect(res1.id).toBe('waypoint-custom-id');
+    expect(res1.choices).toEqual([]);
+
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: null } }], // triggers || ''
+      }),
+    });
+    const res2 = await adapter.generateCompletion({ messages: [] }, 'key');
+    expect(res2.choices[0].message.content).toBe('');
+
+    // 2. generateStream fetch error without requestLog
+    mockFetch.mockRejectedValueOnce(new Error('Fetch failed no log'));
+    await expect(async () => {
+      const stream = adapter.generateStream({ messages: [] }, 'key');
+      for await (const chunk of stream) {}
+    }).rejects.toThrow('Fetch failed no log');
+
+    // 3. generateCompletion fetch error without requestLog
+    mockFetch.mockRejectedValueOnce(new Error('Completion fetch failed no log'));
+    await expect(adapter.generateCompletion({ messages: [] }, 'key')).rejects.toThrow('Completion fetch failed no log');
+
+    // 4. generateCompletion JSON error formats
+    // error.message
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      text: async () => JSON.stringify({ error: { message: 'invalid request' } }),
+    });
+    await expect(adapter.generateCompletion({ messages: [] }, 'key')).rejects.toThrow('invalid request');
+
+    // message
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      text: async () => JSON.stringify({ message: 'forbidden completion' }),
+    });
+    await expect(adapter.generateCompletion({ messages: [] }, 'key')).rejects.toThrow('forbidden completion');
+
+    // empty text
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      text: async () => '',
+    });
+    await expect(adapter.generateCompletion({ messages: [] }, 'key')).rejects.toThrow('Upstream error');
+  });
 });
+
+
+
+

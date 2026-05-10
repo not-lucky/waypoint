@@ -906,5 +906,488 @@ describe('GeminiAdapter Tests', () => {
       expect(chunks[0].choices[0].delta.reasoning_content).toBe('thinking process ');
       expect(chunks[1].choices[0].delta.reasoning_content).toBe('</th');
     });
+
+    it('assert: generateCompletion handles fetch error with and without requestLog', async () => {
+      const adapter = new GeminiAdapter();
+      mockFetch.mockRejectedValue(new Error('Network failure'));
+
+      // Without requestLog
+      const req = {
+        model: 'gemini-pro', actualModelId: 'gemini-pro', messages: [], thinkingEnabled: false,
+      };
+      await expect(adapter.generateCompletion(req, 'key', null, null)).rejects.toThrow('Network failure');
+
+      // With requestLog
+      const mockReqLog = {
+        logProviderRequest: vi.fn(),
+      };
+      await expect(adapter.generateCompletion(req, 'key', null, mockReqLog)).rejects.toThrow('Network failure');
+      expect(mockReqLog.logProviderRequest).toHaveBeenCalled();
+    });
+
+    it('assert: generateCompletion maps upstream error formats correctly', async () => {
+      const adapter = new GeminiAdapter();
+
+      // Format 1: errorJSON.error.message
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 400,
+        text: async () => JSON.stringify({ error: { message: 'upstream error msg' } }),
+      });
+      const req = {
+        model: 'gemini-pro', actualModelId: 'gemini-pro', messages: [], thinkingEnabled: false,
+      };
+      await expect(adapter.generateCompletion(req, 'key')).rejects.toThrow('upstream error msg');
+
+      // Format 2: errorJSON.message
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 403,
+        text: async () => JSON.stringify({ message: 'forbidden msg' }),
+      });
+      await expect(adapter.generateCompletion(req, 'key')).rejects.toThrow('forbidden msg');
+
+      // Format 3: non-JSON plain text
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 500,
+        text: async () => 'Internal server error text',
+      });
+      await expect(adapter.generateCompletion(req, 'key')).rejects.toThrow('Internal server error text');
+    });
+
+    it('assert: generateCompletion handles thinkingEnabled with fallbacks', async () => {
+      const adapter = new GeminiAdapter();
+      mockFetch.mockResolvedValue({
+        ok: true,
+        headers: new Headers(),
+        json: async () => ({
+          choices: [
+            {
+              index: undefined, // test fallback to 0
+              message: {
+                role: undefined, // test fallback to 'assistant'
+                content: null, // test fallback to ''
+              },
+            },
+          ],
+        }),
+      });
+
+      const req = {
+        model: undefined, // test fallback to resultJson.model
+        actualModelId: undefined, // test fallback to req.model on line 30
+        messages: [],
+        thinkingEnabled: true,
+      };
+
+      const mockReqLog = {
+        logProviderRequest: vi.fn(),
+      };
+
+      const res = await adapter.generateCompletion(req, 'key', null, mockReqLog);
+      expect(res.choices[0].index).toBe(0);
+      expect(res.choices[0].message.role).toBe('assistant');
+      expect(res.choices[0].message.content).toBe('');
+    });
+
+    it('assert: generateStream maps usageMetadata and modelVersion when thinking is disabled', async () => {
+      const adapter = new GeminiAdapter();
+      const mockBody = {
+        async* [Symbol.asyncIterator]() {
+          const encoder = new TextEncoder();
+          yield encoder.encode('data: {"candidates": [{"content": {"parts": [{"text": "hello"}]}}], "usageMetadata": {"promptTokenCount": 10, "candidatesTokenCount": 20, "totalTokenCount": 30}, "modelVersion": "gemini-model-v1"}\n\n');
+        },
+      };
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        body: mockBody,
+      });
+
+      const req = {
+        model: 'gemini-pro',
+        actualModelId: 'gemini-pro',
+        messages: [],
+        thinkingEnabled: false,
+      };
+
+      const mockReqLog = {
+        logProviderStreamSummary: vi.fn(),
+        appendStreamEvent: vi.fn(),
+        logProviderRequest: vi.fn(),
+      };
+
+      const chunks = [];
+      for await (const chunk of adapter.generateStream(req, 'key', null, mockReqLog)) {
+        chunks.push(chunk);
+      }
+
+      expect(chunks.length).toBeGreaterThan(0);
+      expect(mockReqLog.logProviderStreamSummary).toHaveBeenCalledWith(
+        expect.objectContaining({
+          summary: expect.objectContaining({
+            modelVersion: 'gemini-model-v1',
+            usageMetadata: {
+              promptTokenCount: 10,
+              candidatesTokenCount: 20,
+              totalTokenCount: 30,
+            },
+          }),
+        }),
+      );
+    });
+
+    it('assert: geminiCompletion handles errorJson missing error message and defaults to Upstream error', async () => {
+      const adapter = new GeminiAdapter();
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 400,
+        text: async () => '{}',
+      });
+
+      const req = {
+        model: 'gemini-pro',
+        actualModelId: 'gemini-pro',
+        messages: [],
+        thinkingEnabled: true,
+      };
+
+      await expect(adapter.generateCompletion(req, 'key')).rejects.toThrow('Upstream error');
+    });
+
+    it('assert: geminiCompletion thinking mode handles missing choices in resultJson', async () => {
+      const adapter = new GeminiAdapter();
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          choices: null,
+          id: 'test-id',
+        }),
+      });
+
+      const req = {
+        model: 'gemini-pro',
+        actualModelId: 'gemini-pro',
+        messages: [],
+        thinkingEnabled: true,
+      };
+
+      const res = await adapter.generateCompletion(req, 'key');
+      expect(res.choices).toEqual([]);
+    });
+
+    it('assert: executeStream handles custom baseUrl and missing usage/model fields fallback when thinkingEnabled is true', async () => {
+      const adapter = new GeminiAdapter('https://custom-gemini.api/v1/');
+      const mockBody = {
+        async* [Symbol.asyncIterator]() {
+          const encoder = new TextEncoder();
+          yield encoder.encode('data: {"choices":[{"delta":{"content":"ok"}}]}\n\n');
+          yield encoder.encode('data: {"usage":{"promptTokens":11,"completionTokens":22,"totalTokens":33}}\n\n');
+        },
+      };
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        body: mockBody,
+      });
+
+      const req = {
+        model: 'gemini-pro',
+        actualModelId: 'gemini-pro',
+        messages: [],
+        thinkingEnabled: true,
+      };
+
+      const mockReqLog = {
+        logProviderStreamSummary: vi.fn(),
+        appendStreamEvent: vi.fn(),
+        logProviderRequest: vi.fn(),
+      };
+
+      const stream = adapter.generateStream(req, 'key', null, mockReqLog);
+      for await (const chunk of stream) {}
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://custom-gemini.api/v1/chat/completions',
+        expect.any(Object),
+      );
+
+      expect(mockReqLog.logProviderStreamSummary).toHaveBeenCalledWith(
+        expect.objectContaining({
+          summary: expect.objectContaining({
+            usage: {
+              prompt_tokens: 11,
+              completion_tokens: 22,
+              total_tokens: 33,
+            },
+          }),
+        }),
+      );
+    });
+
+    it('assert: executeStream handles missing modelVersion, serviceTier and missing usageMetadata fields when thinkingEnabled is false', async () => {
+      const adapter = new GeminiAdapter();
+      const mockBody = {
+        async* [Symbol.asyncIterator]() {
+          const encoder = new TextEncoder();
+          yield encoder.encode('data: {"candidates":[{"content":{"parts":[{"text":"hello"}]}}], "usageMetadata": {"promptTokenCount": 5}}\n\n');
+        },
+      };
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        body: mockBody,
+      });
+
+      const req = {
+        model: 'gemini-pro',
+        actualModelId: 'gemini-pro',
+        messages: [],
+        thinkingEnabled: false,
+      };
+
+      const mockReqLog = {
+        logProviderStreamSummary: vi.fn(),
+        appendStreamEvent: vi.fn(),
+        logProviderRequest: vi.fn(),
+      };
+
+      const stream = adapter.generateStream(req, 'key', null, mockReqLog);
+      for await (const chunk of stream) {}
+
+      expect(mockReqLog.logProviderStreamSummary).toHaveBeenCalledWith(
+        expect.objectContaining({
+          summary: expect.objectContaining({
+            usageMetadata: {
+              promptTokenCount: 5,
+              candidatesTokenCount: 0,
+              totalTokenCount: 0,
+            },
+          }),
+        }),
+      );
+    });
+
+    it('assert: executeStream sets serviceTier when present in usageMetadata', async () => {
+      const adapter = new GeminiAdapter();
+      const mockBody = {
+        async* [Symbol.asyncIterator]() {
+          const encoder = new TextEncoder();
+          yield encoder.encode('data: {"candidates":[{"content":{"parts":[{"text":"hello"}]}}], "usageMetadata": {"serviceTier": "standard"}}\n\n');
+        },
+      };
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        body: mockBody,
+      });
+
+      const req = {
+        model: 'gemini-pro',
+        actualModelId: 'gemini-pro',
+        messages: [],
+        thinkingEnabled: false,
+      };
+
+      const mockReqLog = {
+        logProviderStreamSummary: vi.fn(),
+        appendStreamEvent: vi.fn(),
+        logProviderRequest: vi.fn(),
+      };
+
+      const stream = adapter.generateStream(req, 'key', null, mockReqLog);
+      for await (const chunk of stream) {}
+
+      expect(mockReqLog.logProviderStreamSummary).toHaveBeenCalledWith(
+        expect.objectContaining({
+          summary: expect.objectContaining({
+            usageMetadata: expect.objectContaining({
+              serviceTier: 'standard',
+            }),
+          }),
+        }),
+      );
+    });
+
+    it('assert: executeStream covers finally block finalUsage fallbacks and finalUsageMetadata false branch', async () => {
+      const adapter = new GeminiAdapter();
+      const mockReqLog = {
+        logProviderRequest: vi.fn(),
+        logProviderStreamSummary: vi.fn(),
+        appendStreamEvent: vi.fn(),
+      };
+
+      // Case 1: thinkingEnabled: true, empty finalUsage, camelCase finishReason, empty thinking flush
+      const mockBody1 = {
+        async* [Symbol.asyncIterator]() {
+          const encoder = new TextEncoder();
+          yield encoder.encode('data: {"choices": [{"index": 0, "delta": {"content": "hello <thought>"}}]}\n\n');
+          yield encoder.encode('data: {"choices": [{"index": 0, "finishReason": "stop"}]}\n\n');
+          yield encoder.encode('data: {"usage": {}}\n\n');
+        },
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        headers: new Map(),
+        body: mockBody1,
+      });
+
+      const req1 = {
+        model: 'gemini-pro',
+        actualModelId: 'gemini-pro',
+        messages: [],
+        thinkingEnabled: true,
+      };
+
+      for await (const chunk of adapter.generateStream(req1, 'key', null, mockReqLog)) {}
+
+      expect(mockReqLog.logProviderStreamSummary).toHaveBeenCalledWith(
+        expect.objectContaining({
+          summary: expect.objectContaining({
+            usage: {
+              prompt_tokens: 0,
+              completion_tokens: 0,
+              total_tokens: 0,
+            },
+          }),
+        }),
+      );
+
+      // Case 2: thinkingEnabled: false, null/absent usageMetadata, empty parts (no text)
+      const mockBody2 = {
+        async* [Symbol.asyncIterator]() {
+          const encoder = new TextEncoder();
+          yield encoder.encode('data: {"candidates":[{"content":{"parts":[{"text":""},{"inlineData":{}}]}}]}\n\n');
+        },
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        headers: new Map(),
+        body: mockBody2,
+      });
+
+      const req2 = {
+        model: 'gemini-pro',
+        actualModelId: 'gemini-pro',
+        messages: [],
+        thinkingEnabled: false,
+      };
+
+      for await (const chunk of adapter.generateStream(req2, 'key', null, mockReqLog)) {}
+
+      expect(mockReqLog.logProviderStreamSummary).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          summary: expect.not.objectContaining({
+            usageMetadata: expect.any(Object),
+          }),
+        }),
+      );
+    });
+
+    it('assert: executeStream additional branches for standard model errors and custom baseUrl', async () => {
+      const adapter = new GeminiAdapter('https://custom-gemini.api/v1/');
+      const mockReqLog = {
+        logProviderRequest: vi.fn(),
+        logProviderStreamSummary: vi.fn(),
+        appendStreamEvent: vi.fn(),
+      };
+
+      // 1. Custom baseUrl and fetch error with log
+      mockFetch.mockRejectedValueOnce(new Error('Fetch failed standard stream'));
+      const req1 = {
+        model: 'gemini-pro',
+        actualModelId: 'gemini-pro',
+        messages: [],
+        thinkingEnabled: false,
+      };
+
+      await expect(async () => {
+        const stream = adapter.generateStream(req1, 'key', null, mockReqLog);
+        for await (const chunk of stream) {}
+      }).rejects.toThrow('Fetch failed standard stream');
+
+      expect(mockReqLog.logProviderRequest).toHaveBeenCalled();
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('https://custom-gemini.api/v1/models/gemini-pro:streamGenerateContent'),
+        expect.any(Object),
+      );
+
+      // 2. Non-ok response JSON error formats (error.message, message, empty)
+      // error.message
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        text: async () => JSON.stringify({ error: { message: 'bad format' } }),
+      });
+      await expect(async () => {
+        const stream = adapter.generateStream(req1, 'key');
+        for await (const chunk of stream) {}
+      }).rejects.toThrow('bad format');
+
+      // message
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        text: async () => JSON.stringify({ message: 'standard forbidden' }),
+      });
+      await expect(async () => {
+        const stream = adapter.generateStream(req1, 'key');
+        for await (const chunk of stream) {}
+      }).rejects.toThrow('standard forbidden');
+
+      // empty text (fallback to Upstream error)
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        text: async () => '',
+      });
+      await expect(async () => {
+        const stream = adapter.generateStream(req1, 'key');
+        for await (const chunk of stream) {}
+      }).rejects.toThrow('Upstream error');
+
+      // 3. finish_reason (snake_case) inside thinking stream choices
+      // We pass content "ok" to ensure deltasToYield is not empty (covers line 297 branch)
+      // We also omit actualModelId to cover model: req.actualModelId || req.model fallback (line 122 branch)
+      // We also omit index to cover index fallback (line 297/309 branches)
+      const mockBody3 = {
+        async* [Symbol.asyncIterator]() {
+          const encoder = new TextEncoder();
+          yield encoder.encode('data: {"choices": [{"finish_reason": "stop", "delta": {"content": "ok"}}]}\n\n');
+          yield encoder.encode('data: {"choices": [{"finish_reason": "stop"}]}\n\n');
+        },
+      };
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        headers: new Map(),
+        body: mockBody3,
+      });
+      const req3 = {
+        model: 'gemini-pro',
+        messages: [],
+        thinkingEnabled: true,
+      };
+      const stream = adapter.generateStream(req3, 'key');
+      const chunks = [];
+      for await (const chunk of stream) {
+        chunks.push(chunk);
+      }
+      expect(chunks[0].choices[0].finish_reason).toBe('stop');
+      expect(chunks[0].choices[0].index).toBe(0);
+      expect(chunks[1].choices[0].index).toBe(0);
+
+      // 4. standard model stream fetch error without requestLog (covers line 168 branch)
+      mockFetch.mockRejectedValueOnce(new Error('Fetch failed standard stream no log'));
+      await expect(async () => {
+        const stream2 = adapter.generateStream(req1, 'key'); // no log passed
+        for await (const chunk of stream2) {}
+      }).rejects.toThrow('Fetch failed standard stream no log');
+    });
   });
 });
+
+
+

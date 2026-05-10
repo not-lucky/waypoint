@@ -144,6 +144,22 @@ describe('geminiStream Unit Tests', () => {
       expect(sendThinking).toEqual(['thinking process ']);
       expect(sendText).toEqual([]);
     });
+
+    it('handles invalid state by doing nothing and returning the original buffer/state', () => {
+      const sendThinking = [];
+      const sendText = [];
+      const result = processThinkingBuffer(
+        'some buffer',
+        'invalid-state',
+        false,
+        (text) => sendThinking.push(text),
+        (text) => sendText.push(text),
+      );
+      expect(result.state).toBe('invalid-state');
+      expect(result.buffer).toBe('some buffer');
+      expect(sendThinking).toEqual([]);
+      expect(sendText).toEqual([]);
+    });
   });
 
   describe('parseSSEEventData', () => {

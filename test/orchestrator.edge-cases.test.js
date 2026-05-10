@@ -293,4 +293,197 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
     expect(result.error.code).toBe('request_cancelled');
     expect(result.error.httpStatus).toBe(499);
   });
+
+  it('assert: executeCompletion handles null rawReq', async () => {
+    const config = { providers: { 'mock-provider': { keys: ['key-1'] } } };
+    const keyRegistry = new KeyRegistry(config);
+    const providerFactory = new ProviderFactory(config);
+    const mockAdapter = new MockAdapter();
+    mockAdapter.enqueue({ id: 'ok' });
+    providerFactory.register('mock-provider', mockAdapter);
+    const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
+
+    const result = await orchestrator.executeCompletion(
+      { provider: 'mock-provider', actualModelId: 'test-model' },
+      null,
+    );
+    expect(result.id).toBe('ok');
+  });
+
+  it('assert: executeCompletion handles rawReq without res', async () => {
+    const config = { providers: { 'mock-provider': { keys: ['key-1'] } } };
+    const keyRegistry = new KeyRegistry(config);
+    const providerFactory = new ProviderFactory(config);
+    const mockAdapter = new MockAdapter();
+    mockAdapter.generateCompletion = async (req, apiKey, signal) => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      if (signal.aborted) {
+        const err = new Error('Aborted');
+        err.name = 'AbortError';
+        throw err;
+      }
+      return { id: 'ok' };
+    };
+    providerFactory.register('mock-provider', mockAdapter);
+    const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
+
+    let closeListener = null;
+    const mockReq = {
+      on(event, cb) {
+        if (event === 'close') {
+          closeListener = cb;
+        }
+      },
+    };
+
+    const resPromise = orchestrator.executeCompletion(
+      { provider: 'mock-provider', actualModelId: 'test-model' },
+      mockReq,
+    );
+
+    // Let the async orchestration loop start, then trigger close
+    await new Promise((resolve) => { setTimeout(resolve, 2); });
+    if (closeListener) closeListener();
+    const result = await resPromise;
+    expect(result.error.code).toBe('request_cancelled');
+  });
+
+  it('assert: response close does not abort if res.writableEnded is true', async () => {
+    const config = { providers: { 'mock-provider': { keys: ['key-1'] } } };
+    const keyRegistry = new KeyRegistry(config);
+    const providerFactory = new ProviderFactory(config);
+    const mockAdapter = new MockAdapter();
+    mockAdapter.enqueue({ id: 'ok' });
+    providerFactory.register('mock-provider', mockAdapter);
+    const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
+
+    let resCloseListener = null;
+    const mockRes = {
+      writableEnded: true,
+      on(event, cb) {
+        if (event === 'close') {
+          resCloseListener = cb;
+        }
+      },
+    };
+    const mockReq = {
+      res: mockRes,
+    };
+
+    const resPromise = orchestrator.executeCompletion(
+      { provider: 'mock-provider', actualModelId: 'test-model' },
+      mockReq,
+    );
+
+    if (resCloseListener) resCloseListener();
+    const result = await resPromise;
+    expect(result.id).toBe('ok');
+  });
+
+  it('assert: response close handles case when res is mutated to null after listener attachment', async () => {
+    const config = { providers: { 'mock-provider': { keys: ['key-1'] } } };
+    const keyRegistry = new KeyRegistry(config);
+    const providerFactory = new ProviderFactory(config);
+    const mockAdapter = new MockAdapter();
+
+    // We want the adapter invocation to be interrupted by the abort, so we return a slow promise
+    mockAdapter.generateCompletion = async (req, apiKey, signal) => {
+      await new Promise((resolve, reject) => {
+        const checkAbort = () => {
+          if (signal.aborted) reject(new Error('Aborted'));
+          else setTimeout(checkAbort, 5);
+        };
+        checkAbort();
+      });
+    };
+    providerFactory.register('mock-provider', mockAdapter);
+    const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
+
+    let resCloseListener = null;
+    const mockRes = {
+      writableEnded: false,
+      on(event, cb) {
+        if (event === 'close') {
+          resCloseListener = cb;
+        }
+      },
+    };
+    const mockReq = {
+      res: mockRes,
+    };
+
+    const resPromise = orchestrator.executeCompletion(
+      { provider: 'mock-provider', actualModelId: 'test-model' },
+      mockReq,
+    );
+
+    await new Promise((resolve) => { setTimeout(resolve, 2); });
+    mockReq.res = null;
+
+    if (resCloseListener) resCloseListener();
+    const result = await resPromise;
+    expect(result.error.code).toBe('request_cancelled');
+  });
+
+  it('assert: retryExecutor buildAllKeysExhaustedError handles missing provider keys gracefully', async () => {
+    const config = {
+      providers: {}, // no keys for mock-provider
+    };
+    const keyRegistry = new KeyRegistry(config);
+    const providerFactory = new ProviderFactory(config);
+    const mockAdapter = new MockAdapter();
+    providerFactory.register('mock-provider', mockAdapter);
+
+    const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
+    const req = { provider: 'mock-provider', actualModelId: 'test-model' };
+    const res = await orchestrator.executeCompletion(req, {});
+
+    expect(res.error.code).toBe('all_keys_exhausted');
+    expect(res.error.retryAfterSeconds).toBe(0);
+  });
+
+  it('assert: retryExecutor streamWrapper handles iterator without return method', async () => {
+    const config = {
+      providers: {
+        'mock-provider': {
+          keys: ['key-1'],
+        },
+      },
+    };
+    const keyRegistry = new KeyRegistry(config);
+    const providerFactory = new ProviderFactory(config);
+    const mockAdapter = new MockAdapter();
+
+    // A custom async iterator without a .return method
+    const mockStream = {
+      [Symbol.asyncIterator]() {
+        let count = 0;
+        return {
+          async next() {
+            if (count > 0) return { done: true };
+            count++;
+            return {
+              done: false,
+              value: { id: 'chunk-1', choices: [{ delta: { content: 'hello' } }] },
+            };
+          },
+          // No return method!
+        };
+      },
+    };
+
+    mockAdapter.generateStream = () => mockStream;
+    providerFactory.register('mock-provider', mockAdapter);
+
+    const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
+    const req = { provider: 'mock-provider', actualModelId: 'test-model', stream: true };
+    const res = await orchestrator.executeCompletion(req, {});
+
+    // Consume the stream
+    const chunks = [];
+    for await (const chunk of res) {
+      chunks.push(chunk);
+    }
+    expect(chunks).toHaveLength(1);
+  });
 });

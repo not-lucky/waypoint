@@ -9,6 +9,7 @@ import {
 import { teardown, registerLifecycle, resetLifecycleState } from '../src/lifecycle.js';
 import { activeControllers } from '../src/services/UnifiedOrchestrator.js';
 import { rateLimiterIntervals } from '../src/middleware/rateLimiter.js';
+import * as loggerModule from '../src/utils/logger.js';
 
 describe('Graceful Teardown Sequence', () => {
   let callOrder = [];
@@ -214,6 +215,11 @@ describe('Graceful Teardown Sequence', () => {
 
     // Fast-forward time by 10 seconds (10000ms)
     await vi.advanceTimersByTimeAsync(10000);
+    // Flush promise queue
+    // eslint-disable-next-line no-await-in-loop
+    for (let i = 0; i < 20; i++) {
+      await Promise.resolve();
+    }
 
     expect(exitMock).toHaveBeenCalledWith(1);
     expect(callOrder).toContain('server.close');
@@ -267,6 +273,8 @@ describe('Graceful Teardown Sequence', () => {
     const exitMock = vi.fn();
     process.exit = exitMock;
 
+    const setTimeoutSpy = vi.spyOn(global, 'setTimeout').mockReturnValue(12345);
+
     await expect(teardown({
       server: null,
       configLoader: null,
@@ -275,6 +283,7 @@ describe('Graceful Teardown Sequence', () => {
     })).resolves.not.toThrow();
 
     expect(exitMock).toHaveBeenCalledWith(0);
+    setTimeoutSpy.mockRestore();
 
     // Also test with empty object for logger to cover defensive function checks
     resetLifecycleState();
@@ -507,6 +516,11 @@ describe('Graceful Teardown Sequence', () => {
 
     // Advance by 10s to trigger safetyTimeout
     await vi.advanceTimersByTimeAsync(10000);
+    // Flush promise queue
+    // eslint-disable-next-line no-await-in-loop
+    for (let i = 0; i < 20; i++) {
+      await Promise.resolve();
+    }
 
     expect(exitMock).toHaveBeenCalledWith(1);
     expect(loggerMock.fatal).toHaveBeenCalledWith('Could not close connections in time, forcefully shutting down');
@@ -673,5 +687,138 @@ describe('Graceful Teardown Sequence', () => {
 
     expect(loggerMock.fatal).toHaveBeenCalled();
     expect(exitMock).toHaveBeenLastCalledWith(1);
+  });
+
+  it('asserts that registerLifecycle unbinds previous signal handlers if they are set', () => {
+    const origSigint = global.waypointSigint;
+    const origSigterm = global.waypointSigterm;
+
+    const mockListener = () => {};
+    global.waypointSigint = mockListener;
+    global.waypointSigterm = mockListener;
+
+    const processOffSpy = vi.spyOn(process, 'off').mockImplementation(() => process);
+
+    registerLifecycle({
+      server: {},
+      configLoader: {},
+      keyRegistry: {},
+      logger: null,
+    });
+
+    expect(processOffSpy).toHaveBeenCalledWith('SIGINT', mockListener);
+    expect(processOffSpy).toHaveBeenCalledWith('SIGTERM', mockListener);
+
+    global.waypointSigint = origSigint;
+    global.waypointSigterm = origSigterm;
+  });
+
+  it('asserts that teardown exits with 1 when server.close yields an error to its callback', async () => {
+    const exitMock = vi.fn();
+    process.exit = exitMock;
+
+    const serverMock = {
+      close: vi.fn().mockImplementation((cb) => {
+        cb(new Error('Async close error'));
+        return serverMock;
+      }),
+    };
+
+    const loggerMock = {
+      info: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+      fatal: vi.fn(),
+      flush: vi.fn(),
+    };
+
+    await teardown({
+      server: serverMock,
+      configLoader: {},
+      keyRegistry: {},
+      logger: loggerMock,
+    });
+
+    expect(exitMock).toHaveBeenCalledWith(1);
+    expect(loggerMock.fatal).toHaveBeenCalledWith('Fatal error during graceful teardown:', expect.any(Error));
+  });
+
+  it('asserts that safety timeout forcefully exits with 1 when logger is null', async () => {
+    vi.useFakeTimers();
+
+    const exitMock = vi.fn();
+    process.exit = exitMock;
+
+    let closeCb;
+    const serverMock = {
+      close: vi.fn().mockImplementation((cb) => {
+        closeCb = cb;
+        return serverMock;
+      }),
+    };
+
+    const teardownPromise = teardown({
+      server: serverMock,
+      configLoader: {},
+      keyRegistry: {},
+      logger: null,
+    });
+
+    await vi.advanceTimersByTimeAsync(10000);
+    // eslint-disable-next-line no-await-in-loop
+    for (let i = 0; i < 20; i++) {
+      await Promise.resolve();
+    }
+
+    expect(exitMock).toHaveBeenCalledWith(1);
+
+    if (closeCb) closeCb();
+    await teardownPromise;
+  });
+
+  it('asserts that safety timeout forcefully exits with 1 when flushLogs throws an error', async () => {
+    vi.useFakeTimers();
+
+    const exitMock = vi.fn();
+    process.exit = exitMock;
+
+    const flushLogsSpy = vi.spyOn(loggerModule, 'flushLogs').mockRejectedValue(new Error('Emergency flush fail'));
+
+    let closeCb;
+    const serverMock = {
+      close: vi.fn().mockImplementation((cb) => {
+        closeCb = cb;
+        return serverMock;
+      }),
+    };
+
+    const loggerMock = {
+      info: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+      fatal: vi.fn(),
+      flush: vi.fn(),
+    };
+
+    const teardownPromise = teardown({
+      server: serverMock,
+      configLoader: {},
+      keyRegistry: {},
+      logger: loggerMock,
+    });
+
+    await vi.advanceTimersByTimeAsync(10000);
+    // eslint-disable-next-line no-await-in-loop
+    for (let i = 0; i < 20; i++) {
+      await Promise.resolve();
+    }
+
+    expect(exitMock).toHaveBeenCalledWith(1);
+    expect(loggerMock.fatal).toHaveBeenCalledWith('Could not close connections in time, forcefully shutting down');
+
+    if (closeCb) closeCb();
+    await teardownPromise;
+
+    flushLogsSpy.mockRestore();
   });
 });

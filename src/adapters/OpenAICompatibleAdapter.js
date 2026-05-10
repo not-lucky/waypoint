@@ -1,5 +1,5 @@
 /* eslint-disable no-restricted-syntax, no-continue, no-nested-ternary, max-len */
-import { BaseProvider, normalizeProviderError } from './BaseProvider.js';
+import { BaseProvider, normalizeProviderError, parseUpstreamError } from './BaseProvider.js';
 import { parseSSEStream } from '../utils/sseParser.js';
 import { sanitizeUrl, serializeHeaders } from '../utils/requestLogger.js';
 
@@ -128,17 +128,7 @@ export class OpenAICompatibleAdapter extends BaseProvider {
     // Handle non-2xx responses gracefully by attempting to parse JSON errors.
     // WHY: Upstream APIs often return HTML or plain text on proxy/gateway errors.
     if (!response.ok) {
-      const errorText = await response.text();
-      let errorJson;
-      try {
-        errorJson = JSON.parse(errorText);
-      } catch (e) {
-        errorJson = { message: errorText };
-      }
-      const err = new Error(errorJson.error?.message || errorJson.message || 'Upstream error');
-      err.statusCode = response.status;
-      err.response = response;
-      throw err;
+      throw await parseUpstreamError(response);
     }
 
     const resultJson = await response.json();
@@ -235,16 +225,7 @@ export class OpenAICompatibleAdapter extends BaseProvider {
     }
 
     if (!response.ok) {
-      const errorText = await response.text();
-      let errorJson;
-      try {
-        errorJson = JSON.parse(errorText);
-      } catch (e) {
-        errorJson = { message: errorText };
-      }
-      const err = new Error(errorJson.error?.message || errorJson.message || 'Upstream error');
-      err.statusCode = response.status;
-      err.response = response;
+      const err = await parseUpstreamError(response);
       cleanup();
       throw err;
     }

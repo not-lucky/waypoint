@@ -2,6 +2,7 @@
 import { FORMATS, translateRequest, translateResponse } from '../translators/index.js';
 import { sanitizeUrl, serializeHeaders } from '../utils/requestLogger.js';
 import { getThinkingLevel, extractThoughtTags } from './geminiFormatter.js';
+import { parseUpstreamError } from './BaseProvider.js';
 
 /**
  * WHAT: Executes standard unary text completion for Gemini.
@@ -84,17 +85,7 @@ export const executeCompletion = async (req, apiKey, signal, requestLog, adapter
 
   // Error check: parse body details for downstream cooldown/retry mappings
   if (!response.ok) {
-    const errorText = await response.text();
-    let errorJson;
-    try {
-      errorJson = JSON.parse(errorText);
-    } catch (e) {
-      errorJson = { message: errorText };
-    }
-    const err = new Error(errorJson.error?.message || errorJson.message || 'Upstream error');
-    err.statusCode = response.status;
-    err.response = response;
-    throw err;
+    throw await parseUpstreamError(response);
   }
 
   const resultJson = await response.json();

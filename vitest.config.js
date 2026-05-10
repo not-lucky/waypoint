@@ -3,6 +3,11 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     passWithNoTests: true,
+    poolOptions: {
+      threads: {
+        singleThread: true,
+      },
+    },
     env: {
       OPEN_WEBUI_TOKEN: 'mock-webui-token',
       CODEX_AGENT_TOKEN: 'mock-codex-token',

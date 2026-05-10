@@ -3,10 +3,11 @@ import {
 } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { reset } from '@logtape/logtape';
+import * as logtape from '@logtape/logtape';
 import {
   configureLogging, getAppLogger, flushLogs, formatMessage,
 } from '../src/utils/logger.js';
+import { logDebug, logWarning } from '../src/utils/loggerHelpers.js';
 
 /**
  * Filters out LogTape meta-logger diagnostic messages from console spy calls.
@@ -20,6 +21,11 @@ const filterAppCalls = (spy) => spy.mock.calls.filter((call) => {
     && !msg.includes('meta');
 });
 
+/**
+ * Filters out meta-logger lines from file content.
+ */
+const filterAppLines = (lines) => lines.filter((line) => !line.includes('logtape'));
+
 describe('formatMessage', () => {
   it('formats non-array messages as strings', () => {
     expect(formatMessage('hello')).toBe('hello');
@@ -29,8 +35,7 @@ describe('formatMessage', () => {
 });
 
 describe('Structured Logger (LogTape)', () => {
-  let logSpy; let infoSpy; let warnSpy; let errorSpy; let
-    debugSpy;
+  let logSpy; let infoSpy; let warnSpy; let errorSpy; let debugSpy;
   const tempLogDir = path.resolve('./test/temp-logs');
   const tempLogFile = path.join(tempLogDir, 'test-logger.log');
 
@@ -40,12 +45,12 @@ describe('Structured Logger (LogTape)', () => {
     warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
-    await reset();
+    await logtape.reset();
   });
 
   afterEach(async () => {
     vi.restoreAllMocks();
-    await reset();
+    await logtape.reset();
     if (fs.existsSync(tempLogDir)) {
       fs.rmSync(tempLogDir, { recursive: true, force: true });
     }
@@ -149,7 +154,6 @@ describe('Structured Logger (LogTape)', () => {
     expect(fs.existsSync(tempLogFile)).toBe(true);
 
     const content = fs.readFileSync(tempLogFile, 'utf8').trim().split('\n');
-    // Filter out meta-logger lines from file content too
     const appLines = content.filter((line) => !line.includes('logtape'));
     expect(appLines.length).toBe(2);
 
@@ -211,5 +215,265 @@ describe('Structured Logger (LogTape)', () => {
     const stderrOutputs = stderrCalls.map((c) => c[0]).join('\n');
     expect(stderrOutputs).toContain('should print warning');
     expect(stderrOutputs).toContain('should print error');
+  });
+
+  // Edge cases from edge-cases.test.js
+  it('should default to console-enabled JSON format when config is null', async () => {
+    await configureLogging(null);
+    const logger = getAppLogger('test-edge');
+    logger.info('null config');
+
+    const calls = [...filterAppCalls(infoSpy), ...filterAppCalls(logSpy)];
+    expect(calls.length).toBeGreaterThan(0);
+    const parsed = JSON.parse(calls[0][0].trim());
+    expect(parsed.level).toBe('info');
+    expect(parsed.message).toBe('null config');
+  });
+
+  it('should default to console-enabled JSON format when config is undefined', async () => {
+    await configureLogging(undefined);
+    const logger = getAppLogger('test-edge');
+    logger.warning('undefined config');
+
+    const calls = [...filterAppCalls(warnSpy), ...filterAppCalls(errorSpy)];
+    expect(calls.length).toBeGreaterThan(0);
+    const parsed = JSON.parse(calls[0][0].trim());
+    expect(parsed.level).toBe('warning');
+    expect(parsed.message).toBe('undefined config');
+  });
+
+  it('should default to console-enabled JSON format when config is an empty object', async () => {
+    await configureLogging({});
+    const logger = getAppLogger('test-edge');
+    logger.error('empty config');
+
+    const calls = [...filterAppCalls(errorSpy)];
+    expect(calls.length).toBeGreaterThan(0);
+    const parsed = JSON.parse(calls[0][0].trim());
+    expect(parsed.level).toBe('error');
+    expect(parsed.message).toBe('empty config');
+  });
+
+  it('should default to console-enabled JSON format when logging key is missing', async () => {
+    await configureLogging({ someOtherKey: true });
+    const logger = getAppLogger('test-edge');
+    logger.info('no logging key');
+
+    const calls = [...filterAppCalls(infoSpy), ...filterAppCalls(logSpy)];
+    expect(calls.length).toBeGreaterThan(0);
+    const parsed = JSON.parse(calls[0][0].trim());
+    expect(parsed.message).toBe('no logging key');
+  });
+
+  it('should not throw when enable_file is true but file_path is empty', async () => {
+    await configureLogging({
+      logging: { enable_file: true, file_path: '' },
+    });
+    const logger = getAppLogger('test-edge');
+    logger.info('no file path');
+    const calls = [...filterAppCalls(infoSpy), ...filterAppCalls(logSpy)];
+    expect(calls.length).toBeGreaterThan(0);
+  });
+
+  it('should not create a file when enable_file is false even if file_path is set', async () => {
+    await configureLogging({
+      logging: { enable_file: false, file_path: tempLogFile },
+    });
+    const logger = getAppLogger('test-edge');
+    logger.info('file disabled');
+    await flushLogs();
+    expect(fs.existsSync(tempLogFile)).toBe(false);
+  });
+
+  it('should format message correctly with various types', async () => {
+    await configureLogging({ logging: { enable_console: true, format: 'json' } });
+    const logger = getAppLogger('test-edge');
+
+    logger.info('number: {val}', { val: 42 });
+    logger.info('boolean: {val}', { val: false });
+    logger.info('null: {val}', { val: null });
+    logger.info('string value');
+    logger.info('object: {val}', { val: { key: 'value' } });
+
+    const calls = [...filterAppCalls(infoSpy), ...filterAppCalls(logSpy)];
+    expect(calls.length).toBe(5);
+    expect(JSON.parse(calls[0][0].trim()).message).toContain('42');
+    expect(JSON.parse(calls[1][0].trim()).message).toContain('false');
+    expect(JSON.parse(calls[2][0].trim()).message).toContain('null');
+    expect(JSON.parse(calls[3][0].trim()).message).toBe('string value');
+    expect(JSON.parse(calls[4][0].trim()).val).toEqual({ key: 'value' });
+  });
+
+  it('should quote values containing newlines or quotes in text format', async () => {
+    await configureLogging({ logging: { enable_console: true, format: 'text' } });
+    const logger = getAppLogger('test-edge');
+
+    logger.info('multiline', { text: 'line1\nline2', simple: 'ok' });
+
+    const calls = [...filterAppCalls(infoSpy), ...filterAppCalls(logSpy)];
+    expect(calls.length).toBeGreaterThan(0);
+    const output = calls[0][0].trim();
+    expect(output).toContain('text="line1\\nline2"');
+    expect(output).toContain('simple=ok');
+  });
+
+  it('should format Error objects in properties correctly in text format', async () => {
+    await configureLogging({ logging: { enable_console: true, format: 'text' } });
+    const logger = getAppLogger('test-edge-error');
+
+    logger.error('an error occurred', { myErr: new Error('text error message') });
+
+    const calls = [...filterAppCalls(errorSpy)];
+    expect(calls.length).toBeGreaterThan(0);
+    const output = calls[0][0].trim();
+    expect(output).toContain('[Error: text error message]');
+    expect(output).toContain('myErr="[Error: text error message]"');
+  });
+
+  it('should gracefully handle unserializable objects in text format', async () => {
+    await configureLogging({ logging: { enable_console: true, format: 'text' } });
+    const logger = getAppLogger('test-edge-unserializable');
+
+    const circular = {};
+    circular.self = circular;
+
+    logger.info('circular reference', { obj: circular });
+
+    const calls = [...filterAppCalls(infoSpy), ...filterAppCalls(logSpy)];
+    expect(calls.length).toBeGreaterThan(0);
+    const output = calls[0][0].trim();
+    expect(output).toContain('Unserializable Object');
+  });
+
+  it('should append to existing file on second log configuration', async () => {
+    await configureLogging({
+      logging: {
+        enable_console: false, enable_file: true, file_path: tempLogFile, format: 'json',
+      },
+    });
+    let logger = getAppLogger('test-edge');
+    logger.info('first write');
+    await flushLogs();
+
+    const content1 = filterAppLines(fs.readFileSync(tempLogFile, 'utf8').trim().split('\n'));
+    expect(content1.length).toBe(1);
+
+    await configureLogging({
+      logging: {
+        enable_console: false, enable_file: true, file_path: tempLogFile, format: 'json',
+      },
+    });
+    logger = getAppLogger('test-edge');
+    logger.info('second write');
+    await flushLogs();
+
+    const content2 = filterAppLines(fs.readFileSync(tempLogFile, 'utf8').trim().split('\n'));
+    expect(content2.length).toBe(2);
+    expect(JSON.parse(content2[0]).message).toBe('first write');
+    expect(JSON.parse(content2[1]).message).toBe('second write');
+  });
+
+  it('should write to both console and file simultaneously', async () => {
+    await configureLogging({
+      logging: {
+        enable_console: true, enable_file: true, file_path: tempLogFile, format: 'json',
+      },
+    });
+    const logger = getAppLogger('test-edge');
+    logger.info('dual write');
+    await flushLogs();
+
+    const calls = [...filterAppCalls(infoSpy), ...filterAppCalls(logSpy)];
+    expect(calls.length).toBeGreaterThan(0);
+    expect(fs.existsSync(tempLogFile)).toBe(true);
+    const fileLines = filterAppLines(fs.readFileSync(tempLogFile, 'utf8').trim().split('\n'));
+    expect(fileLines.length).toBe(1);
+    expect(JSON.parse(fileLines[0]).message).toBe('dual write');
+  });
+
+  it('should format message array containing Error objects using formatMessage', () => {
+    const err = new Error('my test error');
+    const result = formatMessage(['an error:', err, 'occurred']);
+    expect(result).toBe('an error: my test error occurred');
+  });
+
+  it('should format custom JSON and text outputs with null/empty/error properties', async () => {
+    const logger = getAppLogger('test');
+
+    // 1. JSON formatting
+    await configureLogging({ logging: { format: 'json', enable_console: true, level: 'debug' } });
+
+    infoSpy.mockClear();
+    errorSpy.mockClear();
+
+    logger.info('test msg'); // properties is null/empty
+    logger.info('test msg', { key: 'val' });
+    logger.error('test msg', { err: new Error('nested error') });
+
+    const infoCalls = filterAppCalls(infoSpy);
+    const errorCalls = filterAppCalls(errorSpy);
+
+    expect(infoCalls.length).toBe(2);
+    expect(errorCalls.length).toBe(1);
+
+    const parsed1 = JSON.parse(infoCalls[0][0]);
+    expect(parsed1.key).toBeUndefined();
+
+    const parsed2 = JSON.parse(infoCalls[1][0]);
+    expect(parsed2.key).toBe('val');
+
+    const parsed3 = JSON.parse(errorCalls[0][0]);
+    expect(parsed3.err.message).toBe('nested error');
+
+    // 2. Text formatting
+    await configureLogging({ logging: { format: 'text', enable_console: true, level: 'debug' } });
+
+    infoSpy.mockClear();
+    errorSpy.mockClear();
+
+    logger.info('test msg'); // properties is null/empty
+    logger.info('test msg', { key: 'val' });
+    logger.error('test msg', { err: new Error('nested error') });
+
+    const textInfoCalls = filterAppCalls(infoSpy);
+    const textErrorCalls = filterAppCalls(errorSpy);
+
+    expect(textInfoCalls.length).toBe(2);
+    expect(textErrorCalls.length).toBe(1);
+
+    expect(textInfoCalls[0][0]).not.toContain('key=');
+    expect(textInfoCalls[1][0]).toContain('key=val');
+    expect(textErrorCalls[0][0]).toContain('err="[Error: nested error]"');
+  });
+});
+
+describe('loggerHelpers Unit Tests', () => {
+  it('logDebug calls logger.debug if present, else falls back', () => {
+    const customLogger = { debug: vi.fn() };
+    logDebug(customLogger, 'msg', { foo: 'bar' });
+    expect(customLogger.debug).toHaveBeenCalledWith('msg', { foo: 'bar' });
+
+    // Fallback branch (no logger)
+    const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    logDebug(null, 'fallback msg');
+    spy.mockRestore();
+  });
+
+  it('logWarning calls logger.warning, logger.warn, or fallback', () => {
+    const customLoggerWarning = { warning: vi.fn() };
+    logWarning(customLoggerWarning, 'warning msg', { a: 1 });
+    expect(customLoggerWarning.warning).toHaveBeenCalledWith('warning msg', { a: 1 });
+
+    const customLoggerWarn = { warn: vi.fn() };
+    logWarning(customLoggerWarn, 'warn msg', { b: 2 });
+    expect(customLoggerWarn.warn).toHaveBeenCalledWith('warn msg', { b: 2 });
+
+    const customLoggerNone = {};
+    logWarning(customLoggerNone, 'no warning method'); // should not call anything and not crash
+
+    // Fallback branch
+    const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    logWarning(null, 'fallback warn msg');
+    spy.mockRestore();
   });
 });

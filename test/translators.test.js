@@ -99,6 +99,45 @@ describe('Translators Comprehensive Tests', () => {
           { type: 'image_url', image_url: { url: 'https://example.com/image.jpg' } },
         ]);
       });
+
+      it('should map stream parameter and options correctly', () => {
+        const res1 = translateOpenAIToClaude({ messages: [], stream: true, temperature: 0.8 });
+        expect(res1.stream).toBe(true);
+        expect(res1.temperature).toBe(0.8);
+
+        const res2 = translateOpenAIToClaude({ messages: [], stream: false });
+        expect(res2.stream).toBe(false);
+
+        const res3 = translateOpenAIToClaude({ messages: [], stream: undefined });
+        expect(res3.stream).toBeUndefined();
+      });
+
+      it('should handle thinking configuration and inflate max_tokens if needed', () => {
+        // maxTokens <= budget case
+        const res1 = translateOpenAIToClaude({
+          messages: [],
+          thinkingEnabled: true,
+          thinkingBudget: 1000,
+          maxTokens: 500,
+        });
+        expect(res1.thinking).toEqual({
+          type: 'enabled',
+          budget_tokens: 1000,
+        });
+        expect(res1.max_tokens).toBe(3048);
+
+        // maxTokens > budget case
+        const res2 = translateOpenAIToClaude({
+          messages: [],
+          thinking_supported: true,
+          maxTokens: 3000,
+        });
+        expect(res2.thinking).toEqual({
+          type: 'enabled',
+          budget_tokens: 2048,
+        });
+        expect(res2.max_tokens).toBe(3000);
+      });
     });
 
     describe('translateOpenAIToGemini', () => {
@@ -106,13 +145,14 @@ describe('Translators Comprehensive Tests', () => {
         const req = {
           messages: [
             { role: 'system', content: 'system 1' },
-            { role: 'system', content: [{ type: 'text', text: 'system 2' }] },
+            { role: 'system', content: [{ type: 'text' }] }, // text missing
             { role: 'system', content: null },
+            { role: 'system', content: 'system 2' },
             { role: 'user', content: 'hello' },
           ],
         };
         const res = translateOpenAIToGemini(req);
-        expect(res.systemInstruction.parts[0].text).toBe('system 1\nsystem 2');
+        expect(res.systemInstruction.parts[0].text).toBe('system 1\n\n\nsystem 2');
       });
 
       it('should map base64 image URL in content array', () => {
@@ -124,6 +164,8 @@ describe('Translators Comprehensive Tests', () => {
                 { type: 'text', text: 'look' },
                 { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,abc' } },
                 { type: 'image_url', image_url: { url: 'http://example.com' } },
+                { type: 'image_url', image_url: null }, // no image_url url
+                { type: 'image_url' }, // no image_url object
               ],
             },
           ],
@@ -133,7 +175,58 @@ describe('Translators Comprehensive Tests', () => {
           { text: 'look' },
           { inlineData: { mimeType: 'image/jpeg', data: 'abc' } },
           { type: 'image_url', image_url: { url: 'http://example.com' } },
+          { type: 'image_url', image_url: null },
+          { type: 'image_url' },
         ]);
+      });
+
+      it('should handle temperature, maxTokens, and thinking parameters', () => {
+        const req1 = {
+          messages: [],
+          temperature: 0.7,
+          maxTokens: 100,
+          thinkingEnabled: true,
+          thinkingBudget: 1024,
+        };
+        const res1 = translateOpenAIToGemini(req1);
+        expect(res1.generationConfig).toEqual({
+          temperature: 0.7,
+          maxOutputTokens: 100,
+          thinkingConfig: {
+            thinkingBudget: 1024,
+          },
+        });
+
+        const req2 = {
+          messages: [],
+          thinking_supported: true,
+        };
+        const res2 = translateOpenAIToGemini(req2);
+        expect(res2.generationConfig).toEqual({
+          thinkingConfig: {
+            thinkingBudget: 2048,
+          },
+        });
+      });
+
+      it('should handle missing messages or other roles', () => {
+        const res1 = translateOpenAIToGemini({});
+        expect(res1.contents).toEqual([]);
+
+        const res2 = translateOpenAIToGemini({
+          messages: [
+            { role: 'assistant', content: 'hello assistant' },
+            { role: 'tool', content: null }, // non-string, non-array content
+          ],
+        });
+        expect(res2.contents[0]).toEqual({
+          role: 'model',
+          parts: [{ text: 'hello assistant' }],
+        });
+        expect(res2.contents[1]).toEqual({
+          role: 'user',
+          parts: [],
+        });
       });
     });
   });

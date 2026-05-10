@@ -493,4 +493,69 @@ describe('AnthropicController Edge Case Tests', () => {
       }));
     });
   });
+
+  describe('Streaming Responses', () => {
+    it('should stream Anthropic SSE events and close active block type when no finish_reason is provided', async () => {
+      mockOrchestrator.executeCompletion.mockResolvedValue({
+        async* [Symbol.asyncIterator]() {
+          yield {
+            id: 'waypoint-chunk-1',
+            choices: [
+              {
+                index: 0,
+                delta: { content: 'hello' },
+              },
+            ],
+          };
+        },
+      });
+
+      const controller = new AnthropicController(mockOrchestrator);
+      const req = { body: { model: 'pro', stream: true }, headers: {} };
+      const res = {
+        setHeader: vi.fn(),
+        write: vi.fn(),
+        end: vi.fn(),
+      };
+
+      await controller.handleCompletion(req, res);
+
+      expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/event-stream');
+      expect(res.write).toHaveBeenCalledWith(expect.stringContaining('message_start'));
+      expect(res.write).toHaveBeenCalledWith(expect.stringContaining('content_block_start'));
+      expect(res.write).toHaveBeenCalledWith(expect.stringContaining('content_block_delta'));
+      expect(res.write).toHaveBeenCalledWith(expect.stringContaining('content_block_stop'));
+      expect(res.write).toHaveBeenCalledWith(expect.stringContaining('message_stop'));
+      expect(res.end).toHaveBeenCalled();
+    });
+
+    it('should catch mid-stream errors and call logClientResponse correctly', async () => {
+      mockOrchestrator.executeCompletion.mockResolvedValue({
+        async* [Symbol.asyncIterator]() {
+          yield {
+            id: 'waypoint-chunk-1',
+            choices: [
+              {
+                index: 0,
+                delta: { content: 'hello' },
+              },
+            ],
+          };
+          throw new Error('Midstream connection failure');
+        },
+      });
+
+      const controller = new AnthropicController(mockOrchestrator);
+      const req = { body: { model: 'pro', stream: true }, headers: {} };
+      const res = {
+        setHeader: vi.fn(),
+        write: vi.fn(),
+        end: vi.fn(),
+      };
+
+      await controller.handleCompletion(req, res);
+
+      expect(res.end).toHaveBeenCalled();
+    });
+  });
 });

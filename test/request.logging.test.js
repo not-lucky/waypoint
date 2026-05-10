@@ -3,6 +3,7 @@
 import {
   vi, describe, it, expect, beforeEach, afterEach,
 } from 'vitest';
+import path from 'node:path';
 import { GeminiAdapter } from '../src/adapters/GeminiAdapter.js';
 import { AnthropicAdapter } from '../src/adapters/AnthropicAdapter.js';
 import { OpenAICompatibleAdapter } from '../src/adapters/OpenAICompatibleAdapter.js';
@@ -666,6 +667,11 @@ describe('Request Logging Format and Sanitization Tests', () => {
 
       // Cover logProviderStreamSummary before finalized
       reqLog.logProviderStreamSummary({ _format: 'json' });
+      reqLog.logProviderStreamSummary({}); // covers fallback branches
+
+      // Cover logClientStreamSummary before finalized
+      reqLog.logClientStreamSummary({ _format: 'sse-json', _eventCount: 5, summary: { hello: 'world' } });
+      reqLog.logClientStreamSummary({}); // covers fallback branches
 
       // Cover JSON serialization in flushStreams for provider and client events
       reqLog.appendStreamEvent('provider', { nested: 'json' });
@@ -677,13 +683,25 @@ describe('Request Logging Format and Sanitization Tests', () => {
       // Finalize the log to cover the wait promise and finalized flag
       await reqLog.finalize();
 
+      // Cover early return if calling finalize twice
+      await reqLog.finalize();
+
       // Cover early returns when finalized
       reqLog.logProviderStreamSummary({});
       reqLog.logProviderResponse({}, 10);
       reqLog.logClientResponse(400, {});
 
+      // Cover default request log path
+      const reqLogNoPath = createRequestLog({ headers: {} }, { logging: { log_requests: true } });
+      await reqLogNoPath.finalize();
+
       // Cleanup
       await import('node:fs/promises').then((fsp) => fsp.rm(tempDir, { recursive: true, force: true }));
+      // Cleanup default path if created
+      const defaultPath = path.resolve('./logs/requests');
+      if (fs.existsSync(defaultPath)) {
+        await import('node:fs/promises').then((fsp) => fsp.rm(defaultPath, { recursive: true, force: true }));
+      }
     });
   });
 });

@@ -354,5 +354,16 @@ describe('Key Registry Suite', () => {
       const registry = new KeyRegistry({});
       expect(registry.pools).toEqual({});
     });
+
+    it('should return null in getKey when keys array is empty or undefined', () => {
+      const config = {
+        providers: {
+          gemini: { keys: [] },
+        },
+      };
+      const registry = new KeyRegistry(config);
+      expect(registry.getKey('gemini')).toBeNull();
+      expect(registry.getKey('non-existent-provider')).toBeNull();
+    });
   });
 });

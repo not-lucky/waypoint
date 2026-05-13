@@ -436,4 +436,110 @@ describe('Configuration Validation Tests', () => {
       expect.stringContaining('unknown provider type'),
     );
   });
+
+  it('should validate other structural options and edge cases in config', () => {
+    // 1. gateway.cooldown must be an object
+    let config = getBaseValidConfig();
+    config.gateway.cooldown = 'not-an-object';
+    expect(() => validateConfig(config)).toThrow('process.exit called');
+
+    // 2. gateway.routing must be an object
+    config = getBaseValidConfig();
+    config.gateway.routing = 'not-an-object';
+    expect(() => validateConfig(config)).toThrow('process.exit called');
+
+    // 3. invalid client at index i
+    config = getBaseValidConfig();
+    config.clients = [null];
+    expect(() => validateConfig(config)).toThrow('process.exit called');
+
+    // 4. missing client rate_limit
+    config = getBaseValidConfig();
+    delete config.clients[0].rate_limit;
+    expect(() => validateConfig(config)).toThrow('process.exit called');
+
+    // 5. missing logging block
+    config = getBaseValidConfig();
+    delete config.logging;
+    expect(() => validateConfig(config)).toThrow('process.exit called');
+
+    // 6. logging.enable_console not boolean
+    config = getBaseValidConfig();
+    config.logging.enable_console = 'not-a-bool';
+    expect(() => validateConfig(config)).toThrow('process.exit called');
+
+    // 7. logging.enable_file not boolean
+    config = getBaseValidConfig();
+    config.logging.enable_file = 'not-a-bool';
+    expect(() => validateConfig(config)).toThrow('process.exit called');
+
+    // 8. logging.file_path empty when enable_file is true
+    config = getBaseValidConfig();
+    config.logging.enable_file = true;
+    config.logging.file_path = '';
+    expect(() => validateConfig(config)).toThrow('process.exit called');
+
+    // 9. logging.level invalid
+    config = getBaseValidConfig();
+    config.logging.level = 'invalid-level';
+    expect(() => validateConfig(config)).toThrow('process.exit called');
+
+    // 10. no providers defined
+    config = getBaseValidConfig();
+    config.providers = {};
+    expect(() => validateConfig(config)).toThrow('process.exit called');
+
+    // 11. invalid provider config
+    config = getBaseValidConfig();
+    config.providers.gemini = null;
+    expect(() => validateConfig(config)).toThrow('process.exit called');
+
+    // 12. invalid model config
+    config = getBaseValidConfig();
+    config.providers.gemini.models = [null];
+    expect(() => validateConfig(config)).toThrow('process.exit called');
+
+    // 13. invalid model aliases not array
+    config = getBaseValidConfig();
+    config.providers.gemini.models[0].aliases = 'not-an-array';
+    expect(() => validateConfig(config)).toThrow('process.exit called');
+
+    // 14. invalid model thinking_supported not boolean
+    config = getBaseValidConfig();
+    config.providers.gemini.models[0].thinking_supported = 'not-a-bool';
+    expect(() => validateConfig(config)).toThrow('process.exit called');
+
+    // 15. invalid model default_thinking_budget not positive integer
+    config = getBaseValidConfig();
+    config.providers.gemini.models[0].default_thinking_budget = -100;
+    expect(() => validateConfig(config)).toThrow('process.exit called');
+  });
+
+  describe('ConfigLoader specific edge cases', () => {
+    it('should throw error in interpolateAndValidate on null structure', () => {
+      const loader = new ConfigLoader();
+      expect(() => {
+        loader.interpolateAndValidate(null);
+      }).toThrow('Invalid configuration structure.');
+    });
+
+    it('should convert non-string keys to strings in interpolate', () => {
+      const config = getBaseValidConfig();
+      config.providers.gemini.keys = [12345];
+      const loader = new ConfigLoader();
+      const res = loader.interpolateAndValidate(config);
+      expect(res.providers.gemini.keys).toEqual(['12345']);
+    });
+
+    it('should return early from startWatcher if already watching', () => {
+      const loader = new ConfigLoader();
+      loader.isWatching = true;
+      expect(loader.startWatcher('some-path')).toBeUndefined();
+    });
+
+    it('should return early from handleConfigChange if file does not exist', () => {
+      const loader = new ConfigLoader();
+      expect(loader.handleConfigChange('non-existent-path')).toBeUndefined();
+    });
+  });
 });

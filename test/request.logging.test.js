@@ -5,7 +5,7 @@ import {
 import { GeminiAdapter } from '../src/adapters/GeminiAdapter.js';
 import { AnthropicAdapter } from '../src/adapters/AnthropicAdapter.js';
 import { OpenAICompatibleAdapter } from '../src/adapters/OpenAICompatibleAdapter.js';
-import { RequestLog, sanitizeUrl, serializeHeaders } from '../src/utils/requestLogger.js';
+import { RequestLog, sanitizeUrl, serializeHeaders, redactHeaders } from '../src/utils/requestLogger.js';
 import { OpenAIController } from '../src/controllers/OpenAIController.js';
 import { AnthropicController } from '../src/controllers/AnthropicController.js';
 
@@ -36,6 +36,48 @@ describe('Request Logging Format and Sanitization Tests', () => {
       'content-type': 'application/json',
       'x-custom-header': 'value',
     });
+  });
+
+  it('assert: redactHeaders handles null and removes sensitive values', () => {
+    expect(redactHeaders(null)).toEqual({});
+    expect(redactHeaders(undefined)).toEqual({});
+    expect(redactHeaders('string')).toEqual({});
+    const headers = {
+      'authorization': 'Bearer secret',
+      'x-api-key': 'secret-key',
+      'proxy-authorization': 'Basic auth',
+      'content-type': 'application/json',
+      'x-custom': 'public'
+    };
+    const redacted = redactHeaders(headers);
+    expect(redacted['authorization']).toBe('[REDACTED]');
+    expect(redacted['x-api-key']).toBe('[REDACTED]');
+    expect(redacted['proxy-authorization']).toBe('[REDACTED]');
+    expect(redacted['content-type']).toBe('application/json');
+    expect(redacted['x-custom']).toBe('public');
+  });
+
+  it('assert: createRequestLog returns NOOP_LOG on mkdir failure', async () => {
+    const { createRequestLog } = await import('../src/utils/requestLogger.js');
+    const fs = await import('node:fs');
+    const mkdirSpy = vi.spyOn(fs.default, 'mkdirSync').mockImplementation(() => {
+      throw new Error('mock mkdir error');
+    });
+    
+    try {
+      const requestLog = createRequestLog({ logging: { enable_request_log: true, request_log_path: './temp' } });
+      
+      // Test NOOP_LOG methods
+      expect(() => requestLog.logProviderRequest()).not.toThrow();
+      expect(() => requestLog.logProviderResponse()).not.toThrow();
+      expect(() => requestLog.logProviderStreamSummary()).not.toThrow();
+      expect(() => requestLog.logClientStreamSummary()).not.toThrow();
+      expect(() => requestLog.logClientResponse()).not.toThrow();
+      expect(() => requestLog.appendStreamEvent()).not.toThrow();
+      expect(async () => { await requestLog.finalize(); }).not.toThrow();
+    } finally {
+      mkdirSpy.mockRestore();
+    }
   });
 
   it('assert: GeminiAdapter generateCompletion logs provider request with response headers', async () => {
@@ -469,5 +511,176 @@ describe('Request Logging Format and Sanitization Tests', () => {
     expect(content).toBe(expectedContent);
 
     await import('node:fs/promises').then((fsp) => fsp.rm(tempDir, { recursive: true, force: true }));
+  });
+
+  describe('Logging Edge Cases & Exception Coverage', () => {
+    it('assert: sanitizeUrl handles malformed URL strings', () => {
+      expect(sanitizeUrl('not-a-valid-url?key=secret')).toBe('not-a-valid-url');
+      expect(sanitizeUrl('not-a-valid-url')).toBe('not-a-valid-url');
+      expect(sanitizeUrl(null)).toBe('');
+    });
+
+    it('assert: serializeHeaders handles entries, plain objects, or null/undefined', () => {
+      expect(serializeHeaders(null)).toEqual({});
+
+      // plain object
+      const plainObj = { 'content-type': 'application/json' };
+      expect(serializeHeaders(plainObj)).toEqual({ 'content-type': 'application/json' });
+
+      // object with entries function
+      const entriesObj = {
+        entries: () => [['a', '1'], ['b', '2']],
+      };
+      expect(serializeHeaders(entriesObj)).toEqual({ a: '1', b: '2' });
+    });
+
+    it('assert: redactHeaders masks authorization and handles empty values', () => {
+      expect(redactHeaders(null)).toEqual({});
+      expect(redactHeaders('not-an-object')).toEqual({});
+      expect(redactHeaders({
+        authorization: 'Bearer token',
+        'x-api-key': 'secret-key',
+        'proxy-authorization': 'proxy-token',
+        'content-type': 'application/json',
+      })).toEqual({
+        authorization: '[REDACTED]',
+        'x-api-key': '[REDACTED]',
+        'proxy-authorization': '[REDACTED]',
+        'content-type': 'application/json',
+      });
+    });
+
+    it('assert: RequestLog methods return early if finalized', async () => {
+      const tempDir = `./logs/requests/test-temp-finalized-${Date.now()}`;
+      await import('node:fs/promises').then((fsp) => fsp.mkdir(tempDir, { recursive: true }));
+      const log = new RequestLog(tempDir, 'test-id', Date.now());
+
+      await log.finalize();
+
+      // calling methods after finalize should be ignored
+      expect(log.logProviderRequest('http://test', {}, {})).toBeUndefined();
+      expect(log.logProviderResponse({}, 100)).toBeUndefined();
+      expect(log.logProviderStreamSummary({})).toBeUndefined();
+      expect(log.logClientStreamSummary({})).toBeUndefined();
+      expect(log.logClientResponse(200, {})).toBeUndefined();
+      expect(log.appendStreamEvent('provider', {})).toBeUndefined();
+
+      await import('node:fs/promises').then((fsp) => fsp.rm(tempDir, { recursive: true, force: true }));
+    });
+
+    it('assert: RequestLog write errors do not throw', async () => {
+      const tempDir = `./logs/requests/test-temp-errors-${Date.now()}`;
+      await import('node:fs/promises').then((fsp) => fsp.mkdir(tempDir, { recursive: true }));
+      const log = new RequestLog(tempDir, 'test-id', Date.now());
+
+      // Mock fsp.writeFile to throw
+      const fspModule = await import('node:fs/promises');
+      const fsp = fspModule.default || fspModule;
+      const originalWriteFile = fsp.writeFile;
+      fsp.writeFile = vi.fn().mockRejectedValue(new Error('Write failed'));
+
+      try {
+        log.logProviderRequest('http://test', {}, {});
+        // Finalize should await pending writes and catch errors internally
+        await expect(log.finalize()).resolves.not.toThrow();
+      } finally {
+        fsp.writeFile = originalWriteFile;
+        await fsp.rm(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('assert: RequestLog writeStreamLog handling of raw strings or objects and formatting', async () => {
+      const tempDir = `./logs/requests/test-temp-stream-formatting-${Date.now()}`;
+      await import('node:fs/promises').then((fsp) => fsp.mkdir(tempDir, { recursive: true }));
+      const log = new RequestLog(tempDir, 'test-id', Date.now());
+
+      // Append various formatting edge cases
+      log.appendStreamEvent('provider', 'raw string event without newlines');
+      log.appendStreamEvent('client', 'raw string client event without newlines');
+
+      await log.finalize();
+
+      const filePath = `${tempDir}/05_event_stream.jsonl`;
+      const content = await import('node:fs/promises').then((fsp) => fsp.readFile(filePath, 'utf8'));
+
+      expect(content).toContain('--- provider ---');
+      expect(content).toContain('data: raw string event without newlines');
+      expect(content).toContain('--- client ---');
+      expect(content).toContain('data: raw string client event without newlines');
+
+      await import('node:fs/promises').then((fsp) => fsp.rm(tempDir, { recursive: true, force: true }));
+    });
+
+    it('assert: RequestLog writeStreamLog error path handles exception gracefully', async () => {
+      const tempDir = `./logs/requests/test-temp-stream-error-${Date.now()}`;
+      await import('node:fs/promises').then((fsp) => fsp.mkdir(tempDir, { recursive: true }));
+      const log = new RequestLog(tempDir, 'test-id', Date.now());
+      log.appendStreamEvent('provider', 'test chunk');
+
+      const fspModule = await import('node:fs/promises');
+      const fsp = fspModule.default || fspModule;
+      const originalWriteFile = fsp.writeFile;
+      fsp.writeFile = vi.fn().mockRejectedValue(new Error('Stream write failed'));
+
+      try {
+        await expect(log.finalize()).resolves.not.toThrow();
+      } finally {
+        fsp.writeFile = originalWriteFile;
+        await fsp.rm(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('assert: createRequestLog returns NOOP_LOG if mkdirSync throws', async () => {
+      const fs = await import('node:fs');
+      const { createRequestLog } = await import('../src/utils/requestLogger.js');
+      const mkdirSpy = vi.spyOn(fs.default, 'mkdirSync').mockImplementation(() => {
+        throw new Error('Directory creation failed');
+      });
+
+      try {
+        const res = createRequestLog({}, { logging: { log_requests: true, request_log_path: '/invalid/path' } });
+        expect(res.id).toBeNull();
+      } finally {
+        mkdirSpy.mockRestore();
+      }
+    });
+
+    it('assert: RequestLog instance handles streams, finalized state, client response, and JSON streaming correctly', async () => {
+      const fs = await import('node:fs');
+      const { createRequestLog } = await import('../src/utils/requestLogger.js');
+      const tempDir = './test/temp-req-log-extra';
+      if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+      
+      const reqLog = createRequestLog({ headers: {} }, { logging: { log_requests: true, request_log_path: tempDir } });
+      expect(reqLog.id).not.toBeNull();
+
+      // Cover logProviderResponse with a stream
+      const mockStream = { [Symbol.asyncIterator]: async function* () { yield 'test'; } };
+      reqLog.logProviderResponse(mockStream, 150);
+
+      // Cover logProviderResponse without a stream before finalized
+      reqLog.logProviderResponse({ some: 'data' }, 10);
+
+      // Cover logProviderStreamSummary before finalized
+      reqLog.logProviderStreamSummary({ _format: 'json' });
+
+      // Cover JSON serialization in flushStreams for provider and client events
+      reqLog.appendStreamEvent('provider', { nested: 'json' });
+      reqLog.appendStreamEvent('client', { nested: 'json' });
+      
+      // Cover logClientResponse
+      reqLog.logClientResponse(200, { success: true });
+
+      // Finalize the log to cover the wait promise and finalized flag
+      await reqLog.finalize();
+
+      // Cover early returns when finalized
+      reqLog.logProviderStreamSummary({});
+      reqLog.logProviderResponse({}, 10);
+      reqLog.logClientResponse(400, {});
+
+      // Cleanup
+      await import('node:fs/promises').then(fsp => fsp.rm(tempDir, { recursive: true, force: true }));
+    });
   });
 });

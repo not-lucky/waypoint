@@ -20,7 +20,7 @@ const messageSchema = z.object({
    * might return a cryptic HTTP 400. Failing fast here keeps adapter logic clean and predictable.
    */
   role: z.enum(['system', 'user', 'assistant'], {
-    errorMap: () => ({ message: "Role must be 'system', 'user', or 'assistant'" }),
+    message: "Role must be 'system', 'user', or 'assistant'",
   }),
   /**
    * WHAT: Enforces that message payload is a string.

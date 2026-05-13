@@ -67,7 +67,7 @@ const safeTimestamp = (iso) => iso.replace(/:/g, '-');
  * @param {Object} headers - Raw HTTP headers.
  * @returns {Object} Copy with sensitive values replaced by "[REDACTED]".
  */
-const redactHeaders = (headers) => {
+export const redactHeaders = (headers) => {
   if (!headers || typeof headers !== 'object') return {};
   const redacted = { ...headers };
   const sensitiveKeys = ['authorization', 'x-api-key', 'proxy-authorization'];

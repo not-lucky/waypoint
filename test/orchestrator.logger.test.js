@@ -100,6 +100,7 @@ describe('UnifiedOrchestrator – Logger Integration', () => {
     expect(logger.warn).toHaveBeenCalledTimes(1);
     expect(logger.warn).toHaveBeenCalledWith(
       expect.stringContaining("Attempt 1 of 3 for provider 'mock-provider' failed"),
+      undefined,
     );
 
     // console.warn should NOT have been called
@@ -128,14 +129,17 @@ describe('UnifiedOrchestrator – Logger Integration', () => {
     expect(logger.warn).toHaveBeenNthCalledWith(
       1,
       expect.stringContaining('Attempt 1 of 3'),
+      undefined,
     );
     expect(logger.warn).toHaveBeenNthCalledWith(
       2,
       expect.stringContaining('Attempt 2 of 3'),
+      undefined,
     );
     expect(logger.warn).toHaveBeenNthCalledWith(
       3,
       expect.stringContaining('Attempt 3 of 3'),
+      undefined,
     );
     expect(consoleWarnSpy).not.toHaveBeenCalled();
   });
@@ -205,6 +209,7 @@ describe('UnifiedOrchestrator – Logger Integration', () => {
 
     expect(logger.warn).toHaveBeenCalledWith(
       expect.stringContaining('Specific provider error: quota exceeded'),
+      undefined,
     );
   });
 
@@ -227,6 +232,7 @@ describe('UnifiedOrchestrator – Logger Integration', () => {
     expect(logger.warn).toHaveBeenCalledTimes(1);
     expect(logger.warn).toHaveBeenCalledWith(
       expect.stringContaining('raw string error'),
+      undefined,
     );
   });
 
@@ -272,10 +278,12 @@ describe('UnifiedOrchestrator – Logger Integration', () => {
     expect(logger.warn).toHaveBeenNthCalledWith(
       1,
       expect.stringContaining("provider 'primary' failed"),
+      undefined,
     );
     expect(logger.warn).toHaveBeenNthCalledWith(
       2,
       expect.stringContaining("provider 'fallback' failed"),
+      undefined,
     );
   });
 
@@ -290,5 +298,24 @@ describe('UnifiedOrchestrator – Logger Integration', () => {
   it('should default logger to null when not provided', () => {
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, baseConfig);
     expect(orchestrator.logger).toBeNull();
+  });
+
+  it('should call logger.debug and logger.warning if those methods are defined on the logger object', async () => {
+    const logger = {
+      debug: vi.fn(),
+      warning: vi.fn(),
+    };
+    const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, baseConfig, logger);
+
+    const err = new Error('Rate limited');
+    err.status = 429;
+    mockAdapter.enqueue(err);
+    mockAdapter.enqueue({ id: 'ok' });
+
+    const req = { provider: 'mock-provider', actualModelId: 'test-model' };
+    await orchestrator.executeCompletion(req, {});
+
+    expect(logger.debug).toHaveBeenCalled();
+    expect(logger.warning).toHaveBeenCalled();
   });
 });

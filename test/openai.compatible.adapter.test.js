@@ -418,4 +418,290 @@ describe('OpenAICompatibleAdapter Tests', () => {
       }),
     );
   });
+
+  it('assert: getReasoningEffort returns medium if thinking is requested with no budget and no effort', async () => {
+    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: 'hello' } }] }),
+    });
+
+    await adapter.generateCompletion({
+      actualModelId: 'gpt-4o',
+      messages: [],
+      thinkingEnabled: true,
+    }, 'test-key');
+
+    const lastCallBody = JSON.parse(mockFetch.mock.calls[mockFetch.mock.calls.length - 1][1].body);
+    expect(lastCallBody.reasoning_effort).toBe('medium');
+  });
+
+  it('assert: generateCompletion forwards maxTokens and temperature correctly', async () => {
+    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      headers: new Map([['content-type', 'application/json']]),
+      json: () => Promise.resolve({
+        id: 'chatcmpl-123',
+        object: 'chat.completion',
+        choices: [{ index: 0, message: { role: 'assistant', content: 'hello' } }],
+        usage: { total_tokens: 10 }
+      })
+    });
+    await adapter.generateCompletion({
+      actualModelId: 'gpt-4o',
+      messages: [],
+      maxTokens: 50,
+      temperature: 0.8
+    }, 'api-key');
+
+    const fetchCall = mockFetch.mock.calls[0];
+    const payload = JSON.parse(fetchCall[1].body);
+    expect(payload.max_tokens).toBe(50);
+    expect(payload.temperature).toBe(0.8);
+  });
+
+  it('assert: generateStream forwards maxTokens and temperature correctly', async () => {
+    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode('data: [DONE]\n\n');
+      },
+    };
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: new Map(),
+      body: mockBody,
+    });
+    const stream = adapter.generateStream({
+      actualModelId: 'gpt-4o',
+      messages: [],
+      maxTokens: 50,
+      temperature: 0.8
+    }, 'api-key');
+    for await (const chunk of stream) {}
+    
+    const fetchCall = mockFetch.mock.calls[0];
+    const payload = JSON.parse(fetchCall[1].body);
+    expect(payload.max_tokens).toBe(50);
+    expect(payload.temperature).toBe(0.8);
+  });
+
+  it('assert: generateStream aborts mid-stream', async () => {
+    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode('data: {"choices":[{"delta":{"content":"hello"}}]}\n\n');
+        yield encoder.encode('data: {"choices":[{"delta":{"content":" world"}}]}\n\n');
+      },
+    };
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: new Map(),
+      body: mockBody,
+    });
+
+    let checks = 0;
+    const fakeSignal = {
+      get aborted() {
+        checks++;
+        // Allow sseParser to yield one event, then abort before stream loop checks it
+        return checks > 1;
+      }
+    };
+
+    const streamGen = adapter.generateStream({
+      actualModelId: 'gpt-4o',
+      messages: []
+    }, 'api-key', fakeSignal);
+
+    await expect(async () => {
+      for await (const chunk of streamGen) {}
+    }).rejects.toThrow('Stream aborted');
+  });
+
+  it('assert: generateCompletion handles fetch error and calls requestLog', async () => {
+    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+    mockFetch.mockRejectedValue(new Error('Network error'));
+
+    const requestLog = {
+      logProviderRequest: vi.fn(),
+    };
+
+    await expect(adapter.generateCompletion({
+      actualModelId: 'gpt-4o',
+      messages: [],
+    }, 'test-key', null, requestLog)).rejects.toThrow('Network error');
+
+    expect(requestLog.logProviderRequest).toHaveBeenCalled();
+  });
+
+  it('assert: generateCompletion handles non-JSON error responses', async () => {
+    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 502,
+      text: async () => 'Bad Gateway Plain Text Error',
+    });
+
+    await expect(adapter.generateCompletion({
+      actualModelId: 'gpt-4o',
+      messages: [],
+    }, 'test-key')).rejects.toThrow('Bad Gateway Plain Text Error');
+  });
+
+  it('assert: generateStream handles fetch error, non-JSON errors, and log stream summary', async () => {
+    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+
+    // 1. Fetch error path
+    mockFetch.mockRejectedValue(new Error('Stream Network Error'));
+    const requestLog = {
+      logProviderRequest: vi.fn(),
+      logProviderStreamSummary: vi.fn(),
+      appendStreamEvent: vi.fn(),
+    };
+
+    const streamGen = adapter.generateStream({ actualModelId: 'gpt-4o', messages: [] }, 'test-key', null, requestLog);
+    await expect(async () => {
+      for await (const chunk of streamGen) {}
+    }).rejects.toThrow('Stream Network Error');
+    expect(requestLog.logProviderRequest).toHaveBeenCalled();
+
+    // 2. Non-JSON ok:false path
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 500,
+      text: async () => 'HTML Error Page',
+    });
+    const streamGen2 = adapter.generateStream({ actualModelId: 'gpt-4o', messages: [] }, 'test-key', null, requestLog);
+    await expect(async () => {
+      for await (const chunk of streamGen2) {}
+    }).rejects.toThrow('HTML Error Page');
+
+    // 3. Normal stream with token usage and client abort
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode('data: {"id":"123","model":"gpt-4o","choices":[{"index":0,"delta":{"content":"ok"}}]}\n\n');
+        yield encoder.encode('data: {"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":30}}\n\n');
+      },
+    };
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: new Map(),
+      body: mockBody,
+    });
+
+    const abortController = new AbortController();
+    const streamGen3 = adapter.generateStream({ actualModelId: 'gpt-4o', messages: [] }, 'test-key', abortController.signal, requestLog);
+    const chunks = [];
+    for await (const chunk of streamGen3) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks).toHaveLength(2);
+    expect(requestLog.logProviderStreamSummary).toHaveBeenCalled();
+  });
+
+  it('asserts: trailing slash removal on baseUrl for url normalization', async () => {
+    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1/', 'openai');
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: '123', choices: [] }),
+    });
+
+    await adapter.generateCompletion({ messages: [] }, 'key');
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://api.openai.com/v1/chat/completions',
+      expect.any(Object)
+    );
+  });
+
+  it('asserts: generateStream sends reasoning_effort when thinking is enabled', async () => {
+    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode('data: {"choices": [{"index": 0, "delta": {"content": "ok"}}]}\n\n');
+      },
+    };
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: mockBody,
+    });
+
+    const req = {
+      messages: [],
+      thinkingEnabled: true,
+      thinkingBudget: 1000,
+    };
+
+    const chunks = [];
+    for await (const chunk of adapter.generateStream(req, 'key')) {
+      chunks.push(chunk);
+    }
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://api.openai.com/v1/chat/completions',
+      expect.objectContaining({
+        body: expect.stringContaining('"reasoning_effort":"low"'),
+      })
+    );
+  });
+
+  it('asserts: generateStream handles stream abort and malformed sse chunks', async () => {
+    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode('data: {"choices": [{"index": 0, "delta": {"content": "chunk 1"}}]}\n\n');
+        yield encoder.encode('data: {invalid-json-chunk}\n\n');
+        yield encoder.encode('data: {"choices": [{"index": 0, "delta": {"content": "chunk 2"}}]}\n\n');
+      },
+    };
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: mockBody,
+    });
+
+    const abortController = new AbortController();
+    const streamGen = adapter.generateStream({ messages: [] }, 'key', abortController.signal);
+
+    const first = await streamGen.next();
+    expect(first.value.choices[0].delta.content).toBe('chunk 1');
+
+    abortController.abort();
+
+    await expect(async () => {
+      for await (const chunk of streamGen) {}
+    }).rejects.toThrow('Stream aborted');
+  });
+
+  it('asserts: generateStream ignores malformed json chunks and continues', async () => {
+    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode('data: {"choices": [{"index": 0, "delta": {"content": "chunk 1"}}]}\n\n');
+        yield encoder.encode('data: {invalid-json-chunk}\n\n');
+        yield encoder.encode('data: {"choices": [{"index": 0, "delta": {"content": "chunk 2"}}]}\n\n');
+      },
+    };
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: mockBody,
+    });
+
+    const streamGen = adapter.generateStream({ messages: [] }, 'key');
+    const chunks = [];
+    for await (const chunk of streamGen) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks).toHaveLength(2);
+    expect(chunks[0].choices[0].delta.content).toBe('chunk 1');
+    expect(chunks[1].choices[0].delta.content).toBe('chunk 2');
+  });
 });

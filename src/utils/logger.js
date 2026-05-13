@@ -49,7 +49,7 @@ try {
  * @param {any} msg - The log payload to format.
  * @returns {string} Safe stringified payload.
  */
-const formatMessage = (msg) => {
+export const formatMessage = (msg) => {
   if (Array.isArray(msg)) {
     return msg.map((m) => {
       // Intent: Isolate native Error instances to extract their human-readable message

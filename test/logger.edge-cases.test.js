@@ -142,6 +142,34 @@ describe('Logger Edge Cases (LogTape)', () => {
     expect(output).toContain('simple=ok');
   });
 
+  it('should format Error objects in properties correctly in text format', async () => {
+    await configureLogging({ logging: { enable_console: true, format: 'text' } });
+    const logger = getAppLogger('test-edge-error');
+    
+    logger.error('an error occurred', { myErr: new Error('text error message') });
+    
+    const calls = [...filterAppCalls(errorSpy)];
+    expect(calls.length).toBeGreaterThan(0);
+    const output = calls[0][0].trim();
+    expect(output).toContain('[Error: text error message]');
+    expect(output).toContain('myErr="[Error: text error message]"');
+  });
+
+  it('should gracefully handle unserializable objects in text format', async () => {
+    await configureLogging({ logging: { enable_console: true, format: 'text' } });
+    const logger = getAppLogger('test-edge-unserializable');
+    
+    const circular = {};
+    circular.self = circular;
+    
+    logger.info('circular reference', { obj: circular });
+    
+    const calls = [...filterAppCalls(infoSpy), ...filterAppCalls(logSpy)];
+    expect(calls.length).toBeGreaterThan(0);
+    const output = calls[0][0].trim();
+    expect(output).toContain('Unserializable Object');
+  });
+
   it('should append to existing file on second log configuration', async () => {
     await configureLogging({
       logging: {

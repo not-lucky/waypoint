@@ -158,6 +158,21 @@ describe('Zod Request Validation Middleware - Edge Case Tests', () => {
 
     expect(res.body.error.code).toBe('validation_error');
     expect(res.body.error.details.some((d) => d.field === 'messages.0.role')).toBe(true);
+    expect(res.body.error.details.find((d) => d.field === 'messages.0.role').message).toBe("Role must be 'system', 'user', or 'assistant'");
+  });
+
+  it('edge case: messages contain wrong type for role -> returns 400 validation_error', async () => {
+    const res = await request(app)
+      .post('/openai/chat/completions')
+      .send({
+        model: 'openai/gpt-4o',
+        messages: [{ role: 123, content: 'hi' }],
+      })
+      .expect(400);
+
+    expect(res.body.error.code).toBe('validation_error');
+    expect(res.body.error.details.some((d) => d.field === 'messages.0.role')).toBe(true);
+    expect(res.body.error.details.find((d) => d.field === 'messages.0.role').message).toBe("Role must be 'system', 'user', or 'assistant'");
   });
 
   it('edge case: messages missing content -> returns 400 validation_error', async () => {

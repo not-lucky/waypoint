@@ -5,23 +5,22 @@ const fallbackLogger = getAppLogger('orchestrator');
 
 function logDebug(logger, msg, meta) {
   if (logger && typeof logger.debug === 'function') {
-    if (meta !== undefined) logger.debug(msg, meta);
-    else logger.debug(msg);
-  } else if (meta !== undefined) fallbackLogger.debug(msg, meta);
-  else fallbackLogger.debug(msg);
+    logger.debug(msg, meta);
+  } else {
+    fallbackLogger.debug(msg, meta);
+  }
 }
 
 function logWarning(logger, msg, meta) {
   if (logger) {
     if (typeof logger.warning === 'function') {
-      if (meta !== undefined) logger.warning(msg, meta);
-      else logger.warning(msg);
+      logger.warning(msg, meta);
     } else if (typeof logger.warn === 'function') {
-      if (meta !== undefined) logger.warn(msg, meta);
-      else logger.warn(msg);
+      logger.warn(msg, meta);
     }
-  } else if (meta !== undefined) fallbackLogger.warning(msg, meta);
-  else fallbackLogger.warning(msg);
+  } else {
+    fallbackLogger.warning(msg, meta);
+  }
 }
 
 /**

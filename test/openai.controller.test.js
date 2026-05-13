@@ -448,4 +448,27 @@ describe('OpenAIController Edge Case Tests', () => {
       }));
     });
   });
+
+  describe('Streaming Error Propagation', () => {
+    it('should catch mid-stream errors and terminate the socket gracefully', async () => {
+      mockOrchestrator.executeCompletion.mockResolvedValue({
+        async* [Symbol.asyncIterator]() {
+          yield { id: 'chatcmpl-123', choices: [{ index: 0, delta: { content: 'hello' } }] };
+          throw new Error('Mid-stream failure');
+        },
+      });
+
+      const controller = new OpenAIController(mockOrchestrator);
+      const req = { body: { model: 'gpt-4o', stream: true }, headers: {} };
+      const res = {
+        setHeader: vi.fn(),
+        write: vi.fn(),
+        end: vi.fn(),
+      };
+
+      await expect(controller.handleCompletion(req, res)).resolves.not.toThrow();
+      expect(res.write).toHaveBeenCalled();
+      expect(res.end).toHaveBeenCalled();
+    });
+  });
 });

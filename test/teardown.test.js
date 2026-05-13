@@ -81,6 +81,7 @@ describe('Graceful Teardown Sequence', () => {
     const loggerMock = {
       info: vi.fn(),
       error: vi.fn(),
+      debug: vi.fn(),
       fatal: vi.fn(),
       flush: vi.fn().mockImplementation(async () => {
         callOrder.push('logger.flush');
@@ -125,7 +126,7 @@ describe('Graceful Teardown Sequence', () => {
       server: {},
       configLoader: {},
       keyRegistry: {},
-      logger: {},
+      logger: { info: vi.fn(), debug: vi.fn() },
     });
 
     expect(processOnSpy).toHaveBeenCalledWith('SIGINT', expect.any(Function));
@@ -152,7 +153,7 @@ describe('Graceful Teardown Sequence', () => {
       server: serverMock,
       configLoader: {},
       keyRegistry: {},
-      logger: {},
+      logger: { info: vi.fn(), debug: vi.fn() },
     });
 
     // Find the registered SIGINT signal listener from spied calls
@@ -198,6 +199,7 @@ describe('Graceful Teardown Sequence', () => {
     const loggerMock = {
       info: vi.fn(),
       error: vi.fn(),
+      debug: vi.fn(),
       fatal: vi.fn(),
       flush: vi.fn().mockResolvedValue(),
     };
@@ -242,6 +244,7 @@ describe('Graceful Teardown Sequence', () => {
     const loggerMock = {
       info: vi.fn(),
       error: vi.fn(),
+      debug: vi.fn(),
       fatal: vi.fn(),
       flush: vi.fn(),
     };
@@ -271,6 +274,24 @@ describe('Graceful Teardown Sequence', () => {
       logger: null,
     })).resolves.not.toThrow();
 
+    expect(exitMock).toHaveBeenCalledWith(0);
+    
+    // Also test with empty object for logger to cover defensive function checks
+    resetLifecycleState();
+    const mockAbortController = {
+      abort: vi.fn().mockImplementation(() => {
+        throw new Error('Abort failed');
+      }),
+    };
+    activeControllers.add(mockAbortController);
+
+    await expect(teardown({
+      server: null,
+      configLoader: null,
+      keyRegistry: null,
+      logger: {},
+    })).resolves.not.toThrow();
+    
     expect(exitMock).toHaveBeenCalledWith(0);
   });
 
@@ -330,6 +351,7 @@ describe('Graceful Teardown Sequence', () => {
     const loggerMock = {
       info: vi.fn(),
       error: vi.fn(),
+      debug: vi.fn(),
       fatal: vi.fn(),
       flush: vi.fn(),
     };
@@ -379,6 +401,7 @@ describe('Graceful Teardown Sequence', () => {
     const loggerMock = {
       info: vi.fn(),
       error: vi.fn(),
+      debug: vi.fn(),
       fatal: vi.fn(),
       flush: vi.fn(),
     };
@@ -470,6 +493,7 @@ describe('Graceful Teardown Sequence', () => {
     const loggerMock = {
       info: vi.fn(),
       error: vi.fn(),
+      debug: vi.fn(),
       fatal: vi.fn(),
       flush: vi.fn().mockRejectedValue(new Error('Flush error')),
     };
@@ -504,6 +528,7 @@ describe('Graceful Teardown Sequence', () => {
     const loggerMock = {
       info: vi.fn(),
       error: vi.fn(),
+      debug: vi.fn(),
       fatal: vi.fn(),
       flush: vi.fn().mockRejectedValue(new Error('Flush failed')),
     };
@@ -594,5 +619,59 @@ describe('Graceful Teardown Sequence', () => {
     expect(serverMock.close).toHaveBeenCalledTimes(1);
     expect(callOrder).toEqual(['server.close']);
     expect(exitMock).toHaveBeenCalledWith(0);
+  });
+
+  it('asserts that resetLifecycleState cleans up global.waypointSigint and global.waypointSigterm when they are set', () => {
+    const origSigint = global.waypointSigint;
+    const origSigterm = global.waypointSigterm;
+
+    const mockListener = () => {};
+    global.waypointSigint = mockListener;
+    global.waypointSigterm = mockListener;
+
+    resetLifecycleState();
+
+    expect(global.waypointSigint).toBeNull();
+    expect(global.waypointSigterm).toBeNull();
+
+    global.waypointSigint = origSigint;
+    global.waypointSigterm = origSigterm;
+  });
+
+  it('asserts that teardown catch block handles missing or partially mock loggers during throws', async () => {
+    const exitMock = vi.fn();
+    process.exit = exitMock;
+
+    const keyRegistryMock = {
+      cleanup: vi.fn().mockImplementation(() => {
+        throw new Error('emergency fail');
+      }),
+    };
+
+    // 1. Without logger
+    await expect(teardown({
+      server: null,
+      configLoader: null,
+      keyRegistry: keyRegistryMock,
+      logger: null,
+    })).resolves.not.toThrow();
+
+    expect(exitMock).toHaveBeenLastCalledWith(1);
+
+    resetLifecycleState();
+
+    // 2. Logger has fatal but no flush
+    const loggerMock = {
+      fatal: vi.fn(),
+    };
+    await expect(teardown({
+      server: null,
+      configLoader: null,
+      keyRegistry: keyRegistryMock,
+      logger: loggerMock,
+    })).resolves.not.toThrow();
+
+    expect(loggerMock.fatal).toHaveBeenCalled();
+    expect(exitMock).toHaveBeenLastCalledWith(1);
   });
 });

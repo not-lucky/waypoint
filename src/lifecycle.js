@@ -165,12 +165,10 @@ export async function teardown({
     if (logger && typeof logger.debug === 'function') {
       logger.debug(`Graceful shutdown: clearing ${rateLimiterIntervals.size} rate limiter intervals`);
     }
-    if (rateLimiterIntervals) {
-      rateLimiterIntervals.forEach((intervalId) => {
-        clearInterval(intervalId);
-      });
-      rateLimiterIntervals.clear();
-    }
+    rateLimiterIntervals.forEach((intervalId) => {
+      clearInterval(intervalId);
+    });
+    rateLimiterIntervals.clear();
 
     // Wait for the server connections to close fully
     // WHY: Now that we've stopped new connections and aborted active ones, the server

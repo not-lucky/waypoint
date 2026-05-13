@@ -347,4 +347,193 @@ describe('AnthropicAdapter Tests', () => {
       }),
     );
   });
+
+  it('assert: generateCompletion handles fetch error and calls requestLog', async () => {
+    const adapter = new AnthropicAdapter();
+    const req = { model: 'claude-3', actualModelId: 'claude-3', messages: [] };
+    mockFetch.mockRejectedValue(new Error('Fetch failed'));
+
+    const requestLog = {
+      logProviderRequest: vi.fn(),
+    };
+
+    await expect(adapter.generateCompletion(req, 'key', null, requestLog)).rejects.toThrow('Fetch failed');
+    expect(requestLog.logProviderRequest).toHaveBeenCalled();
+  });
+
+  it('assert: generateCompletion handles non-JSON error response', async () => {
+    const adapter = new AnthropicAdapter();
+    const req = { model: 'claude-3', actualModelId: 'claude-3', messages: [] };
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 502,
+      text: async () => 'HTML Error Page',
+    });
+
+    await expect(adapter.generateCompletion(req, 'key')).rejects.toThrow('HTML Error Page');
+  });
+
+  it('assert: generateStream handles fetch error, non-JSON error, and logging summary', async () => {
+    const adapter = new AnthropicAdapter();
+    const req = { model: 'claude-3', actualModelId: 'claude-3', messages: [] };
+
+    // 1. Fetch error path
+    mockFetch.mockRejectedValue(new Error('Stream fetch failed'));
+    const requestLog = {
+      logProviderRequest: vi.fn(),
+      logProviderStreamSummary: vi.fn(),
+      appendStreamEvent: vi.fn(),
+    };
+
+    const streamGen = adapter.generateStream(req, 'key', null, requestLog);
+    await expect(async () => {
+      for await (const chunk of streamGen) {}
+    }).rejects.toThrow('Stream fetch failed');
+    expect(requestLog.logProviderRequest).toHaveBeenCalled();
+
+    // 2. Non-JSON error
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 500,
+      text: async () => 'Plain Text Error',
+    });
+    const streamGen2 = adapter.generateStream(req, 'key', null, requestLog);
+    await expect(async () => {
+      for await (const chunk of streamGen2) {}
+    }).rejects.toThrow('Plain Text Error');
+
+    // 3. Normal stream with stop_sequence and client abort
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode('event: message_start\ndata: {"type":"message_start","message":{"id":"msg_1","model":"claude-3","usage":{"input_tokens":10}}}\n\n');
+        yield encoder.encode('event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}\n\n');
+        yield encoder.encode('event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"thoughts"}}\n\n');
+        yield encoder.encode('event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"stop_sequence","stop_sequence":"###"},"usage":{"output_tokens":20}}\n\n');
+      },
+    };
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: new Map(),
+      body: mockBody,
+    });
+
+    const abortController = new AbortController();
+    const streamGen3 = adapter.generateStream(req, 'key', abortController.signal, requestLog);
+    const chunks = [];
+    for await (const chunk of streamGen3) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks).toHaveLength(2);
+    expect(requestLog.logProviderStreamSummary).toHaveBeenCalled();
+  });
+
+  it('asserts: generateCompletion with requestLog', async () => {
+    const adapter = new AnthropicAdapter();
+    const req = {
+      model: 'anthropic/claude-3-5-sonnet',
+      actualModelId: 'claude-3-5-sonnet',
+      messages: [],
+    };
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: new Map([['content-type', 'application/json']]),
+      json: async () => ({
+        id: 'msg_1',
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'text', text: 'hello' }],
+        model: 'claude-3',
+        usage: { input_tokens: 5, output_tokens: 2 },
+      }),
+    });
+
+    const requestLog = {
+      logProviderRequest: vi.fn(),
+    };
+
+    const res = await adapter.generateCompletion(req, 'key', null, requestLog);
+    expect(res.choices[0].message.content).toBe('hello');
+    expect(requestLog.logProviderRequest).toHaveBeenCalled();
+  });
+
+  it('asserts: generateStream aborts mid-stream', async () => {
+    const adapter = new AnthropicAdapter();
+    const req = {
+      model: 'anthropic/claude-3-5-sonnet',
+      actualModelId: 'claude-3-5-sonnet',
+      messages: [],
+    };
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode('event: message_start\ndata: {"type":"message_start","message":{"id":"msg_1","model":"claude-3","usage":{"input_tokens":10}}}\n\n');
+        yield encoder.encode('event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n');
+        yield encoder.encode('event: content_block_start\ndata: {"type":"content_block_start","index":1,"content_block":{"type":"thinking","thinking":""}}\n\n');
+        yield encoder.encode('event: content_block_delta\ndata: {"type":"content_block_delta","index":1,"delta":{"type":"thinking_delta","thinking":"thoughts"}}\n\n');
+      },
+    };
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: new Map(),
+      body: mockBody,
+    });
+
+    let checks = 0;
+    const fakeSignal = {
+      get aborted() {
+        checks++;
+        // Allow sseParser to yield one event, then abort before AnthropicAdapter loop checks it
+        return checks > 2;
+      }
+    };
+
+    const requestLog = {
+      logProviderRequest: vi.fn(),
+      logProviderStreamSummary: vi.fn(),
+      appendStreamEvent: vi.fn(),
+    };
+
+    const streamGen = adapter.generateStream(req, 'key', fakeSignal, requestLog);
+
+    await expect(async () => {
+      for await (const chunk of streamGen) {}
+    }).rejects.toThrow('Stream aborted');
+  });
+
+  it('asserts: generateStream handles thinking_delta out of order (missed start block)', async () => {
+    const adapter = new AnthropicAdapter();
+    const req = {
+      model: 'anthropic/claude-3-5-sonnet',
+      actualModelId: 'claude-3-5-sonnet',
+      messages: [],
+    };
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode('event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"out-of-order-thought"}}\n\n');
+      },
+    };
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: new Map(),
+      body: mockBody,
+    });
+
+    const requestLog = {
+      logProviderRequest: vi.fn(),
+      logProviderStreamSummary: vi.fn(),
+      appendStreamEvent: vi.fn(),
+    };
+
+    const streamGen = adapter.generateStream(req, 'key', null, requestLog);
+    const chunks = [];
+    for await (const chunk of streamGen) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].choices[0].delta.reasoning_content).toBe('out-of-order-thought');
+  });
 });

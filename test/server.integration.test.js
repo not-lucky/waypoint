@@ -137,6 +137,45 @@ describe('Server Route Integration Tests', () => {
     expect(res.body).toEqual(mockResponse);
   });
 
+  it('POST /anthropic/messages - forwards response on success', async () => {
+    const mockOpenAIResponse = {
+      id: 'waypoint-mock-123',
+      object: 'chat.completion',
+      model: 'openai/gpt-4o',
+      choices: [
+        {
+          index: 0,
+          message: { role: 'assistant', content: 'hello world' },
+          finish_reason: 'stop',
+        },
+      ],
+      usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 },
+    };
+
+    executeCompletionSpy.mockResolvedValueOnce(mockOpenAIResponse);
+
+    const res = await request(app)
+      .post('/anthropic/messages')
+      .set('Authorization', 'Bearer mock-webui-token')
+      .send({
+        model: 'anthropic/claude-sonnet-4',
+        messages: [{ role: 'user', content: 'hi' }],
+      })
+      .expect('Content-Type', /json/)
+      .expect(200);
+
+    expect(res.body).toEqual({
+      id: 'waypoint-mock-123',
+      type: 'message',
+      role: 'assistant',
+      content: [{ type: 'text', text: 'hello world' }],
+      model: 'openai/gpt-4o',
+      stop_reason: 'end_turn',
+      stop_sequence: null,
+      usage: { input_tokens: 5, output_tokens: 2 },
+    });
+  });
+
   it('POST /openai/chat/completions - returns 400 on invalid JSON payload', async () => {
     await request(app)
       .post('/openai/chat/completions')

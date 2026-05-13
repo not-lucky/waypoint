@@ -108,7 +108,6 @@ const getUniqueModels = () => {
 
   const providers = currentConfig.providers || {};
   const models = Object.entries(providers).flatMap(([providerName, providerConfig]) => {
-    if (!Array.isArray(providerConfig.models)) return [];
     return providerConfig.models.flatMap((modelConfig) => {
       const list = [];
       if (modelConfig.id) list.push(`${providerName}/${modelConfig.id}`);

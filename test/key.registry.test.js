@@ -317,4 +317,42 @@ describe('Key Registry Suite', () => {
       expect(stats.providers.gemini.cooling_until).toBeNull();
     });
   });
+
+  describe('KeyRegistry Edge Cases', () => {
+    it('should return null when fill-first has no available keys', () => {
+      const config = {
+        gateway: { routing: { strategy: 'fill-first' } },
+        providers: { gemini: { keys: ['Key_A'] } },
+      };
+      const registry = new KeyRegistry(config);
+      registry.pools.gemini.keys[0].active = false;
+      expect(registry.getKey('gemini')).toBeNull();
+    });
+
+    it('should return null in findKey when provider does not exist', () => {
+      const registry = new KeyRegistry();
+      expect(registry.findKey('non-existent-provider', 'key')).toBeNull();
+    });
+
+    it('should return early in flagFailure when key does not exist', () => {
+      const config = {
+        providers: { gemini: { keys: ['Key_A'] } },
+      };
+      const registry = new KeyRegistry(config);
+      expect(registry.flagFailure('gemini', 'non-existent-key', 500)).toBeUndefined();
+    });
+
+    it('should return early in flagSuccess when key does not exist', () => {
+      const config = {
+        providers: { gemini: { keys: ['Key_A'] } },
+      };
+      const registry = new KeyRegistry(config);
+      expect(registry.flagSuccess('gemini', 'non-existent-key')).toBeUndefined();
+    });
+
+    it('should handle constructor gracefully when config is missing providers', () => {
+      const registry = new KeyRegistry({});
+      expect(registry.pools).toEqual({});
+    });
+  });
 });

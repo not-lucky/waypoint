@@ -4,7 +4,7 @@ import {
 import fs from 'node:fs';
 import path from 'node:path';
 import { reset } from '@logtape/logtape';
-import { configureLogging, getAppLogger, flushLogs } from '../src/utils/logger.js';
+import { configureLogging, getAppLogger, flushLogs, formatMessage } from '../src/utils/logger.js';
 
 /**
  * Filters out LogTape meta-logger diagnostic messages from console spy calls.
@@ -16,6 +16,14 @@ const filterAppCalls = (spy) => spy.mock.calls.filter((call) => {
   return !msg.includes('LogTape loggers are configured')
     && !msg.includes('logtape')
     && !msg.includes('meta');
+});
+
+describe('formatMessage', () => {
+  it('formats non-array messages as strings', () => {
+    expect(formatMessage('hello')).toBe('hello');
+    expect(formatMessage(123)).toBe('123');
+    expect(formatMessage(null)).toBe('null');
+  });
 });
 
 describe('Structured Logger (LogTape)', () => {

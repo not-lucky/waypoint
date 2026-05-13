@@ -6,10 +6,10 @@ const fallbackLogger = getAppLogger('orchestrator');
 
 function logDebug(logger, msg, meta) {
   if (logger && typeof logger.debug === 'function') {
-    if (meta !== undefined) logger.debug(msg, meta);
-    else logger.debug(msg);
-  } else if (meta !== undefined) fallbackLogger.debug(msg, meta);
-  else fallbackLogger.debug(msg);
+    logger.debug(msg, meta);
+  } else {
+    fallbackLogger.debug(msg, meta);
+  }
 }
 
 // Central registry of all active request AbortControllers.

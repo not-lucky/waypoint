@@ -5,7 +5,9 @@ import {
 import { GeminiAdapter } from '../src/adapters/GeminiAdapter.js';
 import { AnthropicAdapter } from '../src/adapters/AnthropicAdapter.js';
 import { OpenAICompatibleAdapter } from '../src/adapters/OpenAICompatibleAdapter.js';
-import { RequestLog, sanitizeUrl, serializeHeaders, redactHeaders } from '../src/utils/requestLogger.js';
+import {
+  RequestLog, sanitizeUrl, serializeHeaders, redactHeaders,
+} from '../src/utils/requestLogger.js';
 import { OpenAIController } from '../src/controllers/OpenAIController.js';
 import { AnthropicController } from '../src/controllers/AnthropicController.js';
 
@@ -43,14 +45,14 @@ describe('Request Logging Format and Sanitization Tests', () => {
     expect(redactHeaders(undefined)).toEqual({});
     expect(redactHeaders('string')).toEqual({});
     const headers = {
-      'authorization': 'Bearer secret',
+      authorization: 'Bearer secret',
       'x-api-key': 'secret-key',
       'proxy-authorization': 'Basic auth',
       'content-type': 'application/json',
-      'x-custom': 'public'
+      'x-custom': 'public',
     };
     const redacted = redactHeaders(headers);
-    expect(redacted['authorization']).toBe('[REDACTED]');
+    expect(redacted.authorization).toBe('[REDACTED]');
     expect(redacted['x-api-key']).toBe('[REDACTED]');
     expect(redacted['proxy-authorization']).toBe('[REDACTED]');
     expect(redacted['content-type']).toBe('application/json');
@@ -63,10 +65,10 @@ describe('Request Logging Format and Sanitization Tests', () => {
     const mkdirSpy = vi.spyOn(fs.default, 'mkdirSync').mockImplementation(() => {
       throw new Error('mock mkdir error');
     });
-    
+
     try {
       const requestLog = createRequestLog({ logging: { enable_request_log: true, request_log_path: './temp' } });
-      
+
       // Test NOOP_LOG methods
       expect(() => requestLog.logProviderRequest()).not.toThrow();
       expect(() => requestLog.logProviderResponse()).not.toThrow();
@@ -650,12 +652,12 @@ describe('Request Logging Format and Sanitization Tests', () => {
       const { createRequestLog } = await import('../src/utils/requestLogger.js');
       const tempDir = './test/temp-req-log-extra';
       if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
-      
+
       const reqLog = createRequestLog({ headers: {} }, { logging: { log_requests: true, request_log_path: tempDir } });
       expect(reqLog.id).not.toBeNull();
 
       // Cover logProviderResponse with a stream
-      const mockStream = { [Symbol.asyncIterator]: async function* () { yield 'test'; } };
+      const mockStream = { async* [Symbol.asyncIterator]() { yield 'test'; } };
       reqLog.logProviderResponse(mockStream, 150);
 
       // Cover logProviderResponse without a stream before finalized
@@ -667,7 +669,7 @@ describe('Request Logging Format and Sanitization Tests', () => {
       // Cover JSON serialization in flushStreams for provider and client events
       reqLog.appendStreamEvent('provider', { nested: 'json' });
       reqLog.appendStreamEvent('client', { nested: 'json' });
-      
+
       // Cover logClientResponse
       reqLog.logClientResponse(200, { success: true });
 
@@ -680,7 +682,7 @@ describe('Request Logging Format and Sanitization Tests', () => {
       reqLog.logClientResponse(400, {});
 
       // Cleanup
-      await import('node:fs/promises').then(fsp => fsp.rm(tempDir, { recursive: true, force: true }));
+      await import('node:fs/promises').then((fsp) => fsp.rm(tempDir, { recursive: true, force: true }));
     });
   });
 });

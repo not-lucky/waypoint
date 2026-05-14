@@ -486,7 +486,7 @@ describe('AnthropicAdapter Tests', () => {
         checks++;
         // Allow sseParser to yield one event, then abort before AnthropicAdapter loop checks it
         return checks > 2;
-      }
+      },
     };
 
     const requestLog = {

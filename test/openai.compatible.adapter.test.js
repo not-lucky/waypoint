@@ -445,14 +445,14 @@ describe('OpenAICompatibleAdapter Tests', () => {
         id: 'chatcmpl-123',
         object: 'chat.completion',
         choices: [{ index: 0, message: { role: 'assistant', content: 'hello' } }],
-        usage: { total_tokens: 10 }
-      })
+        usage: { total_tokens: 10 },
+      }),
     });
     await adapter.generateCompletion({
       actualModelId: 'gpt-4o',
       messages: [],
       maxTokens: 50,
-      temperature: 0.8
+      temperature: 0.8,
     }, 'api-key');
 
     const fetchCall = mockFetch.mock.calls[0];
@@ -478,10 +478,10 @@ describe('OpenAICompatibleAdapter Tests', () => {
       actualModelId: 'gpt-4o',
       messages: [],
       maxTokens: 50,
-      temperature: 0.8
+      temperature: 0.8,
     }, 'api-key');
     for await (const chunk of stream) {}
-    
+
     const fetchCall = mockFetch.mock.calls[0];
     const payload = JSON.parse(fetchCall[1].body);
     expect(payload.max_tokens).toBe(50);
@@ -509,12 +509,12 @@ describe('OpenAICompatibleAdapter Tests', () => {
         checks++;
         // Allow sseParser to yield one event, then abort before stream loop checks it
         return checks > 1;
-      }
+      },
     };
 
     const streamGen = adapter.generateStream({
       actualModelId: 'gpt-4o',
-      messages: []
+      messages: [],
     }, 'api-key', fakeSignal);
 
     await expect(async () => {
@@ -615,7 +615,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
     await adapter.generateCompletion({ messages: [] }, 'key');
     expect(mockFetch).toHaveBeenCalledWith(
       'https://api.openai.com/v1/chat/completions',
-      expect.any(Object)
+      expect.any(Object),
     );
   });
 
@@ -647,7 +647,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
       'https://api.openai.com/v1/chat/completions',
       expect.objectContaining({
         body: expect.stringContaining('"reasoning_effort":"low"'),
-      })
+      }),
     );
   });
 

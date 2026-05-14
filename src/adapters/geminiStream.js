@@ -142,7 +142,7 @@ export async function* executeStream(req, apiKey, signal, requestLog, adapter) {
     const base = adapter.baseUrl
       ? adapter.baseUrl.replace(/\/$/, '')
       : 'https://generativelanguage.googleapis.com/v1beta';
-    
+
     // Construct streaming endpoint URL and bind search params natively
     const urlObj = new URL(`${base}/models/${req.actualModelId}:streamGenerateContent`);
     urlObj.searchParams.set('alt', 'sse');

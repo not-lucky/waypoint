@@ -46,7 +46,7 @@ export async function executeCompletion(req, apiKey, signal, requestLog, adapter
     const base = adapter.baseUrl
       ? adapter.baseUrl.replace(/\/$/, '')
       : 'https://generativelanguage.googleapis.com/v1beta';
-    
+
     // Construct the endpoint URL and safely bind the api key via native URLSearchParams
     const urlObj = new URL(`${base}/models/${req.actualModelId}:generateContent`);
     urlObj.searchParams.set('key', apiKey);

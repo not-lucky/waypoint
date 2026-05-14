@@ -1,4 +1,6 @@
-import { describe, it, expect, vi } from 'vitest';
+import {
+  describe, it, expect, vi,
+} from 'vitest';
 import {
   BaseProvider,
   NotImplementedError,
@@ -90,7 +92,7 @@ describe('BaseProvider Tests', () => {
         const res = provider.getTimeoutSignal(clientSignal, 1000);
         expect(res.signal).toBeInstanceOf(AbortSignal);
         expect(typeof res.cleanup).toBe('function');
-        
+
         // Trigger the abort to test onAbort handler
         controller.abort();
         expect(res.signal.aborted).toBe(true);

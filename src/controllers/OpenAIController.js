@@ -1,6 +1,7 @@
 import { resolveModel, applyModelConfig, applyHeaderOverrides } from '../utils/modelResolver.js';
 import { getAppLogger } from '../utils/logger.js';
 import { createRequestLog } from '../utils/requestLogger.js';
+import { StreamAccumulator } from '../utils/StreamAccumulator.js';
 
 const logger = getAppLogger('openai');
 
@@ -105,160 +106,7 @@ export class OpenAIController {
       // chunked responses. We must manually bridge them to support Server-Sent Events (SSE).
       // WHAT: If the response is a stream (async generator), handle as SSE (Server-Sent Events).
       if (response && typeof response[Symbol.asyncIterator] === 'function') {
-        logger.debug('Starting OpenAI SSE response stream');
-
-        // EDGE CASE / RATIONALE: Standard reverse proxies (like NGINX) will buffer
-        // chunked responses, destroying the real-time UX of LLM streaming.
-        // 'X-Accel-Buffering: no' forces the proxy to flush each chunk to the client instantly.
-        // WHAT: Set standard headers for event streams to disable buffering and allow
-        // live streaming.
-        res.setHeader('Content-Type', 'text/event-stream');
-        res.setHeader('Cache-Control', 'no-cache');
-        res.setHeader('X-Accel-Buffering', 'no');
-
-        let chunkCount = 0;
-
-        // RATIONALE: Since SSE emits partial deltas, we must reconstruct the full response
-        // internally (choicesAccumulator) to accurately log what the client actually received
-        // for auditing and billing purposes.
-        const choicesAccumulator = [];
-        let promptTokens = 0;
-        let completionTokens = 0;
-        let totalTokens = 0;
-        let responseId = null;
-        let responseModel = null;
-
-        try {
-          /* eslint-disable no-restricted-syntax */
-          // WHAT: Iterate over each chunk produced by the orchestrator/adapter stream.
-          for await (const chunk of response) {
-            chunkCount += 1;
-            const sseData = `data: ${JSON.stringify(chunk)}\n\n`;
-
-            if (chunk.id) {
-              responseId = chunk.id;
-            }
-            if (chunk.model) {
-              responseModel = chunk.model;
-            }
-
-            // RATIONALE: Reconstructing the delta stream ensures our internal logging
-            // perfectly matches the client's view, catching edge cases where multiple choices
-            // or parallel tool calls are streamed concurrently.
-            if (chunk.choices) {
-              for (const c of chunk.choices) {
-                const idx = c.index ?? 0;
-                if (!choicesAccumulator[idx]) {
-                  choicesAccumulator[idx] = {
-                    index: idx,
-                    message: {
-                      role: 'assistant',
-                      content: '',
-                      reasoning_content: null,
-                    },
-                    finish_reason: null,
-                  };
-                }
-                const choice = choicesAccumulator[idx];
-                if (c.delta) {
-                  if (c.delta.content) {
-                    choice.message.content += c.delta.content;
-                  }
-                  if (c.delta.reasoning_content) {
-                    if (choice.message.reasoning_content === null) {
-                      choice.message.reasoning_content = '';
-                    }
-                    choice.message.reasoning_content += c.delta.reasoning_content;
-                  }
-                }
-                if (c.finish_reason || c.finishReason) {
-                  choice.finish_reason = c.finish_reason || c.finishReason;
-                }
-              }
-            }
-
-            // EDGE CASE / RATIONALE: Usage stats can arrive in intermediate chunks
-            // or the final chunk. We use nullish coalescing against the previous state so we
-            // don't lose the stats if a subsequent chunk omits them.
-            if (chunk.usage) {
-              promptTokens = chunk.usage.prompt_tokens
-                ?? chunk.usage.promptTokens
-                ?? promptTokens;
-              completionTokens = chunk.usage.completion_tokens
-                ?? chunk.usage.completionTokens
-                ?? completionTokens;
-              totalTokens = chunk.usage.total_tokens
-                ?? chunk.usage.totalTokens
-                ?? totalTokens;
-            }
-
-            // WHAT: Log client stream event.
-            reqLog.appendStreamEvent('client', sseData);
-
-            res.write(sseData);
-          }
-          /* eslint-enable no-restricted-syntax */
-
-          // RATIONALE: The '[DONE]' marker is a mandatory protocol requirement for OpenAI clients.
-          // Without it, clients like the official Python/Node SDKs will hang indefinitely
-          // waiting for more chunks until they hit a timeout.
-          // WHAT: Signal stream termination using standard OpenAI [DONE] indicator,
-          // ensuring client libraries know the stream is cleanly closed.
-          const doneMarker = 'data: [DONE]\n\n';
-          reqLog.appendStreamEvent('client', doneMarker);
-          res.write(doneMarker);
-          logger.debug('OpenAI SSE response stream completed', { chunkCount });
-
-          // WHAT: Log client response summary for streaming.
-          reqLog.logClientStreamSummary({
-            _format: 'sse-json',
-            _eventCount: chunkCount,
-            summary: {
-              id: responseId,
-              model: responseModel,
-              choices: choicesAccumulator.filter(Boolean).map((c) => {
-                const msg = {
-                  role: c.message.role,
-                  content: c.message.content,
-                };
-                if (c.message.reasoning_content !== null) {
-                  msg.reasoning_content = c.message.reasoning_content;
-                }
-                return {
-                  message: msg,
-                  finish_reason: c.finish_reason || 'stop',
-                };
-              }),
-              usage: {
-                prompt_tokens: promptTokens,
-                completion_tokens: completionTokens,
-                total_tokens: totalTokens || (promptTokens + completionTokens),
-              },
-              _streamed: true,
-            },
-          });
-        } catch (err) {
-          logger.debug('OpenAI SSE response stream aborted or failed', { chunkCount, error: err.message });
-          reqLog.logClientResponse(0, {
-            _streamed: true,
-            _aborted: true,
-            _eventCount: chunkCount,
-            error: err.message,
-          });
-
-          // RATIONALE: When streaming, HTTP 200 headers have already been sent.
-          // If an error occurs mid-stream, we cannot retroactively change the status code
-          // to 500. The only safe action is to log the failure and forcefully terminate
-          // the connection so the client doesn't hang.
-          // WHAT: Handle client disconnect or unexpected stream errors silently.
-        } finally {
-          // RATIONALE: Failing to call res.end() guarantees a memory leak and exhausted
-          // connection pools.
-          // WHAT: Always end the response stream to clean up connection resources.
-          await reqLog.finalize();
-          res.end();
-        }
-        return res;
+        return this._handleStream(res, response, reqLog);
       }
 
       // RATIONALE: For non-streaming requests, the orchestrator guarantees that the response
@@ -287,6 +135,83 @@ export class OpenAIController {
       await reqLog.finalize();
       return res.status(500).json(errorBody);
     }
+  }
+
+  /**
+   * Handles the Server-Sent Events (SSE) stream for an OpenAI response.
+   */
+  async _handleStream(res, response, reqLog) {
+    logger.debug('Starting OpenAI SSE response stream');
+
+    // EDGE CASE / RATIONALE: Standard reverse proxies (like NGINX) will buffer
+    // chunked responses, destroying the real-time UX of LLM streaming.
+    // 'X-Accel-Buffering: no' forces the proxy to flush each chunk to the client instantly.
+    // WHAT: Set standard headers for event streams to disable buffering and allow
+    // live streaming.
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('X-Accel-Buffering', 'no');
+
+    let chunkCount = 0;
+    const accumulator = new StreamAccumulator();
+
+    try {
+      /* eslint-disable no-restricted-syntax */
+      // WHAT: Iterate over each chunk produced by the orchestrator/adapter stream.
+      for await (const chunk of response) {
+        chunkCount += 1;
+        const sseData = `data: ${JSON.stringify(chunk)}\n\n`;
+
+        accumulator.processChunk(chunk);
+
+        // WHAT: Log client stream event.
+        reqLog.appendStreamEvent('client', sseData);
+
+        res.write(sseData);
+      }
+      /* eslint-enable no-restricted-syntax */
+
+      // RATIONALE: The '[DONE]' marker is a mandatory protocol requirement for OpenAI clients.
+      // Without it, clients like the official Python/Node SDKs will hang indefinitely
+      // waiting for more chunks until they hit a timeout.
+      // WHAT: Signal stream termination using standard OpenAI [DONE] indicator,
+      // ensuring client libraries know the stream is cleanly closed.
+      const doneMarker = 'data: [DONE]\n\n';
+      reqLog.appendStreamEvent('client', doneMarker);
+      res.write(doneMarker);
+      logger.debug('OpenAI SSE response stream completed', { chunkCount });
+
+      // WHAT: Log client response summary for streaming.
+      reqLog.logClientStreamSummary({
+        _format: 'sse-json',
+        _eventCount: chunkCount,
+        summary: {
+          ...accumulator.buildNormalizedResponse(),
+          _streamed: true,
+        },
+      });
+    } catch (err) {
+      logger.debug('OpenAI SSE response stream aborted or failed', { chunkCount, error: err.message });
+      reqLog.logClientResponse(0, {
+        _streamed: true,
+        _aborted: true,
+        _eventCount: chunkCount,
+        error: err.message,
+      });
+
+      // RATIONALE: When streaming, HTTP 200 headers have already been sent.
+      // If an error occurs mid-stream, we cannot retroactively change the status code
+      // to 500. The only safe action is to log the failure and forcefully terminate
+      // the connection so the client doesn't hang.
+      // WHAT: Handle client disconnect or unexpected stream errors silently.
+    } finally {
+      // RATIONALE: Failing to call res.end() guarantees a memory leak and exhausted
+      // connection pools.
+      // WHAT: Always end the response stream to clean up connection resources.
+      await reqLog.finalize();
+      res.end();
+    }
+    return res;
   }
 }
 

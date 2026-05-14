@@ -275,7 +275,7 @@ describe('Graceful Teardown Sequence', () => {
     })).resolves.not.toThrow();
 
     expect(exitMock).toHaveBeenCalledWith(0);
-    
+
     // Also test with empty object for logger to cover defensive function checks
     resetLifecycleState();
     const mockAbortController = {
@@ -291,7 +291,7 @@ describe('Graceful Teardown Sequence', () => {
       keyRegistry: null,
       logger: {},
     })).resolves.not.toThrow();
-    
+
     expect(exitMock).toHaveBeenCalledWith(0);
   });
 

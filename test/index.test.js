@@ -1,4 +1,6 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
+import {
+  describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi,
+} from 'vitest';
 import request from 'supertest';
 import { app, server } from '../src/index.js';
 import { UnifiedOrchestrator } from '../src/services/UnifiedOrchestrator.js';
@@ -12,7 +14,7 @@ describe('Index Endpoints Coverage', () => {
       id: 'mock-id',
       object: 'chat.completion',
       model: 'openai/gpt-4o',
-      choices: [{ message: { role: 'assistant', content: 'mock' } }]
+      choices: [{ message: { role: 'assistant', content: 'mock' } }],
     });
 
     vi.spyOn(ConfigLoader.prototype, 'loadConfig').mockReturnValue({
@@ -24,10 +26,10 @@ describe('Index Endpoints Coverage', () => {
             { id: 'mock-model-1' },
             { aliases: ['mock-alias-1'] },
             { id: 'mock-model-2', aliases: ['mock-alias-2'] },
-            { }
-          ]
-        }
-      }
+            { },
+          ],
+        },
+      },
     });
   });
 
@@ -62,7 +64,7 @@ describe('Index Endpoints Coverage', () => {
       .set('Authorization', 'Bearer mock-webui-token')
       .send({
         model: 'openai/gpt-4o',
-        messages: [{ role: 'user', content: 'test' }]
+        messages: [{ role: 'user', content: 'test' }],
       });
     // Can be 200 or 503 depending on rate limits, we just need to hit the route
     expect([200, 400, 503]).toContain(res.status);
@@ -91,7 +93,7 @@ describe('Index Endpoints Coverage', () => {
       .set('Authorization', 'Bearer mock-webui-token')
       .send({
         model: 'anthropic/claude-sonnet-4',
-        messages: [{ role: 'user', content: 'test' }]
+        messages: [{ role: 'user', content: 'test' }],
       });
     expect([200, 400, 503]).toContain(res.status);
   });
@@ -113,7 +115,7 @@ describe('Index Endpoints Coverage', () => {
       .set('Authorization', 'Bearer mock-webui-token')
       .set('Content-Type', 'application/json')
       .send(`{"model":"gpt-4","messages":[{"role":"user","content":"${largeString}"}]}`);
-    
+
     expect(res.status).toBe(413);
     expect(res.body.error.code).toBe('payload_too_large');
   });

@@ -23,7 +23,7 @@ describe('geminiStream Unit Tests', () => {
         'text',
         false,
         (text) => sendThinking.push(text),
-        (text) => sendText.push(text)
+        (text) => sendText.push(text),
       );
       expect(result.state).toBe('thinking');
       expect(result.buffer).toBe('');
@@ -39,7 +39,7 @@ describe('geminiStream Unit Tests', () => {
         'text',
         false,
         (text) => sendThinking.push(text),
-        (text) => sendText.push(text)
+        (text) => sendText.push(text),
       );
       expect(result.state).toBe('text');
       expect(result.buffer).toBe('');
@@ -55,7 +55,7 @@ describe('geminiStream Unit Tests', () => {
         'text',
         true,
         (text) => sendThinking.push(text),
-        (text) => sendText.push(text)
+        (text) => sendText.push(text),
       );
       expect(result.state).toBe('text');
       expect(result.buffer).toBe('');
@@ -71,7 +71,7 @@ describe('geminiStream Unit Tests', () => {
         'thinking',
         false,
         (text) => sendThinking.push(text),
-        (text) => sendText.push(text)
+        (text) => sendText.push(text),
       );
       expect(result.state).toBe('text');
       expect(result.buffer).toBe('');
@@ -87,7 +87,7 @@ describe('geminiStream Unit Tests', () => {
         'thinking',
         false,
         (text) => sendThinking.push(text),
-        (text) => sendText.push(text)
+        (text) => sendText.push(text),
       );
       expect(result.state).toBe('thinking');
       expect(result.buffer).toBe('');
@@ -103,7 +103,7 @@ describe('geminiStream Unit Tests', () => {
         'thinking',
         true,
         (text) => sendThinking.push(text),
-        (text) => sendText.push(text)
+        (text) => sendText.push(text),
       );
       expect(result.state).toBe('thinking');
       expect(result.buffer).toBe('');
@@ -120,7 +120,7 @@ describe('geminiStream Unit Tests', () => {
         'text',
         flush,
         (text) => sendThinking.push(text),
-        (text) => sendText.push(text)
+        (text) => sendText.push(text),
       );
       expect(result.state).toBe('text');
       expect(result.buffer).toBe('<th');
@@ -137,7 +137,7 @@ describe('geminiStream Unit Tests', () => {
         'thinking',
         flush,
         (text) => sendThinking.push(text),
-        (text) => sendText.push(text)
+        (text) => sendText.push(text),
       );
       expect(result.state).toBe('thinking');
       expect(result.buffer).toBe('</thou');
@@ -150,7 +150,7 @@ describe('geminiStream Unit Tests', () => {
     it('returns null on [DONE]', () => {
       expect(parseSSEEventData('[DONE]')).toBeNull();
     });
-    
+
     it('returns null on invalid JSON', () => {
       expect(parseSSEEventData('invalid json')).toBeNull();
     });

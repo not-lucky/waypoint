@@ -6,7 +6,13 @@ import { translateUsage, getThinkingLevel } from './geminiFormatter.js';
 import { parseUpstreamError } from './BaseProvider.js';
 
 /**
- * Finds the longest overlapping prefix between the end of str and beginning of target.
+ * Finds the longest suffix of `str` that matches a prefix of `target`.
+ * Used during stream parsing to handle partial tag matches at chunk boundaries,
+ * excluding the case where the whole target matches (maximum overlap length is target.length - 1).
+ *
+ * @param {string} str - The source string whose suffix is checked.
+ * @param {string} target - The target string whose prefix is checked.
+ * @returns {string} The overlapping substring, or an empty string if no overlap is found.
  */
 export function getLongestPrefixSuffix(str, target) {
   const maxLen = Math.min(str.length, target.length - 1);
@@ -20,7 +26,15 @@ export function getLongestPrefixSuffix(str, target) {
 }
 
 /**
- * Processes buffered text from a stream and extracts thoughts enclosed in <thought> tags.
+ * Processes buffered text from a stream and extracts thoughts enclosed in `<thought>` tags.
+ * Transitions state between 'text' and 'thinking' based on token tag matches.
+ *
+ * @param {string} buffer - The pending text buffer to process.
+ * @param {'text'|'thinking'} state - The current stream state.
+ * @param {boolean} flush - Whether to flush the remaining buffer at the end of the stream.
+ * @param {function(string): void} sendThinking - Callback to yield thinking tokens.
+ * @param {function(string): void} sendText - Callback to yield standard text tokens.
+ * @returns {{ buffer: string, state: 'text'|'thinking' }} The updated buffer and state.
  */
 export const processThinkingBuffer = (buffer, state, flush, sendThinking, sendText) => {
   let pendingBuffer = buffer;
@@ -69,6 +83,9 @@ export const processThinkingBuffer = (buffer, state, flush, sendThinking, sendTe
 
 /**
  * Safely parses Server-Sent Events (SSE) string data payloads into JSON.
+ *
+ * @param {string} data - The raw event data string.
+ * @returns {Object|null} The parsed JSON object, or null if parsing fails or data is '[DONE]'.
  */
 export function parseSSEEventData(data) {
   if (data === '[DONE]') {
@@ -82,65 +99,19 @@ export function parseSSEEventData(data) {
 }
 
 /**
- * WHAT: Generates a streaming completion.
- * WHY: Delivers tokens in real-time, handling tag reconstruction for reasoning models.
+ * Performs a POST request to the provider SSE streaming endpoint.
+ * Sets up timeout handles, catches fetch exceptions, and reports request/response metadata.
+ *
+ * @param {string} url - Sanitized provider endpoint URL.
+ * @param {Object} headers - Request headers dictionary.
+ * @param {Object} payload - Serialized JSON request payload body.
+ * @param {Object} adapter - Active provider adapter instance.
+ * @param {AbortSignal} signal - Client-provided cancel signal.
+ * @param {Object} requestLog - Optional request logging object context.
+ * @returns {Promise<{ response: Response, fetchSignal: AbortSignal, cleanup: function }>}
+ *          The fetch response, the signal used, and the cleanup callback.
  */
-export async function* executeStream(req, apiKey, signal, requestLog, adapter) {
-  const thinkingEnabled = req.thinkingEnabled || req.thinking_supported || false;
-
-  let payload;
-  let url;
-  let headers;
-
-  // Choose the streaming endpoint based on whether thinking mode is enabled
-  if (thinkingEnabled) {
-    // Reasoning models call the OpenAI-compatible stream endpoint
-    url = adapter.baseUrl
-      ? `${adapter.baseUrl.replace(/\/$/, '')}/chat/completions`
-      : 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
-
-    headers = {
-      'content-type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    };
-
-    payload = {
-      model: req.actualModelId || req.model,
-      messages: req.messages,
-      stream: true,
-      stream_options: {
-        include_usage: true,
-      },
-      extra_body: {
-        google: {
-          thinking_config: {
-            thinking_level: getThinkingLevel(req),
-            include_thoughts: true,
-          },
-        },
-      },
-    };
-    if (req.temperature !== undefined) payload.temperature = req.temperature;
-    if (req.maxTokens !== undefined) payload.max_tokens = req.maxTokens;
-  } else {
-    // Standard models: map requests to Gemini format and call streamGenerateContent sse endpoint
-    payload = translateRequest(FORMATS.OPENAI, FORMATS.GEMINI, req);
-    const base = adapter.baseUrl
-      ? adapter.baseUrl.replace(/\/$/, '')
-      : 'https://generativelanguage.googleapis.com/v1beta';
-
-    // Construct streaming endpoint URL and bind search params natively
-    const urlObj = new URL(`${base}/models/${req.actualModelId}:streamGenerateContent`);
-    urlObj.searchParams.set('alt', 'sse');
-    urlObj.searchParams.set('key', apiKey);
-    url = urlObj.toString();
-
-    headers = {
-      'content-type': 'application/json',
-    };
-  }
-
-  // Combine parent abort signals with native timeout bounds
+async function performStreamFetch(url, headers, payload, adapter, signal, requestLog) {
   const { signal: fetchSignal, cleanup } = adapter.getTimeoutSignal(signal, adapter.timeoutMs);
   let response;
   try {
@@ -159,29 +130,75 @@ export async function* executeStream(req, apiKey, signal, requestLog, adapter) {
   }
 
   if (requestLog) {
-    requestLog.logProviderRequest(sanitizeUrl(url), serializeHeaders(response.headers), payload);
+    requestLog.logProviderRequest(
+      sanitizeUrl(url),
+      serializeHeaders(response.headers),
+      payload,
+    );
   }
 
-  // Handle upstream connection failures
   if (!response.ok) {
     const err = await parseUpstreamError(response);
     cleanup();
     throw err;
   }
 
+  return { response, fetchSignal, cleanup };
+}
+
+/**
+ * Executes a streaming completion for Gemini models with thinking/reasoning enabled.
+ * Uses the OpenAI-compatible endpoint with thinking configuration.
+ *
+ * @param {Object} req - The incoming request payload.
+ * @param {string} apiKey - The Gemini API key.
+ * @param {AbortSignal} signal - The abort signal.
+ * @param {Object} requestLog - The request logging context.
+ * @param {Object} adapter - The Gemini adapter instance.
+ * @returns {AsyncGenerator<Object>} Async generator of OpenAI-style completion chunks.
+ */
+async function* executeThinkingStream(req, apiKey, signal, requestLog, adapter) {
+  const url = adapter.baseUrl
+    ? `${adapter.baseUrl.replace(/\/$/, '')}/chat/completions`
+    : 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
+
+  const headers = {
+    'content-type': 'application/json',
+    Authorization: `Bearer ${apiKey}`,
+  };
+
+  const payload = {
+    model: req.actualModelId || req.model,
+    messages: req.messages,
+    stream: true,
+    stream_options: { include_usage: true },
+    extra_body: {
+      google: {
+        thinking_config: {
+          thinking_level: getThinkingLevel(req),
+          include_thoughts: true,
+        },
+      },
+    },
+  };
+  if (req.temperature !== undefined) payload.temperature = req.temperature;
+  if (req.maxTokens !== undefined) payload.max_tokens = req.maxTokens;
+
+  const { response, fetchSignal, cleanup } = await performStreamFetch(
+    url,
+    headers,
+    payload,
+    adapter,
+    signal,
+    requestLog,
+  );
   const chunkId = `waypoint-chunk-${Date.now()}`;
-  // Parse incoming raw response body stream into Server-Sent Events (SSE) events
   const stream = parseSSEStream(response.body, fetchSignal);
 
   let streamState = 'text';
   let pendingBuffer = '';
-
   let eventCount = 0;
-  let accumulatedText = '';
   let lastFinishReason = null;
-  let finalUsageMetadata = null;
-  let modelVersion = null;
-
   let responseId = null;
   let responseModel = null;
   let accumulatedContent = '';
@@ -190,148 +207,36 @@ export async function* executeStream(req, apiKey, signal, requestLog, adapter) {
 
   try {
     for await (const sseEvent of stream) {
-      if (fetchSignal?.aborted) {
-        throw new Error('Stream aborted');
+      if (fetchSignal?.aborted) throw new Error('Stream aborted');
+
+      const parsedData = parseSSEEventData(sseEvent.data);
+      if (!parsedData) continue;
+
+      if (requestLog && typeof requestLog.appendStreamEvent === 'function') {
+        requestLog.appendStreamEvent('provider', parsedData);
+      }
+      eventCount += 1;
+
+      if (parsedData.id) responseId = parsedData.id;
+      if (parsedData.model) responseModel = parsedData.model;
+      if (parsedData.usage) finalUsage = parsedData.usage;
+
+      const choices = parsedData.choices || [];
+      if (choices.length === 0) {
+        yield {
+          id: chunkId,
+          object: 'chat.completion.chunk',
+          choices: [],
+          usage: translateUsage(parsedData.usage),
+        };
+        continue;
       }
 
-      if (thinkingEnabled) {
-        const parsedData = parseSSEEventData(sseEvent.data);
-        if (!parsedData) {
-          continue;
-        }
-        if (requestLog && typeof requestLog.appendStreamEvent === 'function') {
-          requestLog.appendStreamEvent('provider', parsedData);
-        }
-        eventCount += 1;
+      const c = choices[0];
+      if (c.delta?.content) accumulatedContent += c.delta.content;
+      if (c.delta?.reasoning_content) accumulatedReasoningContent += c.delta.reasoning_content;
+      if (c.finish_reason || c.finishReason) lastFinishReason = c.finish_reason || c.finishReason;
 
-        if (parsedData.id) {
-          responseId = parsedData.id;
-        }
-        if (parsedData.model) {
-          responseModel = parsedData.model;
-        }
-        if (parsedData.usage) {
-          finalUsage = parsedData.usage;
-        }
-
-        const choices = parsedData.choices || [];
-        if (choices.length === 0) {
-          yield {
-            id: chunkId,
-            object: 'chat.completion.chunk',
-            choices: [],
-            usage: translateUsage(parsedData.usage),
-          };
-          continue;
-        }
-
-        const c = choices[0];
-        if (c.delta?.content) {
-          accumulatedContent += c.delta.content;
-        }
-        if (c.delta?.reasoning_content) {
-          accumulatedReasoningContent += c.delta.reasoning_content;
-        }
-        if (c.finish_reason || c.finishReason) {
-          lastFinishReason = c.finish_reason || c.finishReason;
-        }
-
-        const deltasToYield = [];
-        const sendThinking = (text) => {
-          if (!text) return;
-          deltasToYield.push({ reasoning_content: text, content: null });
-        };
-        const sendText = (text) => {
-          if (!text) return;
-          deltasToYield.push({ reasoning_content: null, content: text });
-        };
-
-        if (c.delta?.reasoning_content) {
-          sendThinking(c.delta.reasoning_content);
-        }
-        if (c.delta?.content) {
-          pendingBuffer += c.delta.content;
-          const result = processThinkingBuffer(
-            pendingBuffer,
-            streamState,
-            false,
-            sendThinking,
-            sendText,
-          );
-          pendingBuffer = result.buffer;
-          streamState = result.state;
-        }
-
-        if (deltasToYield.length > 0) {
-          for (const delta of deltasToYield) {
-            yield {
-              id: chunkId,
-              object: 'chat.completion.chunk',
-              choices: [
-                {
-                  index: c.index ?? 0,
-                  delta,
-                  finish_reason: c.finish_reason ?? c.finishReason ?? null,
-                },
-              ],
-              usage: translateUsage(parsedData.usage),
-            };
-          }
-        } else {
-          yield {
-            id: chunkId,
-            object: 'chat.completion.chunk',
-            choices: [
-              {
-                index: c.index ?? 0,
-                delta: {
-                  content: null,
-                  reasoning_content: null,
-                },
-                finish_reason: c.finish_reason ?? c.finishReason ?? null,
-              },
-            ],
-            usage: translateUsage(parsedData.usage),
-          };
-        }
-      } else {
-        const parsedData = parseSSEEventData(sseEvent.data);
-        if (!parsedData) {
-          continue;
-        }
-        if (requestLog && typeof requestLog.appendStreamEvent === 'function') {
-          requestLog.appendStreamEvent('provider', parsedData);
-        }
-        eventCount += 1;
-
-        if (parsedData.candidates?.[0]) {
-          const candidate = parsedData.candidates[0];
-          if (candidate.content?.parts) {
-            for (const part of candidate.content.parts) {
-              if (part.text) {
-                accumulatedText += part.text;
-              }
-            }
-          }
-          if (candidate.finishReason) {
-            lastFinishReason = candidate.finishReason;
-          }
-        }
-        if (parsedData.usageMetadata) {
-          finalUsageMetadata = parsedData.usageMetadata;
-        }
-        if (parsedData.modelVersion) {
-          modelVersion = parsedData.modelVersion;
-        }
-
-        const openaiChunk = translateStreamChunk(FORMATS.GEMINI, parsedData, chunkId, req);
-        if (openaiChunk) {
-          yield openaiChunk;
-        }
-      }
-    }
-
-    if (thinkingEnabled) {
       const deltasToYield = [];
       const sendThinking = (text) => {
         if (!text) return;
@@ -342,90 +247,196 @@ export async function* executeStream(req, apiKey, signal, requestLog, adapter) {
         deltasToYield.push({ reasoning_content: null, content: text });
       };
 
-      const result = processThinkingBuffer(
-        pendingBuffer,
-        streamState,
-        true,
-        sendThinking,
-        sendText,
-      );
-      pendingBuffer = result.buffer;
-      streamState = result.state;
+      if (c.delta?.reasoning_content) sendThinking(c.delta.reasoning_content);
+      if (c.delta?.content) {
+        pendingBuffer += c.delta.content;
+        const result = processThinkingBuffer(
+          pendingBuffer,
+          streamState,
+          false,
+          sendThinking,
+          sendText,
+        );
+        pendingBuffer = result.buffer;
+        streamState = result.state;
+      }
 
-      for (const delta of deltasToYield) {
+      if (deltasToYield.length > 0) {
+        for (const delta of deltasToYield) {
+          yield {
+            id: chunkId,
+            object: 'chat.completion.chunk',
+            choices: [{
+              index: c.index ?? 0,
+              delta,
+              finish_reason: c.finish_reason ?? c.finishReason ?? null,
+            }],
+            usage: translateUsage(parsedData.usage),
+          };
+        }
+      } else {
         yield {
           id: chunkId,
           object: 'chat.completion.chunk',
-          choices: [
-            {
-              index: 0,
-              delta,
-              finish_reason: null,
-            },
-          ],
+          choices: [{
+            index: c.index ?? 0,
+            delta: { content: null, reasoning_content: null },
+            finish_reason: c.finish_reason ?? c.finishReason ?? null,
+          }],
+          usage: translateUsage(parsedData.usage),
         };
       }
+    }
+
+    const deltasToYield = [];
+    const sendThinking = (text) => {
+      if (!text) return;
+      deltasToYield.push({ reasoning_content: text, content: null });
+    };
+    const sendText = (text) => {
+      if (!text) return;
+      deltasToYield.push({ reasoning_content: null, content: text });
+    };
+
+    const result = processThinkingBuffer(
+      pendingBuffer,
+      streamState,
+      true,
+      sendThinking,
+      sendText,
+    );
+    pendingBuffer = result.buffer;
+    streamState = result.state;
+
+    for (const delta of deltasToYield) {
+      yield {
+        id: chunkId,
+        object: 'chat.completion.chunk',
+        choices: [{ index: 0, delta, finish_reason: null }],
+      };
     }
   } finally {
     cleanup();
     if (requestLog && typeof requestLog.logProviderStreamSummary === 'function') {
-      let summary;
-      if (thinkingEnabled) {
-        summary = {
-          id: responseId || chunkId,
-          object: 'chat.completion',
-          created: Math.floor(Date.now() / 1000),
-          model: responseModel || req.model,
-          choices: [
-            {
-              index: 0,
-              message: {
-                role: 'assistant',
-                content: accumulatedContent,
-                reasoning_content: accumulatedReasoningContent || null,
-              },
-              finish_reason: lastFinishReason || 'stop',
-            },
-          ],
+      const summary = {
+        id: responseId || chunkId,
+        object: 'chat.completion',
+        created: Math.floor(Date.now() / 1000),
+        model: responseModel || req.model,
+        choices: [{
+          index: 0,
+          message: {
+            role: 'assistant',
+            content: accumulatedContent,
+            reasoning_content: accumulatedReasoningContent || null,
+          },
+          finish_reason: lastFinishReason || 'stop',
+        }],
+      };
+      if (finalUsage) {
+        summary.usage = {
+          prompt_tokens: finalUsage.prompt_tokens ?? finalUsage.promptTokens ?? 0,
+          completion_tokens: finalUsage.completion_tokens ?? finalUsage.completionTokens ?? 0,
+          total_tokens: finalUsage.total_tokens ?? finalUsage.totalTokens ?? 0,
         };
-        if (finalUsage) {
-          summary.usage = {
-            prompt_tokens: finalUsage.prompt_tokens ?? finalUsage.promptTokens ?? 0,
-            completion_tokens: finalUsage.completion_tokens ?? finalUsage.completionTokens ?? 0,
-            total_tokens: finalUsage.total_tokens ?? finalUsage.totalTokens ?? 0,
-          };
-        }
-      } else {
-        summary = {
-          candidates: [
-            {
-              index: 0,
-              content: {
-                role: 'model',
-                parts: [
-                  {
-                    text: accumulatedText,
-                  },
-                ],
-              },
-              finishReason: lastFinishReason || 'STOP',
-            },
-          ],
-        };
-        if (finalUsageMetadata) {
-          summary.usageMetadata = {
-            promptTokenCount: finalUsageMetadata.promptTokenCount ?? 0,
-            candidatesTokenCount: finalUsageMetadata.candidatesTokenCount ?? 0,
-            totalTokenCount: finalUsageMetadata.totalTokenCount ?? 0,
-          };
-          if (finalUsageMetadata.serviceTier) {
-            summary.usageMetadata.serviceTier = finalUsageMetadata.serviceTier;
+      }
+      requestLog.logProviderStreamSummary({
+        _format: 'sse-json',
+        _eventCount: eventCount,
+        summary,
+      });
+    }
+  }
+}
+
+/**
+ * Executes a streaming completion for standard Gemini models (without thinking enabled).
+ * Uses the native Gemini streamGenerateContent endpoint.
+ *
+ * @param {Object} req - The incoming request payload.
+ * @param {string} apiKey - The Gemini API key.
+ * @param {AbortSignal} signal - The abort signal.
+ * @param {Object} requestLog - The request logging context.
+ * @param {Object} adapter - The Gemini adapter instance.
+ * @returns {AsyncGenerator<Object>} Async generator of OpenAI-style completion chunks.
+ */
+async function* executeStandardStream(req, apiKey, signal, requestLog, adapter) {
+  const payload = translateRequest(FORMATS.OPENAI, FORMATS.GEMINI, req);
+  const base = adapter.baseUrl
+    ? adapter.baseUrl.replace(/\/$/, '')
+    : 'https://generativelanguage.googleapis.com/v1beta';
+
+  const urlObj = new URL(`${base}/models/${req.actualModelId}:streamGenerateContent`);
+  urlObj.searchParams.set('alt', 'sse');
+  urlObj.searchParams.set('key', apiKey);
+  const url = urlObj.toString();
+  const headers = { 'content-type': 'application/json' };
+
+  const { response, fetchSignal, cleanup } = await performStreamFetch(
+    url,
+    headers,
+    payload,
+    adapter,
+    signal,
+    requestLog,
+  );
+  const chunkId = `waypoint-chunk-${Date.now()}`;
+  const stream = parseSSEStream(response.body, fetchSignal);
+
+  let eventCount = 0;
+  let accumulatedText = '';
+  let lastFinishReason = null;
+  let finalUsageMetadata = null;
+  let modelVersion = null;
+
+  try {
+    for await (const sseEvent of stream) {
+      if (fetchSignal?.aborted) throw new Error('Stream aborted');
+
+      const parsedData = parseSSEEventData(sseEvent.data);
+      if (!parsedData) continue;
+
+      if (requestLog && typeof requestLog.appendStreamEvent === 'function') {
+        requestLog.appendStreamEvent('provider', parsedData);
+      }
+      eventCount += 1;
+
+      if (parsedData.candidates?.[0]) {
+        const candidate = parsedData.candidates[0];
+        if (candidate.content?.parts) {
+          for (const part of candidate.content.parts) {
+            if (part.text) accumulatedText += part.text;
           }
         }
-        if (modelVersion) {
-          summary.modelVersion = modelVersion;
+        if (candidate.finishReason) lastFinishReason = candidate.finishReason;
+      }
+      if (parsedData.usageMetadata) finalUsageMetadata = parsedData.usageMetadata;
+      if (parsedData.modelVersion) modelVersion = parsedData.modelVersion;
+
+      const openaiChunk = translateStreamChunk(FORMATS.GEMINI, parsedData, chunkId, req);
+      if (openaiChunk) yield openaiChunk;
+    }
+  } finally {
+    cleanup();
+    if (requestLog && typeof requestLog.logProviderStreamSummary === 'function') {
+      const summary = {
+        candidates: [{
+          index: 0,
+          content: { role: 'model', parts: [{ text: accumulatedText }] },
+          finishReason: lastFinishReason || 'STOP',
+        }],
+      };
+      if (finalUsageMetadata) {
+        summary.usageMetadata = {
+          promptTokenCount: finalUsageMetadata.promptTokenCount ?? 0,
+          candidatesTokenCount: finalUsageMetadata.candidatesTokenCount ?? 0,
+          totalTokenCount: finalUsageMetadata.totalTokenCount ?? 0,
+        };
+        if (finalUsageMetadata.serviceTier) {
+          summary.usageMetadata.serviceTier = finalUsageMetadata.serviceTier;
         }
       }
+      if (modelVersion) summary.modelVersion = modelVersion;
 
       requestLog.logProviderStreamSummary({
         _format: 'sse-json',
@@ -433,5 +444,26 @@ export async function* executeStream(req, apiKey, signal, requestLog, adapter) {
         summary,
       });
     }
+  }
+}
+
+/**
+ * Generates a streaming completion.
+ * Delivers tokens in real-time, handling tag reconstruction for reasoning models.
+ *
+ * @param {Object} req - The incoming request payload.
+ * @param {string} apiKey - The Gemini API key.
+ * @param {AbortSignal} signal - The abort signal.
+ * @param {Object} requestLog - The request logging context.
+ * @param {Object} adapter - The Gemini adapter instance.
+ * @returns {AsyncGenerator<Object>} Async generator of OpenAI-style completion chunks.
+ */
+export async function* executeStream(req, apiKey, signal, requestLog, adapter) {
+  const thinkingEnabled = req.thinkingEnabled || req.thinking_supported || false;
+
+  if (thinkingEnabled) {
+    yield* executeThinkingStream(req, apiKey, signal, requestLog, adapter);
+  } else {
+    yield* executeStandardStream(req, apiKey, signal, requestLog, adapter);
   }
 }

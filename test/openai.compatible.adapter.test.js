@@ -902,7 +902,6 @@ describe('OpenAICompatibleAdapter Tests', () => {
     expect(res1.id).toBe('waypoint-custom-id');
     expect(res1.choices).toEqual([]);
 
-
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -949,7 +948,3 @@ describe('OpenAICompatibleAdapter Tests', () => {
     await expect(adapter.generateCompletion({ messages: [] }, 'key')).rejects.toThrow('Upstream error');
   });
 });
-
-
-
-

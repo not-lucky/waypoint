@@ -1,5 +1,5 @@
 /* eslint-disable no-restricted-syntax, no-constant-condition */
-import { resolveModel, applyModelConfig } from '../utils/modelResolver.js';
+import { resolveModel } from '../utils/ModelRouter.js';
 import { executeWithRetry } from './retryExecutor.js';
 import { logDebug } from '../utils/loggerHelpers.js';
 
@@ -20,15 +20,34 @@ export const runOrchestrationLoop = async ({
   retryLimit,
   onStreamResponse,
 }) => {
+  let currentReq = req;
+
   // Loop infinitely until either a successful completion is returned,
   // all retries/keys are exhausted, or an unsupported provider/error is thrown.
   while (true) {
-    // Resolve upstream model provider mapping from active config (if model exists).
-    if (req.model) {
-      applyModelConfig(req, resolveModel(req.model, config.providers));
+    // Resolve model mapping from active config in a non-mutating way.
+    if (currentReq.model) {
+      const resolved = resolveModel(currentReq.model, config.providers);
+      if (resolved) {
+        const { modelConfig } = resolved;
+        currentReq = {
+          ...currentReq,
+          provider: resolved.provider,
+          actualModelId: modelConfig.id,
+          fallbackModel: modelConfig.fallback_model || currentReq.fallbackModel,
+          thinking_supported: modelConfig.thinking_supported
+            || currentReq.thinking_supported,
+          thinkingEnabled: modelConfig.thinking_supported !== undefined
+            ? modelConfig.thinking_supported
+            : currentReq.thinkingEnabled,
+          thinkingBudget: modelConfig.default_thinking_budget !== undefined
+            ? modelConfig.default_thinking_budget
+            : currentReq.thinkingBudget,
+        };
+      }
     }
 
-    const { provider } = req;
+    const { provider } = currentReq;
     // Retrieve the registered provider adapter (e.g. GeminiAdapter, AnthropicAdapter).
     const adapter = providerFactory.get(provider);
 
@@ -48,7 +67,7 @@ export const runOrchestrationLoop = async ({
     // eslint-disable-next-line no-await-in-loop
     const result = await executeWithRetry({
       provider,
-      req,
+      req: currentReq,
       adapter,
       keyRegistry,
       abortController,
@@ -62,21 +81,48 @@ export const runOrchestrationLoop = async ({
     if (result && result.triggerFallback) {
       logDebug(logger, 'Triggering fallback routing', {
         originalModel: unifiedReq.model,
-        fallbackModel: req.fallbackModel,
+        fallbackModel: currentReq.fallbackModel,
       });
 
+      let nextProvider = currentReq.provider;
+      let nextActualModelId = currentReq.actualModelId;
+      let nextThinkingSupported = currentReq.thinking_supported;
+      let nextThinkingEnabled = currentReq.thinkingEnabled;
+      let nextThinkingBudget = currentReq.thinkingBudget;
+      let nextFallbackModel = currentReq.fallbackModel;
+
       // Attempt to resolve model specs for the fallback identifier.
-      const resolved = resolveModel(req.fallbackModel, config.providers);
+      const resolved = resolveModel(currentReq.fallbackModel, config.providers);
       if (resolved) {
-        applyModelConfig(req, resolved);
-      } else if (req.fallbackModel.includes('/')) {
+        const { modelConfig } = resolved;
+        nextProvider = resolved.provider;
+        nextActualModelId = modelConfig.id;
+        nextFallbackModel = modelConfig.fallback_model || nextFallbackModel;
+        nextThinkingSupported = modelConfig.thinking_supported || nextThinkingSupported;
+        nextThinkingEnabled = modelConfig.thinking_supported !== undefined
+          ? modelConfig.thinking_supported
+          : nextThinkingEnabled;
+        nextThinkingBudget = modelConfig.default_thinking_budget !== undefined
+          ? modelConfig.default_thinking_budget
+          : nextThinkingBudget;
+      } else if (currentReq.fallbackModel.includes('/')) {
         // Fall back to direct provider/model parsing if not explicitly defined in the map.
-        const [p, ...rest] = req.fallbackModel.split('/');
-        req.provider = p.trim();
-        req.actualModelId = rest.join('/').trim();
+        const [p, ...rest] = currentReq.fallbackModel.split('/');
+        nextProvider = p.trim();
+        nextActualModelId = rest.join('/').trim();
       }
-      req.model = req.fallbackModel;
-      req.isFallback = true; // Set flag to prevent infinite fallback loop.
+
+      currentReq = {
+        ...currentReq,
+        model: currentReq.fallbackModel,
+        provider: nextProvider,
+        actualModelId: nextActualModelId,
+        fallbackModel: nextFallbackModel,
+        thinking_supported: nextThinkingSupported,
+        thinkingEnabled: nextThinkingEnabled,
+        thinkingBudget: nextThinkingBudget,
+        isFallback: true, // Set flag to prevent infinite fallback loop.
+      };
       continue;
     }
 

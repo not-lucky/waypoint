@@ -1,4 +1,5 @@
-import { resolveModel, applyModelConfig, applyHeaderOverrides } from '../utils/modelResolver.js';
+import { resolveModel } from '../utils/ModelRouter.js';
+import { transformRequest } from '../utils/RequestTransformer.js';
 import { getAppLogger } from '../utils/logger.js';
 import { createRequestLog } from '../utils/requestLogger.js';
 import { StreamAccumulator } from '../utils/StreamAccumulator.js';
@@ -61,7 +62,7 @@ export class OpenAIController {
       // protecting downstream layers from conditional checks.
       // WHAT: Build the unified internal request from the OpenAI payload. max_tokens and
       // max_completion_tokens are both accepted; nullish coalescing picks whichever is present.
-      const unifiedReq = {
+      const baseReq = {
         model: body.model,
         messages: body.messages || [],
         temperature: body.temperature,
@@ -75,9 +76,9 @@ export class OpenAIController {
       // changing the core payload. We do this here instead of the orchestrator to keep the HTTP
       // header parsing out of the generic processing loop.
       // WHAT: Resolve model config (provider, actualModelId, fallback, thinking defaults)
-      // then apply header-level overrides (thinking budget, temperature).
-      applyModelConfig(unifiedReq, resolveModel(body.model, providersConfig));
-      const cleanRawReq = applyHeaderOverrides(unifiedReq, req);
+      // then apply header-level overrides (thinking budget, temperature) in a non-mutating way.
+      const resolved = resolveModel(body.model, providersConfig);
+      const { unifiedReq, cleanRawReq } = transformRequest(baseReq, req, resolved);
 
       logger.debug('OpenAI completion request received', {
         model: body.model,

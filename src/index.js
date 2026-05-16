@@ -7,11 +7,12 @@ import { ProviderFactory } from './adapters/ProviderFactory.js';
 import { UnifiedOrchestrator } from './services/UnifiedOrchestrator.js';
 import { OpenAIController } from './controllers/OpenAIController.js';
 import { AnthropicController } from './controllers/AnthropicController.js';
-import { validateCompletionBody } from './middleware/zod.validation.js';
 import { authMiddleware } from './middleware/auth.js';
-import { rateLimiter } from './middleware/rateLimiter.js';
 import { configureLogging, getAppLogger } from './utils/logger.js';
 import { registerLifecycle } from './lifecycle.js';
+import { ModelCache } from './utils/ModelCache.js';
+import { createOpenaiRouter } from './routes/openai.js';
+import { createAnthropicRouter } from './routes/anthropic.js';
 
 /**
  * Entry point for the Waypoint API gateway.
@@ -42,6 +43,9 @@ const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, confi
 // for specific formats (OpenAI vs Anthropic) into a unified internal representation.
 const openAIController = new OpenAIController(orchestrator);
 const anthropicController = new AnthropicController(orchestrator);
+
+// ModelCache handles configuration-aware caching for exposed model lists.
+const modelCache = new ModelCache(configLoader);
 
 const app = express();
 const { port } = config.gateway;
@@ -90,98 +94,18 @@ app.get('/health', auth, (req, res) => {
   });
 });
 
-let cachedUniqueModels = null;
-let lastConfig = null;
-
-/**
- * Extracts a deduplicated list of all model IDs and aliases from the current configuration.
- * We cache this extraction because recalculating it on every `/models` request is unnecessary
- * overhead when the configuration hasn't changed.
- * The output is prefixed (e.g. "provider/model") to eliminate cross-provider
- * ambiguity when routing.
- */
-const getUniqueModels = () => {
-  const currentConfig = configLoader.loadConfig();
-  if (cachedUniqueModels && lastConfig === currentConfig) {
-    return cachedUniqueModels;
-  }
-
-  const providers = currentConfig.providers || {};
-  // eslint-disable-next-line arrow-body-style
-  const models = Object.entries(providers).flatMap(([providerName, providerConfig]) => {
-    return providerConfig.models.flatMap((modelConfig) => {
-      const list = [];
-      if (modelConfig.id) list.push(`${providerName}/${modelConfig.id}`);
-      if (Array.isArray(modelConfig.aliases)) {
-        list.push(...modelConfig.aliases.map((alias) => `${providerName}/${alias}`));
-      }
-      return list;
-    });
-  });
-
-  lastConfig = currentConfig;
-  cachedUniqueModels = [...new Set(models)];
-  return cachedUniqueModels;
-};
-
-// ==========================================
-// OpenAI Protocol Router
-// ==========================================
-// We encapsulate the OpenAI routes into their own express.Router() to easily
-// apply auth and rate limiting logic specific to this path.
-const openaiRouter = express.Router();
-openaiRouter.use(auth);
-openaiRouter.use(rateLimiter);
-
-// GET /openai/models lists all configured models mapping them to standard OpenAI schemas.
-openaiRouter.get('/models', (req, res) => {
-  const data = getUniqueModels().map((id) => ({
-    id,
-    object: 'model',
-    owned_by: 'waypoint',
-  }));
-  res.json({ object: 'list', data });
-});
-
-openaiRouter.post(
-  '/chat/completions',
-  validateCompletionBody,
-  (req, res) => openAIController.handleCompletion(req, res),
-);
-
-/**
- * We mount `/openai/v1` BEFORE `/openai`.
- * Express evaluates prefixes sequentially. If we mounted `/openai` first, it would
- * capture `/openai/v1/...` requests and strip the prefix incorrectly, causing 404s.
- */
+// Mount decoupled routers
 logger.debug('Mounting OpenAI routes at /openai/v1 and /openai');
-app.use(['/openai/v1', '/openai'], openaiRouter);
-
-// ==========================================
-// Anthropic Protocol Router
-// ==========================================
-const anthropicRouter = express.Router();
-anthropicRouter.use(auth);
-anthropicRouter.use(rateLimiter);
-
-// GET /anthropic/models lists models mapped to standard Anthropic schemas.
-anthropicRouter.get('/models', (req, res) => {
-  const data = getUniqueModels().map((id) => ({
-    type: 'model',
-    id,
-  }));
-  res.json({ type: 'list', data });
-});
-
-anthropicRouter.post(
-  '/messages',
-  validateCompletionBody,
-  (req, res) => anthropicController.handleCompletion(req, res),
+app.use(
+  ['/openai/v1', '/openai'],
+  createOpenaiRouter({ auth, openAIController, modelCache }),
 );
 
-// Mount with `/anthropic/v1` first to avoid partial-matching 404 routing bugs
 logger.debug('Mounting Anthropic routes at /anthropic/v1 and /anthropic');
-app.use(['/anthropic/v1', '/anthropic'], anthropicRouter);
+app.use(
+  ['/anthropic/v1', '/anthropic'],
+  createAnthropicRouter({ auth, anthropicController, modelCache }),
+);
 
 /**
  * Global Fallback Error Handler:

@@ -1,5 +1,6 @@
 /* eslint-disable max-len */
-import { resolveModel, applyModelConfig, applyHeaderOverrides } from '../utils/modelResolver.js';
+import { resolveModel } from '../utils/ModelRouter.js';
+import { transformRequest } from '../utils/RequestTransformer.js';
 import { getAppLogger } from '../utils/logger.js';
 import { createRequestLog } from '../utils/requestLogger.js';
 import { FORMATS, translateRequest, translateResponse } from '../translators/index.js';
@@ -62,18 +63,18 @@ export class AnthropicController {
       const body = req.body || {};
       const providersConfig = this.orchestrator.config?.providers || {};
 
-      // What: Translate Anthropic request to UnifiedRequest (OpenAI format).
+      // What: Translate Anthropic request to UnifiedRequest (OpenAI format) base context.
       // Why: Maintaining a single internal lingua franca reduces the M*N translation matrix
       // problem to M+N. We translate to OpenAI format here because the orchestrator and
       // most downstream providers natively speak or easily map to it.
-      const unifiedReq = translateRequest(FORMATS.ANTHROPIC, FORMATS.OPENAI, body);
+      const baseReq = translateRequest(FORMATS.ANTHROPIC, FORMATS.OPENAI, body);
 
-      // What: Resolve actual provider/model routing and apply overrides.
+      // What: Resolve actual provider/model routing and apply overrides in a non-mutating way.
       // Why: The client may request 'claude-3-sonnet', but the config might map this to
       // a specific AWS Bedrock ARN or an OpenAI-compatible fallback. Header overrides
       // allow dynamic, per-request routing injections without changing the payload schema.
-      applyModelConfig(unifiedReq, resolveModel(body.model, providersConfig));
-      const cleanRawReq = applyHeaderOverrides(unifiedReq, req);
+      const resolved = resolveModel(body.model, providersConfig);
+      const { unifiedReq, cleanRawReq } = transformRequest(baseReq, req, resolved);
 
       logger.debug('Anthropic completion request received', {
         model: body.model,

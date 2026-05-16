@@ -3,47 +3,43 @@ import { AnthropicAdapter } from './AnthropicAdapter.js';
 import { OpenAICompatibleAdapter } from './OpenAICompatibleAdapter.js';
 
 /**
- * Instantiates the correct adapter implementation based on the provider configuration.
- * Hardcodes endpoints for recognized reserved providers ('gemini', 'anthropic', 'openai')
- * and falls back to dynamic resolution for custom endpoints.
- */
-const createAdapter = (name, provider, timeoutMs) => {
-  switch (name) {
-    case 'gemini':
-      return new GeminiAdapter(null, timeoutMs);
-    case 'anthropic':
-      return new AnthropicAdapter(null, timeoutMs);
-    case 'openai':
-      return new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai', timeoutMs);
-    default:
-      // If a custom provider mimics the Anthropic API structure, we instantiate
-      // the AnthropicAdapter directly against its custom base_url.
-      if (provider?.type === 'anthropic-compatible') {
-        return new AnthropicAdapter(provider?.base_url, timeoutMs);
-      }
-      // By default, assume all custom providers use the OpenAI-compatible spec
-      // (v1/chat/completions)
-      return new OpenAICompatibleAdapter(provider?.base_url, name, timeoutMs);
-  }
-};
-
-/**
  * Factory class that manages the lifecycle and retrieval of all provider adapters.
- * Orchestrator calls this to dynamically route requests based on the unified request payload.
+ * Adapters register strategies, decoupling the factory from hardcoded switches.
  */
 export class ProviderFactory {
+  static strategies = [];
+
+  /**
+   * Registers a new strategy for creating provider adapters.
+   *
+   * @param {Object} strategy
+   * @param {Function} strategy.match - (name, provider) => boolean
+   * @param {Function} strategy.create - (name, provider, timeoutMs) => Adapter
+   */
+  static registerStrategy(strategy) {
+    ProviderFactory.strategies.push(strategy);
+  }
+
   constructor(config = {}) {
     const providers = config.providers || {};
     const timeoutMs = config.gateway?.http_timeout_ms;
 
-    // Pre-initialize all adapters during server boot so that runtime lookups
-    // are strictly O(1) Map retrievals, avoiding expensive initialization per-request.
-    this.adapters = new Map(
-      Object.entries(providers).map(([name, provider]) => [
-        name,
-        createAdapter(name, provider, timeoutMs),
-      ]),
-    );
+    // Pre-initialize all adapters during server boot.
+    this.adapters = new Map();
+
+    for (const [name, provider] of Object.entries(providers)) {
+      let created = false;
+      for (const strategy of ProviderFactory.strategies) {
+        if (strategy.match(name, provider)) {
+          this.adapters.set(name, strategy.create(name, provider, timeoutMs));
+          created = true;
+          break;
+        }
+      }
+      if (!created) {
+        throw new Error(`No adapter strategy found for provider '${name}'`);
+      }
+    }
   }
 
   register(name, adapter) {
@@ -54,3 +50,27 @@ export class ProviderFactory {
     return this.adapters.get(name);
   }
 }
+
+// Register default adapter strategies
+
+// Gemini Strategy
+ProviderFactory.registerStrategy({
+  match: (name) => name === 'gemini',
+  create: (name, provider, timeoutMs) => new GeminiAdapter(null, timeoutMs),
+});
+
+// Anthropic Strategy
+ProviderFactory.registerStrategy({
+  match: (name, provider) => name === 'anthropic' || provider?.type === 'anthropic-compatible',
+  create: (name, provider, timeoutMs) => new AnthropicAdapter(name === 'anthropic' ? null : provider?.base_url, timeoutMs),
+});
+
+// Default OpenAI & Custom Strategy
+ProviderFactory.registerStrategy({
+  match: () => true,
+  create: (name, provider, timeoutMs) => new OpenAICompatibleAdapter(
+    name === 'openai' ? 'https://api.openai.com/v1' : provider?.base_url,
+    name,
+    timeoutMs,
+  ),
+});

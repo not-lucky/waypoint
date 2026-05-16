@@ -216,8 +216,8 @@ describe('Graceful Teardown Sequence', () => {
     // Fast-forward time by 10 seconds (10000ms)
     await vi.advanceTimersByTimeAsync(10000);
     // Flush promise queue
-    // eslint-disable-next-line no-await-in-loop
     for (let i = 0; i < 20; i++) {
+      // eslint-disable-next-line no-await-in-loop
       await Promise.resolve();
     }
 
@@ -517,8 +517,8 @@ describe('Graceful Teardown Sequence', () => {
     // Advance by 10s to trigger safetyTimeout
     await vi.advanceTimersByTimeAsync(10000);
     // Flush promise queue
-    // eslint-disable-next-line no-await-in-loop
     for (let i = 0; i < 20; i++) {
+      // eslint-disable-next-line no-await-in-loop
       await Promise.resolve();
     }
 
@@ -765,8 +765,8 @@ describe('Graceful Teardown Sequence', () => {
     });
 
     await vi.advanceTimersByTimeAsync(10000);
-    // eslint-disable-next-line no-await-in-loop
     for (let i = 0; i < 20; i++) {
+      // eslint-disable-next-line no-await-in-loop
       await Promise.resolve();
     }
 
@@ -808,8 +808,8 @@ describe('Graceful Teardown Sequence', () => {
     });
 
     await vi.advanceTimersByTimeAsync(10000);
-    // eslint-disable-next-line no-await-in-loop
     for (let i = 0; i < 20; i++) {
+      // eslint-disable-next-line no-await-in-loop
       await Promise.resolve();
     }
 

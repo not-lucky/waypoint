@@ -316,7 +316,7 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
     const providerFactory = new ProviderFactory(config);
     const mockAdapter = new MockAdapter();
     mockAdapter.generateCompletion = async (req, apiKey, signal) => {
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      await new Promise((resolve) => { setTimeout(resolve, 10); });
       if (signal.aborted) {
         const err = new Error('Aborted');
         err.name = 'AbortError';

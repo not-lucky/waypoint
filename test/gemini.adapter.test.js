@@ -1388,6 +1388,3 @@ describe('GeminiAdapter Tests', () => {
     });
   });
 });
-
-
-

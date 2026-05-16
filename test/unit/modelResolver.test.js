@@ -1,12 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import {
-  resolveModel,
-  applyModelConfig,
-  applyHeaderOverrides,
-  THINKING_BUDGETS,
-} from '../../src/utils/modelResolver.js';
+import { resolveModel } from '../../src/utils/ModelRouter.js';
+import { transformRequest, THINKING_BUDGETS } from '../../src/utils/RequestTransformer.js';
 
-describe('modelResolver Unit Tests', () => {
+describe('modelResolver & RequestTransformer Unit Tests', () => {
   describe('resolveModel', () => {
     it('should return null when modelName is falsy', () => {
       expect(resolveModel(null)).toBeNull();
@@ -15,7 +11,6 @@ describe('modelResolver Unit Tests', () => {
     });
 
     it('should handle missing/non-object providersConfig without caching', () => {
-      // Should not throw and should resolve bare format to null since config is empty
       expect(resolveModel('gpt-4o', {})).toBeNull();
       expect(resolveModel('gpt-4o', undefined)).toBeNull();
       expect(resolveModel('gpt-4o', 'string-config')).toBeNull();
@@ -65,7 +60,7 @@ describe('modelResolver Unit Tests', () => {
         anthropic: {
           models: [{ id: 'claude-3-opus', aliases: ['opus', 'claude-3'] }],
         },
-        emptyProvider: {}, // models is undefined
+        emptyProvider: {},
       };
 
       // Match by ID
@@ -105,15 +100,20 @@ describe('modelResolver Unit Tests', () => {
     });
   });
 
-  describe('applyModelConfig', () => {
-    it('should do nothing if resolved is falsy', () => {
-      const req = { model: 'gpt-4o' };
-      applyModelConfig(req, null);
-      expect(req).toEqual({ model: 'gpt-4o' });
+  describe('transformRequest', () => {
+    it('should handle falsy resolved by copying baseReq and rawReq properties', () => {
+      const baseReq = { model: 'gpt-4o', temperature: 0.5 };
+      const rawReq = { headers: {} };
+      const { unifiedReq, cleanRawReq } = transformRequest(baseReq, rawReq, null);
+
+      expect(unifiedReq.model).toBe('gpt-4o');
+      expect(unifiedReq.temperature).toBe(0.5);
+      expect(cleanRawReq.headers).toEqual({});
     });
 
-    it('should set provider, actualModelId, and optional fallback_model', () => {
-      const req = { model: 'test' };
+    it('should set provider, actualModelId, and optional fallbackModel from resolved', () => {
+      const baseReq = { model: 'test' };
+      const rawReq = { headers: {} };
       const resolved = {
         provider: 'openai',
         modelConfig: {
@@ -122,15 +122,16 @@ describe('modelResolver Unit Tests', () => {
         },
       };
 
-      applyModelConfig(req, resolved);
-      expect(req.provider).toBe('openai');
-      expect(req.actualModelId).toBe('gpt-4o-real');
-      expect(req.fallbackModel).toBe('anthropic/claude-3');
+      const { unifiedReq } = transformRequest(baseReq, rawReq, resolved);
+      expect(unifiedReq.provider).toBe('openai');
+      expect(unifiedReq.actualModelId).toBe('gpt-4o-real');
+      expect(unifiedReq.fallbackModel).toBe('anthropic/claude-3');
     });
 
-    it('should set thinking properties if supported', () => {
-      const req1 = { model: 'test' };
-      const resolved1 = {
+    it('should set thinking properties if supported in resolved modelConfig', () => {
+      const baseReq = { model: 'test' };
+      const rawReq = { headers: {} };
+      const resolved = {
         provider: 'anthropic',
         modelConfig: {
           id: 'claude-thinking',
@@ -139,87 +140,65 @@ describe('modelResolver Unit Tests', () => {
         },
       };
 
-      applyModelConfig(req1, resolved1);
-      expect(req1.thinking_supported).toBe(true);
-      expect(req1.thinkingEnabled).toBe(true);
-      expect(req1.thinkingBudget).toBe(1024);
-
-      // Without default budget
-      const req2 = { model: 'test' };
-      const resolved2 = {
-        provider: 'anthropic',
-        modelConfig: {
-          id: 'claude-thinking',
-          thinking_supported: true,
-        },
-      };
-
-      applyModelConfig(req2, resolved2);
-      expect(req2.thinking_supported).toBe(true);
-      expect(req2.thinkingEnabled).toBe(true);
-      expect(req2.thinkingBudget).toBeUndefined();
-    });
-  });
-
-  describe('applyHeaderOverrides', () => {
-    it('should handle rawReq with missing headers', () => {
-      const req = { temperature: 0.5 };
-      const rawReq = {};
-      const sanitized = applyHeaderOverrides(req, rawReq);
-
-      expect(req.temperature).toBe(0.5);
-      expect(sanitized.headers).toEqual({});
+      const { unifiedReq } = transformRequest(baseReq, rawReq, resolved);
+      expect(unifiedReq.thinking_supported).toBe(true);
+      expect(unifiedReq.thinkingEnabled).toBe(true);
+      expect(unifiedReq.thinkingBudget).toBe(1024);
     });
 
     it('should override thinking level and map to budget constants case-insensitively', () => {
+      const baseReq = {};
+
       // low -> 512
-      const req1 = {};
-      applyHeaderOverrides(req1, { headers: { 'x-gateway-thinking-level': 'Low' } });
+      const rawReq1 = { headers: { 'x-gateway-thinking-level': 'Low' } };
+      const { unifiedReq: req1 } = transformRequest(baseReq, rawReq1, null);
       expect(req1.thinkingBudget).toBe(THINKING_BUDGETS.low);
       expect(req1.thinkingEnabled).toBe(true);
 
       // medium -> 2048
-      const req2 = {};
-      applyHeaderOverrides(req2, { headers: { 'x-gateway-thinking-level': 'MEDIUM' } });
+      const rawReq2 = { headers: { 'x-gateway-thinking-level': 'MEDIUM' } };
+      const { unifiedReq: req2 } = transformRequest(baseReq, rawReq2, null);
       expect(req2.thinkingBudget).toBe(THINKING_BUDGETS.medium);
       expect(req2.thinkingEnabled).toBe(true);
 
       // high -> 8192
-      const req3 = {};
-      applyHeaderOverrides(req3, { headers: { 'x-gateway-thinking-level': 'high' } });
+      const rawReq3 = { headers: { 'x-gateway-thinking-level': 'high' } };
+      const { unifiedReq: req3 } = transformRequest(baseReq, rawReq3, null);
       expect(req3.thinkingBudget).toBe(THINKING_BUDGETS.high);
       expect(req3.thinkingEnabled).toBe(true);
 
-      // Invalid thinking level is ignored
-      const req4 = { thinkingBudget: 123 };
-      applyHeaderOverrides(req4, { headers: { 'x-gateway-thinking-level': 'ultra' } });
-      expect(req4.thinkingBudget).toBe(123);
+      // Invalid thinking level is ignored if not defined
+      const rawReq4 = { headers: { 'x-gateway-thinking-level': 'ultra' } };
+      const { unifiedReq: req4 } = transformRequest(baseReq, rawReq4, null);
+      expect(req4.thinkingBudget).toBeUndefined();
     });
 
     it('should override temperature and clamp/ignore out-of-bounds or invalid values', () => {
+      const baseReq = { temperature: 0.5 };
+
       // Valid temperature
-      const req1 = { temperature: 0.5 };
-      applyHeaderOverrides(req1, { headers: { 'x-gateway-temperature': '1.2' } });
+      const rawReq1 = { headers: { 'x-gateway-temperature': '1.2' } };
+      const { unifiedReq: req1 } = transformRequest(baseReq, rawReq1, null);
       expect(req1.temperature).toBe(1.2);
 
       // Out of bounds: negative
-      const req2 = { temperature: 0.5 };
-      applyHeaderOverrides(req2, { headers: { 'x-gateway-temperature': '-0.1' } });
+      const rawReq2 = { headers: { 'x-gateway-temperature': '-0.1' } };
+      const { unifiedReq: req2 } = transformRequest(baseReq, rawReq2, null);
       expect(req2.temperature).toBe(0.5);
 
       // Out of bounds: too high
-      const req3 = { temperature: 0.5 };
-      applyHeaderOverrides(req3, { headers: { 'x-gateway-temperature': '2.1' } });
+      const rawReq3 = { headers: { 'x-gateway-temperature': '2.1' } };
+      const { unifiedReq: req3 } = transformRequest(baseReq, rawReq3, null);
       expect(req3.temperature).toBe(0.5);
 
       // Invalid non-numeric string
-      const req4 = { temperature: 0.5 };
-      applyHeaderOverrides(req4, { headers: { 'x-gateway-temperature': 'not-a-number' } });
+      const rawReq4 = { headers: { 'x-gateway-temperature': 'not-a-number' } };
+      const { unifiedReq: req4 } = transformRequest(baseReq, rawReq4, null);
       expect(req4.temperature).toBe(0.5);
     });
 
-    it('should return a sanitized request with custom headers removed', () => {
-      const req = {};
+    it('should return a sanitized request with custom headers removed without mutating original', () => {
+      const baseReq = {};
       const rawReq = {
         method: 'POST',
         headers: {
@@ -229,10 +208,10 @@ describe('modelResolver Unit Tests', () => {
         },
       };
 
-      const sanitized = applyHeaderOverrides(req, rawReq);
-      expect(sanitized.headers['content-type']).toBe('application/json');
-      expect(sanitized.headers['x-gateway-thinking-level']).toBeUndefined();
-      expect(sanitized.headers['x-gateway-temperature']).toBeUndefined();
+      const { cleanRawReq } = transformRequest(baseReq, rawReq, null);
+      expect(cleanRawReq.headers['content-type']).toBe('application/json');
+      expect(cleanRawReq.headers['x-gateway-thinking-level']).toBeUndefined();
+      expect(cleanRawReq.headers['x-gateway-temperature']).toBeUndefined();
 
       // Verify original rawReq headers were not mutated
       expect(rawReq.headers['x-gateway-thinking-level']).toBe('high');

@@ -1,29 +1,8 @@
 /* eslint-disable no-restricted-syntax */
 import { FORMATS, translateRequest, translateStreamChunk } from '../translators/index.js';
 import { parseSSEStream } from '../utils/sseParser.js';
-import { sanitizeUrl, serializeHeaders } from '../utils/requestLogger.js';
 import { translateUsage, getThinkingLevel } from './geminiFormatter.js';
-import { parseUpstreamError } from './BaseProvider.js';
-
-/**
- * Finds the longest suffix of `str` that matches a prefix of `target`.
- * Used during stream parsing to handle partial tag matches at chunk boundaries,
- * excluding the case where the whole target matches (maximum overlap length is target.length - 1).
- *
- * @param {string} str - The source string whose suffix is checked.
- * @param {string} target - The target string whose prefix is checked.
- * @returns {string} The overlapping substring, or an empty string if no overlap is found.
- */
-export function getLongestPrefixSuffix(str, target) {
-  const maxLen = Math.min(str.length, target.length - 1);
-  for (let len = maxLen; len > 0; len -= 1) {
-    const suffix = str.slice(-len);
-    if (target.startsWith(suffix)) {
-      return suffix;
-    }
-  }
-  return '';
-}
+import { ThinkingBuffer } from '../utils/ThinkingBuffer.js';
 
 /**
  * Processes buffered text from a stream and extracts thoughts enclosed in `<thought>` tags.
@@ -37,48 +16,17 @@ export function getLongestPrefixSuffix(str, target) {
  * @returns {{ buffer: string, state: 'text'|'thinking' }} The updated buffer and state.
  */
 export const processThinkingBuffer = (buffer, state, flush, sendThinking, sendText) => {
-  let pendingBuffer = buffer;
-  let streamState = state;
-  const START_TAG = '<thought>';
-  const END_TAG = '</thought>';
-
-  let processed = true;
-  while (processed) {
-    processed = false;
-
-    if (streamState !== 'text' && streamState !== 'thinking') {
-      break;
-    }
-
-    const isText = streamState === 'text';
-    const targetTag = isText ? START_TAG : END_TAG;
-    const sendFn = isText ? sendText : sendThinking;
-    const nextState = isText ? 'thinking' : 'text';
-
-    const idx = pendingBuffer.indexOf(targetTag);
-    if (idx !== -1) {
-      const before = pendingBuffer.slice(0, idx);
-      sendFn(before);
-      streamState = nextState;
-      pendingBuffer = pendingBuffer.slice(idx + targetTag.length);
-      processed = true;
-    } else if (!flush) {
-      const partial = getLongestPrefixSuffix(pendingBuffer, targetTag);
-      if (partial) {
-        const before = pendingBuffer.slice(0, -partial.length);
-        sendFn(before);
-        pendingBuffer = partial;
-      } else {
-        sendFn(pendingBuffer);
-        pendingBuffer = '';
-      }
+  const tb = new ThinkingBuffer({ initialState: state });
+  tb.buffer = buffer;
+  const deltas = tb.process('', flush);
+  for (const d of deltas) {
+    if (d.type === 'thinking') {
+      sendThinking(d.content);
     } else {
-      sendFn(pendingBuffer);
-      pendingBuffer = '';
+      sendText(d.content);
     }
   }
-
-  return { buffer: pendingBuffer, state: streamState };
+  return { buffer: tb.buffer, state: tb.state };
 };
 
 /**
@@ -96,54 +44,6 @@ export function parseSSEEventData(data) {
   } catch (err) {
     return null;
   }
-}
-
-/**
- * Performs a POST request to the provider SSE streaming endpoint.
- * Sets up timeout handles, catches fetch exceptions, and reports request/response metadata.
- *
- * @param {string} url - Sanitized provider endpoint URL.
- * @param {Object} headers - Request headers dictionary.
- * @param {Object} payload - Serialized JSON request payload body.
- * @param {Object} adapter - Active provider adapter instance.
- * @param {AbortSignal} signal - Client-provided cancel signal.
- * @param {Object} requestLog - Optional request logging object context.
- * @returns {Promise<{ response: Response, fetchSignal: AbortSignal, cleanup: function }>}
- *          The fetch response, the signal used, and the cleanup callback.
- */
-async function performStreamFetch(url, headers, payload, adapter, signal, requestLog) {
-  const { signal: fetchSignal, cleanup } = adapter.getTimeoutSignal(signal, adapter.timeoutMs);
-  let response;
-  try {
-    response = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload),
-      signal: fetchSignal,
-    });
-  } catch (fetchErr) {
-    if (requestLog) {
-      requestLog.logProviderRequest(sanitizeUrl(url), {}, payload);
-    }
-    cleanup();
-    throw fetchErr;
-  }
-
-  if (requestLog) {
-    requestLog.logProviderRequest(
-      sanitizeUrl(url),
-      serializeHeaders(response.headers),
-      payload,
-    );
-  }
-
-  if (!response.ok) {
-    const err = await parseUpstreamError(response);
-    cleanup();
-    throw err;
-  }
-
-  return { response, fetchSignal, cleanup };
 }
 
 /**
@@ -184,19 +84,19 @@ async function* executeThinkingStream(req, apiKey, signal, requestLog, adapter) 
   if (req.temperature !== undefined) payload.temperature = req.temperature;
   if (req.maxTokens !== undefined) payload.max_tokens = req.maxTokens;
 
-  const { response, fetchSignal, cleanup } = await performStreamFetch(
+  const { response, fetchSignal, cleanup } = await adapter.performFetch(
     url,
     headers,
     payload,
-    adapter,
     signal,
     requestLog,
+    adapter.timeoutMs,
   );
+
   const chunkId = `waypoint-chunk-${Date.now()}`;
   const stream = parseSSEStream(response.body, fetchSignal);
+  const thinkingBuffer = new ThinkingBuffer();
 
-  let streamState = 'text';
-  let pendingBuffer = '';
   let eventCount = 0;
   let lastFinishReason = null;
   let responseId = null;
@@ -238,43 +138,34 @@ async function* executeThinkingStream(req, apiKey, signal, requestLog, adapter) 
       if (c.finish_reason || c.finishReason) lastFinishReason = c.finish_reason || c.finishReason;
 
       const deltasToYield = [];
-      const sendThinking = (text) => {
-        if (!text) return;
-        deltasToYield.push({ reasoning_content: text, content: null });
-      };
-      const sendText = (text) => {
-        if (!text) return;
-        deltasToYield.push({ reasoning_content: null, content: text });
-      };
-
-      if (c.delta?.reasoning_content) sendThinking(c.delta.reasoning_content);
-      if (c.delta?.content) {
-        pendingBuffer += c.delta.content;
-        const result = processThinkingBuffer(
-          pendingBuffer,
-          streamState,
-          false,
-          sendThinking,
-          sendText,
-        );
-        pendingBuffer = result.buffer;
-        streamState = result.state;
+      if (c.delta?.reasoning_content) {
+        deltasToYield.push({ reasoning_content: c.delta.reasoning_content, content: null });
       }
 
-      if (deltasToYield.length > 0) {
-        for (const delta of deltasToYield) {
-          yield {
-            id: chunkId,
-            object: 'chat.completion.chunk',
-            choices: [{
-              index: c.index ?? 0,
-              delta,
-              finish_reason: c.finish_reason ?? c.finishReason ?? null,
-            }],
-            usage: translateUsage(parsedData.usage),
-          };
+      if (c.delta?.content) {
+        const resultDeltas = thinkingBuffer.process(c.delta.content, false);
+        for (const d of resultDeltas) {
+          deltasToYield.push({
+            reasoning_content: d.type === 'thinking' ? d.content : null,
+            content: d.type === 'text' ? d.content : null,
+          });
         }
-      } else {
+      }
+
+      for (const delta of deltasToYield) {
+        yield {
+          id: chunkId,
+          object: 'chat.completion.chunk',
+          choices: [{
+            index: c.index ?? 0,
+            delta,
+            finish_reason: c.finish_reason ?? c.finishReason ?? null,
+          }],
+          usage: translateUsage(parsedData.usage),
+        };
+      }
+
+      if (deltasToYield.length === 0) {
         yield {
           id: chunkId,
           object: 'chat.completion.chunk',
@@ -288,31 +179,19 @@ async function* executeThinkingStream(req, apiKey, signal, requestLog, adapter) 
       }
     }
 
-    const deltasToYield = [];
-    const sendThinking = (text) => {
-      if (!text) return;
-      deltasToYield.push({ reasoning_content: text, content: null });
-    };
-    const sendText = (text) => {
-      if (!text) return;
-      deltasToYield.push({ reasoning_content: null, content: text });
-    };
-
-    const result = processThinkingBuffer(
-      pendingBuffer,
-      streamState,
-      true,
-      sendThinking,
-      sendText,
-    );
-    pendingBuffer = result.buffer;
-    streamState = result.state;
-
-    for (const delta of deltasToYield) {
+    const finalDeltas = thinkingBuffer.process('', true);
+    for (const d of finalDeltas) {
       yield {
         id: chunkId,
         object: 'chat.completion.chunk',
-        choices: [{ index: 0, delta, finish_reason: null }],
+        choices: [{
+          index: 0,
+          delta: {
+            reasoning_content: d.type === 'thinking' ? d.content : null,
+            content: d.type === 'text' ? d.content : null,
+          },
+          finish_reason: null,
+        }],
       };
     }
   } finally {
@@ -372,14 +251,15 @@ async function* executeStandardStream(req, apiKey, signal, requestLog, adapter) 
   const url = urlObj.toString();
   const headers = { 'content-type': 'application/json' };
 
-  const { response, fetchSignal, cleanup } = await performStreamFetch(
+  const { response, fetchSignal, cleanup } = await adapter.performFetch(
     url,
     headers,
     payload,
-    adapter,
     signal,
     requestLog,
+    adapter.timeoutMs,
   );
+
   const chunkId = `waypoint-chunk-${Date.now()}`;
   const stream = parseSSEStream(response.body, fetchSignal);
 

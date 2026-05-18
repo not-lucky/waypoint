@@ -71,10 +71,8 @@ export const transformRequest = (baseReq, rawReq, resolved) => {
   delete sanitizedHeaders['x-gateway-thinking-level'];
   delete sanitizedHeaders['x-gateway-temperature'];
 
-  const cleanRawReq = {
-    ...rawReq,
-    headers: sanitizedHeaders,
-  };
+  const cleanRawReq = Object.create(rawReq || {});
+  cleanRawReq.headers = sanitizedHeaders;
 
   return { unifiedReq, cleanRawReq };
 };

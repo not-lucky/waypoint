@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { getLongestPrefixSuffix } from '../../src/utils/stringUtils.js';
 import {
-  getLongestPrefixSuffix,
   processThinkingBuffer,
   parseSSEEventData,
 } from '../../src/adapters/geminiStream.js';

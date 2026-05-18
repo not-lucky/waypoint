@@ -514,7 +514,7 @@ describe('GeminiAdapter Tests', () => {
     });
 
     it('assert: getLongestPrefixSuffix behaves correctly', async () => {
-      const { getLongestPrefixSuffix: helper } = await import('../src/adapters/geminiStream.js');
+      const { getLongestPrefixSuffix: helper } = await import('../src/utils/stringUtils.js');
       expect(helper('abc<thou', '<thought>')).toBe('<thou');
       expect(helper('abc', '<thought>')).toBe('');
     });

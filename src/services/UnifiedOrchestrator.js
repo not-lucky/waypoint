@@ -39,24 +39,25 @@ export class UnifiedOrchestrator {
       thinkingBudget: req.thinkingBudget,
     });
 
+    const target = rawReq?.res || rawReq;
+    let cleanupCloseListener = null;
+
     // Handle client disconnections to instantly stop upstream queries
-    if (rawReq) {
-      if (typeof rawReq.on === 'function') {
-        rawReq.on('close', () => {
-          logDebug(this.logger, 'Request abort/cancel event detected via request close');
-          abortController.abort();
-        });
-      }
-      const target = rawReq.res || rawReq;
-      if (target && target !== rawReq && typeof target.on === 'function') {
-        target.on('close', () => {
-          const { res } = rawReq;
-          if (res ? !res.writableEnded : true) {
-            logDebug(this.logger, 'Request abort/cancel event detected via response close');
-            abortController.abort();
-          }
-        });
-      }
+    if (target && typeof target.on === 'function') {
+      const handleClose = () => {
+        const isResponseObject = !!(rawReq && rawReq.res);
+        if (isResponseObject && target.writableEnded) {
+          return;
+        }
+        logDebug(this.logger, 'Request abort/cancel event detected via client disconnect');
+        abortController.abort();
+      };
+      target.on('close', handleClose);
+      cleanupCloseListener = () => {
+        if (typeof target.off === 'function') {
+          target.off('close', handleClose);
+        }
+      };
     }
 
     let isStreamingResponse = false;
@@ -86,6 +87,9 @@ export class UnifiedOrchestrator {
               yield chunk;
             }
           } finally {
+            if (cleanupCloseListener) {
+              cleanupCloseListener();
+            }
             activeControllers.delete(abortController);
           }
         };
@@ -96,6 +100,9 @@ export class UnifiedOrchestrator {
     } finally {
       // For standard unary (non-streaming) completions, clean up the controller immediately
       if (!isStreamingResponse) {
+        if (cleanupCloseListener) {
+          cleanupCloseListener();
+        }
         activeControllers.delete(abortController);
       }
     }

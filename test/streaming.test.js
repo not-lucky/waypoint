@@ -392,9 +392,14 @@ describe('Streaming End-to-End Tests', () => {
     };
 
     const mockReq = {
-      res: { writableEnded: false, on: () => {} },
-      on(event, cb) {
-        if (event === 'close') triggerAbort = cb;
+      res: {
+        writableEnded: false,
+        on(event, cb) {
+          if (event === 'close') triggerAbort = cb;
+        },
+        off(event, cb) {
+          if (event === 'close' && triggerAbort === cb) triggerAbort = null;
+        },
       },
     };
 

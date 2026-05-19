@@ -715,5 +715,4 @@ describe('Abort and Request Cancellation Tests', () => {
     // Verify iterator.return was called
     expect(returnCalled).toBe(true);
   });
-
 });

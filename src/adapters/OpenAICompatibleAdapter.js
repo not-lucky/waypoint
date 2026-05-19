@@ -1,5 +1,5 @@
 /* eslint-disable no-restricted-syntax, no-continue, no-nested-ternary, max-len */
-import { BaseProvider, normalizeProviderError } from './BaseProvider.js';
+import { BaseProvider } from './BaseProvider.js';
 import { parseSSEStream } from '../utils/sseParser.js';
 import { StreamAccumulator } from '../utils/StreamAccumulator.js';
 
@@ -171,7 +171,7 @@ export class OpenAICompatibleAdapter extends BaseProvider {
   }
 
   normalizeError(error) {
-    return normalizeProviderError(error, this.providerName);
+    return BaseProvider.normalizeProviderError(error, this.providerName);
   }
 }
 

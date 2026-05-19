@@ -95,48 +95,54 @@ export class NotImplementedError extends Error {
  */
 
 /**
- * Map provider HTTP errors to internal registry behavior codes.
- * This ensures the KeyRegistry knows whether to immediately ban a key (403)
- * or perform exponential backoff (429).
- */
-const ERROR_MAP = {
-  429: { code: 'upstream_rate_limited', httpStatus: 503 },
-  402: { code: 'quota_exhausted', httpStatus: 503 },
-  403: { code: 'quota_exhausted', httpStatus: 503 },
-};
-
-export const normalizeProviderError = (error, providerName) => {
-  const status = error?.statusCode ?? error?.response?.status;
-  const { code, httpStatus } = ERROR_MAP[status] ?? { code: 'upstream_error', httpStatus: 502 };
-
-  return {
-    code,
-    message: error?.message || String(error),
-    httpStatus,
-    provider: providerName,
-    providerName,
-  };
-};
-
-export const parseUpstreamError = async (response, fallbackMessage = 'Upstream error') => {
-  const errorText = await response.text();
-  let errorJson;
-  try {
-    errorJson = JSON.parse(errorText);
-  } catch (e) {
-    errorJson = { message: errorText };
-  }
-  const err = new Error(errorJson.error?.message || errorJson.message || fallbackMessage);
-  err.statusCode = response.status;
-  err.response = response;
-  return err;
-};
-
-/**
  * Abstract base class for all provider adapters.
  * Ensures consistent interfaces so the UnifiedOrchestrator can easily hot-swap adapters.
  */
 export class BaseProvider {
+  /**
+   * Map provider HTTP errors to internal registry behavior codes.
+   */
+  static get ERROR_MAP() {
+    return {
+      429: { code: 'upstream_rate_limited', httpStatus: 503 },
+      402: { code: 'quota_exhausted', httpStatus: 503 },
+      403: { code: 'quota_exhausted', httpStatus: 503 },
+    };
+  }
+
+  /**
+   * Normalizes an upstream provider error.
+   */
+  static normalizeProviderError(error, providerName) {
+    const status = error?.statusCode ?? error?.response?.status;
+    const { code, httpStatus } = BaseProvider.ERROR_MAP[status] ?? { code: 'upstream_error', httpStatus: 502 };
+
+    return {
+      code,
+      message: error?.message || String(error),
+      httpStatus,
+      provider: providerName,
+      providerName,
+    };
+  }
+
+  /**
+   * Parses an upstream error response.
+   */
+  static async parseUpstreamError(response, fallbackMessage = 'Upstream error') {
+    const errorText = await response.text();
+    let errorJson;
+    try {
+      errorJson = JSON.parse(errorText);
+    } catch (e) {
+      errorJson = { message: errorText };
+    }
+    const err = new Error(errorJson.error?.message || errorJson.message || fallbackMessage);
+    err.statusCode = response.status;
+    err.response = response;
+    return err;
+  }
+
   /**
    * Performs a fetch request to a provider API, handling timeouts, logging, and error parsing.
    *
@@ -175,7 +181,7 @@ export class BaseProvider {
     }
 
     if (!response.ok) {
-      const err = await parseUpstreamError(response);
+      const err = await BaseProvider.parseUpstreamError(response);
       cleanup();
       throw err;
     }

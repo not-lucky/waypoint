@@ -6,7 +6,6 @@ import {
   NotImplementedError,
   mapCompletionResult,
   mapStreamResult,
-  normalizeProviderError,
 } from '../src/adapters/BaseProvider.js';
 
 describe('BaseProvider Tests', () => {
@@ -216,7 +215,7 @@ describe('BaseProvider Tests', () => {
     it('should map fallback error when status code is not in list', () => {
       const err = new Error('Some other error');
       err.statusCode = 500;
-      const res = normalizeProviderError(err, 'gemini');
+      const res = BaseProvider.normalizeProviderError(err, 'gemini');
       expect(res).toEqual({
         code: 'upstream_error',
         message: 'Some other error',
@@ -227,14 +226,14 @@ describe('BaseProvider Tests', () => {
     });
 
     it('should map error message correctly if error is string', () => {
-      const res = normalizeProviderError('Simple error string', 'openai');
+      const res = BaseProvider.normalizeProviderError('Simple error string', 'openai');
       expect(res.message).toBe('Simple error string');
     });
 
     it('should map 429 status code', () => {
       const err = new Error('Rate limit');
       err.response = { status: 429 };
-      const res = normalizeProviderError(err, 'openai');
+      const res = BaseProvider.normalizeProviderError(err, 'openai');
       expect(res.code).toBe('upstream_rate_limited');
       expect(res.httpStatus).toBe(503);
     });
@@ -242,7 +241,7 @@ describe('BaseProvider Tests', () => {
     it('should map 403 status code from statusCode', () => {
       const err = new Error('Forbidden');
       err.statusCode = 403;
-      const res = normalizeProviderError(err, 'anthropic');
+      const res = BaseProvider.normalizeProviderError(err, 'anthropic');
       expect(res.code).toBe('quota_exhausted');
       expect(res.httpStatus).toBe(503);
     });

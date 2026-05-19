@@ -1,4 +1,4 @@
-import { BaseProvider, normalizeProviderError } from './BaseProvider.js';
+import { BaseProvider } from './BaseProvider.js';
 import { executeCompletion } from './geminiCompletion.js';
 import { executeStream } from './geminiStream.js';
 
@@ -26,7 +26,7 @@ export class GeminiAdapter extends BaseProvider {
   // eslint-disable-next-line class-methods-use-this
   normalizeError(error) {
     // Convert upstream Google API error messages and status codes to normalized internal codes
-    return normalizeProviderError(error, 'gemini');
+    return BaseProvider.normalizeProviderError(error, 'gemini');
   }
 }
 

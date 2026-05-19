@@ -1,5 +1,5 @@
 /* eslint-disable no-restricted-syntax, class-methods-use-this */
-import { BaseProvider, normalizeProviderError } from './BaseProvider.js';
+import { BaseProvider } from './BaseProvider.js';
 import { parseSSEStream } from '../utils/sseParser.js';
 import {
   FORMATS, translateRequest, translateResponse, translateStreamChunk,
@@ -158,7 +158,7 @@ export class AnthropicAdapter extends BaseProvider {
   }
 
   normalizeError(error) {
-    return normalizeProviderError(error, 'anthropic');
+    return BaseProvider.normalizeProviderError(error, 'anthropic');
   }
 }
 

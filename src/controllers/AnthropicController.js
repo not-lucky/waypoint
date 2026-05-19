@@ -1,21 +1,10 @@
 /* eslint-disable max-len */
-import { resolveModel } from '../utils/ModelRouter.js';
-import { transformRequest } from '../utils/RequestTransformer.js';
-import { getAppLogger } from '../utils/logger.js';
-import { createRequestLog } from '../utils/requestLogger.js';
 import { FORMATS, translateRequest, translateResponse } from '../translators/index.js';
 import { StreamAccumulator } from '../utils/StreamAccumulator.js';
-
-const logger = getAppLogger('anthropic');
+import { BaseController } from './BaseController.js';
 
 /**
  * Maps OpenAI-style finish_reason values to Anthropic stop_reason equivalents.
- *
- * Why: The internal pipeline operates strictly on OpenAI normalization to decouple
- * upstream providers from downstream clients. However, Anthropic SDKs throw validation
- * exceptions if they encounter unknown stop reasons. This map ensures we fulfill
- * Anthropic's strict type contracts (e.g., 'stop' -> 'end_turn') while safely passing
- * through unmapped edge-cases like 'content_filter' to avoid masking underlying AI safety triggers.
  */
 const STOP_REASON_MAP = {
   stop: 'end_turn',
@@ -24,134 +13,33 @@ const STOP_REASON_MAP = {
 
 /**
  * Protocol controller for the Anthropic-compatible ingress endpoints.
- *
- * What: Translates inbound Anthropic Messages requests, resolves configurations,
- * coordinates execution via the orchestrator, and formats responses.
- *
- * Why: To allow Waypoint to transparently masquerade as an Anthropic API server.
- * By isolating protocol-specific ingestion here, the core orchestrator remains
- * provider-agnostic. This architectural boundary prevents Anthropic-specific
- * concepts (like SSE message_start sequences or distinct thinking blocks) from
- * bleeding into the core routing and retry logic.
- *
- * Mounted on: /anthropic/messages, /anthropic/v1/messages
  */
-export class AnthropicController {
+export class AnthropicController extends BaseController {
   constructor(orchestrator) {
-    this.orchestrator = orchestrator;
+    super(orchestrator, 'anthropic');
   }
 
   /**
    * Processes an incoming Anthropic Messages API completion request.
-   *
-   * What: Normalizes the request, invokes the orchestrator, and manages the lifecycle
-   * of both synchronous and streamed responses back to the client.
-   *
-   * Why: Anthropic's stream protocol is significantly more complex than OpenAI's,
-   * relying on a stateful sequence of block starts, deltas, and stops. This method
-   * acts as a state machine during streaming to bridge the gap between OpenAI's stateless
-   * chunking and Anthropic's stateful SSE events.
    */
   async handleCompletion(req, res) {
-    // What: Initialize audit logging.
-    // Why: Given the multi-stage translation (Anthropic -> Unified -> Orchestrator -> Unified -> Anthropic),
-    // tracing the exact point of failure is critical. This logger ensures we capture the
-    // raw payload before it is mutated by the translation layers.
-    const reqLog = createRequestLog(req, this.orchestrator.config);
-
-    try {
-      const body = req.body || {};
-      const providersConfig = this.orchestrator.config?.providers || {};
-
-      // What: Translate Anthropic request to UnifiedRequest (OpenAI format) base context.
-      // Why: Maintaining a single internal lingua franca reduces the M*N translation matrix
-      // problem to M+N. We translate to OpenAI format here because the orchestrator and
-      // most downstream providers natively speak or easily map to it.
-      const baseReq = translateRequest(FORMATS.ANTHROPIC, FORMATS.OPENAI, body);
-
-      // What: Resolve actual provider/model routing and apply overrides in a non-mutating way.
-      // Why: The client may request 'claude-3-sonnet', but the config might map this to
-      // a specific AWS Bedrock ARN or an OpenAI-compatible fallback. Header overrides
-      // allow dynamic, per-request routing injections without changing the payload schema.
-      const resolved = resolveModel(body.model, providersConfig);
-      const { unifiedReq, cleanRawReq } = transformRequest(baseReq, req, resolved);
-
-      logger.debug('Anthropic completion request received', {
-        model: body.model,
-        systemPromptPresent: !!body.system,
-        messagesCount: body.messages?.length || 0,
-        stream: body.stream || false,
-        resolvedProvider: unifiedReq.provider,
-        resolvedModel: unifiedReq.actualModelId,
-      });
-
-      // What: Hand off to the orchestrator for execution.
-      // Why: The orchestrator abstracts away retries, failovers, and provider-specific quirks,
-      // returning a normalized async iterator (for streams) or a resolved object.
-      const response = await this.orchestrator.executeCompletion(unifiedReq, cleanRawReq, reqLog);
-
-      // What: Handle upstream errors gracefully.
-      // Why: Anthropic clients are resilient to standard HTTP error codes, so we map internal
-      // orchestrator errors directly to HTTP statuses, ensuring the client SDK receives
-      // a recognizable error shape rather than a hanging connection.
-      if (response?.error) {
-        logger.debug('Anthropic completion failed', { error: response.error });
-        const statusCode = response.error.httpStatus || 500;
-        reqLog.logClientResponse(statusCode, response);
-        await reqLog.finalize();
-        return res.status(statusCode).json(response);
-      }
-
-      // What: Process Server-Sent Events (SSE) for streaming responses.
-      // Why: We must check for the asyncIterator Symbol to identify streams because
-      // the orchestrator might force a fallback to a synchronous provider even if the client requested a stream.
-      if (response && typeof response[Symbol.asyncIterator] === 'function') {
-        return this.handleStreamingResponse(res, response, unifiedReq, reqLog, body);
-      }
-
-      // What: Handle synchronous (non-streaming) responses.
-      // Why: For standard requests, we translate the normalized orchestrator output back
-      // into the expected Anthropic shape and send it entirely in one HTTP response.
-      logger.debug('Anthropic non-stream response sent successfully');
-      const translatedResponse = translateResponse(FORMATS.ANTHROPIC, FORMATS.OPENAI, response, body);
-      reqLog.logClientResponse(200, translatedResponse);
-      await reqLog.finalize();
-      return res.json(translatedResponse);
-    } catch (err) {
-      // What: Catch unhandled controller exceptions.
-      // Why: Provides a final safety net for translation or protocol-level crashes.
-      // Ensures the client receives a structured 500 error instead of a generic HTML error page
-      // from the Express framework, preserving the API contract.
-      logger.error('Unexpected completion error:', err);
-      const errorBody = {
-        error: {
-          code: 'internal_server_error',
-          message: err.message || String(err),
-          httpStatus: 500,
-        },
-      };
-      reqLog.logClientResponse(500, errorBody);
-      await reqLog.finalize();
-      return res.status(500).json(errorBody);
-    }
+    return this.executeRequest(req, res, {
+      protocolName: 'Anthropic',
+      translateReq: (body) => translateRequest(FORMATS.ANTHROPIC, FORMATS.OPENAI, body),
+      translateRes: (response, body) => translateResponse(FORMATS.ANTHROPIC, FORMATS.OPENAI, response, body),
+      handleStream: (resp, response, unifiedReq, reqLog, body) => this.handleStreamingResponse(resp, response, unifiedReq, reqLog, body),
+    });
   }
 
   // eslint-disable-next-line class-methods-use-this
   async handleStreamingResponse(res, response, unifiedReq, reqLog, body) {
-    logger.debug('Starting Anthropic SSE response stream');
+    this.logger.debug('Starting Anthropic SSE response stream');
 
-    // What: Set SSE headers.
-    // Why: 'X-Accel-Buffering: no' is critical for Nginx environments. Without it,
-    // reverse proxies will buffer the SSE chunks, destroying the real-time token streaming
-    // experience and causing bursty, high-latency output on the client side.
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('X-Accel-Buffering', 'no');
 
     // State Machine Variables
-    // Why: Anthropic's protocol requires explicit start/stop events for different content types.
-    // We track `activeBlockType` to know when we're transitioning between 'thinking' (reasoning)
-    // and 'text' blocks, enabling us to emit the correct content_block_stop/start boundaries.
     let messageStartSent = false;
     let activeBlockType = null;
     let currentBlockIndex = 0;
@@ -194,15 +82,8 @@ export class AnthropicController {
       /* eslint-disable no-restricted-syntax */
       for await (const chunk of response) {
         chunkCount += 1;
-
-        // Provider-side chunk is logged at the adapter level.
-
         accumulator.processChunk(chunk);
 
-        // What: Emit the initial message_start event.
-        // Why: The Anthropic SDK throws a protocol error if the stream doesn't strictly
-        // begin with a `message_start` event containing base metadata. We wait for the
-        // first chunk to ensure we have the upstream ID before emitting this prologue.
         if (!messageStartSent) {
           const messageStartEvent = `event: message_start\ndata: ${JSON.stringify({
             type: 'message_start',
@@ -228,13 +109,8 @@ export class AnthropicController {
         const choice = chunk.choices?.[0] || {};
         const delta = choice.delta || {};
 
-        // What: Handle thinking/reasoning content blocks.
-        // Why: Anthropic natively supports Chain of Thought (CoT) via distinct blocks.
-        // If the orchestrator provides reasoning content, we must transition the state
-        // machine into 'thinking' mode, closing any previous blocks to satisfy the SDK's parser.
         if (delta.reasoning_content) {
           transitionBlock('thinking');
-
           const thinkingDelta = `event: content_block_delta\ndata: ${JSON.stringify({
             type: 'content_block_delta',
             index: currentBlockIndex,
@@ -247,13 +123,8 @@ export class AnthropicController {
           res.write(thinkingDelta);
         }
 
-        // What: Handle standard text content blocks.
-        // Why: Operates symmetrically to thinking blocks. If the model transitions from
-        // thinking to answering, we emit a stop for thinking and a start for text. This
-        // segregation is mandatory for Anthropic's UI components to render correctly.
         if (delta.content) {
           transitionBlock('text');
-
           const textDelta = `event: content_block_delta\ndata: ${JSON.stringify({
             type: 'content_block_delta',
             index: currentBlockIndex,
@@ -266,13 +137,8 @@ export class AnthropicController {
           res.write(textDelta);
         }
 
-        // What: Process the stream completion signal.
-        // Why: Once the upstream provider signals `finish_reason`, we must gracefully
-        // close any open content blocks before emitting `message_delta` containing the
-        // stop reason. Failing to close the block first results in SDK parse exceptions.
         if (choice.finish_reason) {
           transitionBlock(null);
-
           const stopReason = STOP_REASON_MAP[choice.finish_reason] || choice.finish_reason || 'end_turn';
           const messageDelta = `event: message_delta\ndata: ${JSON.stringify({
             type: 'message_delta',
@@ -290,24 +156,15 @@ export class AnthropicController {
       }
       /* eslint-enable no-restricted-syntax */
 
-      // What: Ensure all blocks are closed.
-      // Why: If the upstream stream died ungracefully without a finish_reason, we still
-      // need to seal the currently open block to prevent lingering unclosed state in the client.
       transitionBlock(null);
 
-      // What: Emit the final message_stop event.
-      // Why: Anthropic's protocol mandates a final `message_stop` event to definitively
-      // sever the semantic payload before the HTTP socket is closed.
       const messageStop = `event: message_stop\ndata: ${JSON.stringify({
         type: 'message_stop',
       })}\n\n`;
       reqLog.appendStreamEvent('client', messageStop);
       res.write(messageStop);
-      logger.debug('Anthropic SSE response stream completed', { chunkCount });
+      this.logger.debug('Anthropic SSE response stream completed', { chunkCount });
 
-      // What: Reconstruct and log the complete response.
-      // Why: For audit and billing purposes, we recreate a cohesive response object
-      // from the accumulated chunks and log it.
       const normalized = accumulator.buildNormalizedResponse();
       const translatedResponse = translateResponse(FORMATS.ANTHROPIC, FORMATS.OPENAI, normalized, body);
 
@@ -320,11 +177,7 @@ export class AnthropicController {
         },
       });
     } catch (err) {
-      // What: Handle mid-stream errors.
-      // Why: If the stream crashes midway, HTTP headers are already sent, so we cannot
-      // return a 500 status code. We silently terminate the socket but explicitly log
-      // the abort to preserve the audit trail for debugging.
-      logger.debug('Anthropic SSE response stream aborted or failed', { chunkCount, error: err.message });
+      this.logger.debug('Anthropic SSE response stream aborted or failed', { chunkCount, error: err.message });
       reqLog.logClientResponse(0, {
         _streamed: true,
         _aborted: true,
@@ -332,9 +185,6 @@ export class AnthropicController {
         error: err.message,
       });
     } finally {
-      // What: Ensure resource cleanup.
-      // Why: Always finalize the audit log and close the HTTP response to prevent socket leaks,
-      // regardless of success or failure.
       await reqLog.finalize();
       res.end();
     }

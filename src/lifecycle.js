@@ -1,6 +1,5 @@
-import { activeControllers } from './services/UnifiedOrchestrator.js';
-import { rateLimiterIntervals } from './middleware/rateLimiter.js';
 import { flushLogs } from './utils/logger.js';
+import { teardownRegistry } from './registry/TeardownRegistry.js';
 
 // Module-level guard to enforce idempotency. Prevents race conditions and duplicate
 // teardown execution if multiple termination signals (e.g., SIGTERM followed by SIGINT)
@@ -116,25 +115,10 @@ export async function teardown({
       }
     });
 
-    // 2. abort all active AbortControllers (from global Set)
-    // WHY: Aborting in-flight streams will cause their connection handlers to complete
-    // and close, which in turn allows the server.close() callback to fire. If we didn't
-    // do this, long-polling SSE streams would hold open sockets, keeping the server
-    // alive indefinitely and triggering our fallback timeout.
-    // WHAT: Calls abort() on all active request controllers.
-    if (logger && typeof logger.debug === 'function') {
-      logger.debug(`Graceful shutdown: aborting ${activeControllers.size} active connections`);
-    }
-    activeControllers.forEach((ctrl) => {
-      try {
-        ctrl.abort();
-      } catch (err) {
-        if (logger && typeof logger.error === 'function') {
-          logger.error('Error aborting active controller during teardown:', err);
-        }
-      }
-    });
-    activeControllers.clear();
+    // 2. Run all dynamically registered teardown hooks
+    // WHY: Decouples lifecycle cleanup from hardcoded dependencies (active controllers,
+    // rate limiter intervals, etc.) by delegating to the registry.
+    await teardownRegistry.execute(logger);
 
     // 3. watcher.close() (fs.watch configuration watcher)
     // WHY: Release the configuration file watcher handle to avoid file system locks and
@@ -157,18 +141,6 @@ export async function teardown({
     if (keyRegistry && typeof keyRegistry.cleanup === 'function') {
       keyRegistry.cleanup();
     }
-
-    // 5. clearInterval all rate limiter handles
-    // WHY: Clear any token-bucket or request intervals registered by client rate limiters.
-    // Intervals are persistent event loop blockers.
-    // WHAT: Clears all collected setInterval IDs.
-    if (logger && typeof logger.debug === 'function') {
-      logger.debug(`Graceful shutdown: clearing ${rateLimiterIntervals.size} rate limiter intervals`);
-    }
-    rateLimiterIntervals.forEach((intervalId) => {
-      clearInterval(intervalId);
-    });
-    rateLimiterIntervals.clear();
 
     // Wait for the server connections to close fully
     // WHY: Now that we've stopped new connections and aborted active ones, the server

@@ -1,4 +1,5 @@
 import { getAppLogger } from '../utils/logger.js';
+import { teardownRegistry } from '../registry/TeardownRegistry.js';
 
 const logger = getAppLogger('rate-limiter');
 
@@ -15,6 +16,16 @@ export const clientWindows = new Map();
  * preventing open handles from blocking graceful exit.
  */
 export const rateLimiterIntervals = new Set();
+
+teardownRegistry.add((loggerInstance) => {
+  if (loggerInstance && typeof loggerInstance.debug === 'function') {
+    loggerInstance.debug(`Graceful shutdown: clearing ${rateLimiterIntervals.size} rate limiter intervals`);
+  }
+  rateLimiterIntervals.forEach((intervalId) => {
+    clearInterval(intervalId);
+  });
+  rateLimiterIntervals.clear();
+});
 
 /**
  * Sliding window rate limiting middleware.

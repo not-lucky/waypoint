@@ -101,9 +101,9 @@ describe('Graceful Teardown Sequence', () => {
     expect(callOrder).toEqual([
       'server.close',
       'abort',
+      'clearInterval:999',
       'watcher.close',
       'clearTimeout',
-      'clearInterval:999',
       'logger.flush',
       'process.exit:0',
     ]);

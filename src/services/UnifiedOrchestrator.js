@@ -1,10 +1,27 @@
 import { applyRequestOverrides } from './requestOverrides.js';
 import { runOrchestrationLoop } from './orchestrationEngine.js';
 import { logDebug } from '../utils/loggerHelpers.js';
+import { teardownRegistry } from '../registry/TeardownRegistry.js';
 
 // Central registry of all active request AbortControllers.
 // Used during graceful shutdown (in index.js) to cancel all in-flight requests.
 export const activeControllers = new Set();
+
+teardownRegistry.add((logger) => {
+  if (logger && typeof logger.debug === 'function') {
+    logger.debug(`Graceful shutdown: aborting ${activeControllers.size} active connections`);
+  }
+  activeControllers.forEach((ctrl) => {
+    try {
+      ctrl.abort();
+    } catch (err) {
+      if (logger && typeof logger.error === 'function') {
+        logger.error('Error aborting active controller during teardown:', err);
+      }
+    }
+  });
+  activeControllers.clear();
+});
 
 /**
  * WHAT: The central entry point for request routing and execution.

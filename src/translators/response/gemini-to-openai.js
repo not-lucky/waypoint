@@ -1,19 +1,6 @@
 /* eslint-disable no-restricted-syntax, no-unused-vars, max-len */
 
-/**
- * Maps Gemini's proprietary termination conditions to OpenAI's standard finish_reason enum.
- *
- * Rationale: Gemini denotes content filtering and bounds using terms like 'SAFETY' or 'RECITATION',
- * whereas OpenAI relies on 'content_filter' and 'length'. This standardization ensures that downstream
- * systems and UI libraries relying on OpenAI's completion semantics don't break or misinterpret
- * early termination events (e.g., failing to show a warning for a safety block).
- */
-const FINISH_REASON_MAP = {
-  STOP: 'stop',
-  MAX_TOKENS: 'length',
-  SAFETY: 'content_filter',
-  RECITATION: 'content_filter',
-};
+import { mapFinishReason, synthesizeMetadata } from '../utils.js';
 
 /**
  * Translates a complete Google Gemini generateContent API response into an OpenAI-shaped NormalizedResponse.
@@ -55,20 +42,8 @@ export function translateGeminiToOpenAI(geminiRes, req = {}) {
   const promptTokens = usage.promptTokenCount ?? 0;
   const completionTokens = usage.candidatesTokenCount ?? 0;
 
-  const { finishReason } = candidate;
-  // Edge Case Handling: Missing finish reasons (e.g., malformed responses)
-  // default to 'stop' so that client UI doesn't hang indefinitely waiting for an EOF state.
-  const mappedFinishReason = finishReason ? (FINISH_REASON_MAP[finishReason] || finishReason.toLowerCase()) : 'stop';
-
   return {
-    // Gemini does not provide unique native ID strings or exact Unix creation times at the root.
-    // We synthesize these to satisfy OpenAI strict schema validators in client libraries.
-    id: `waypoint-${Date.now()}`,
-    object: 'chat.completion',
-    created: Math.floor(Date.now() / 1000),
-    // Model identifier is pulled preferentially from the original request context
-    // because Gemini sometimes appends internal routing suffixes to the response model field.
-    model: req.model || geminiRes.model,
+    ...synthesizeMetadata(null, req.model || geminiRes.model),
     choices: [
       {
         index: candidate.index ?? 0,
@@ -77,7 +52,7 @@ export function translateGeminiToOpenAI(geminiRes, req = {}) {
           content: textContent,
           reasoning_content: reasoningContent,
         },
-        finish_reason: mappedFinishReason,
+        finish_reason: mapFinishReason(candidate.finishReason, 'gemini'),
       },
     ],
     usage: {
@@ -118,14 +93,13 @@ export const translateGeminiChunkToOpenAI = (chunkJson, chunkId, req = {}) => {
     }
   }
 
-  const { finishReason } = candidate;
-  const mappedFinishReason = finishReason ? (FINISH_REASON_MAP[finishReason] || finishReason.toLowerCase()) : null;
+  const mappedFinishReason = mapFinishReason(candidate.finishReason, 'gemini', null);
 
   // Filtering out noise:
   // Gemini streams can emit pure metadata or empty candidate chunks without actual delta content.
   // OpenAI clients often crash or misbehave on empty deltas lacking a finish_reason.
   // Returning null here directs the streaming orchestrator to safely drop this frame.
-  if (!textContent && !reasoningContent && !mappedFinishReason) {
+  if (!textContent && !reasoningContent && !candidate.finishReason) {
     return null;
   }
 

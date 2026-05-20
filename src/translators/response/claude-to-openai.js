@@ -1,18 +1,6 @@
 /* eslint-disable no-restricted-syntax, no-unused-vars */
 
-/**
- * Maps Anthropic stop reasons to OpenAI standard finish reasons.
- *
- * WHY: OpenAI clients expect a specific set of finish reasons (`stop`, `length`, etc.)
- * to correctly handle termination states. If we pass raw Anthropic reasons (like `end_turn`),
- * downstream OpenAI-compatible SDKs will fail or misinterpret the completion status.
- * This dictionary enforces schema compliance for the final orchestration output.
- */
-const FINISH_REASON_MAP = {
-  end_turn: 'stop',
-  max_tokens: 'length',
-  stop_sequence: 'stop',
-};
+import { mapFinishReason, synthesizeMetadata } from '../utils.js';
 
 /**
  * Translates a complete Anthropic Messages API response into an OpenAI-shaped NormalizedResponse.
@@ -54,14 +42,7 @@ export const translateClaudeToOpenAI = (claudeRes, req = {}) => {
   const completionTokens = claudeRes.usage?.output_tokens ?? 0;
 
   return {
-    // WHY: Prefixing IDs with `waypoint-` makes it easier to debug network logs and identify
-    // that the response was intercepted and morphed by this proxy, rather than the raw provider.
-    id: claudeRes.id ? `waypoint-${claudeRes.id}` : `waypoint-${Date.now()}`,
-    object: 'chat.completion',
-    created: Math.floor(Date.now() / 1000),
-    // WHY: Prefer the requested model name over the provider's returned model to prevent
-    // client confusion if the provider aliases models behind the scenes.
-    model: req.model || claudeRes.model,
+    ...synthesizeMetadata(claudeRes.id, req.model || claudeRes.model),
     choices: [
       {
         index: 0,
@@ -70,7 +51,7 @@ export const translateClaudeToOpenAI = (claudeRes, req = {}) => {
           content: textContent,
           reasoning_content: reasoningContent,
         },
-        finish_reason: FINISH_REASON_MAP[claudeRes.stop_reason] || claudeRes.stop_reason || 'stop',
+        finish_reason: mapFinishReason(claudeRes.stop_reason, 'anthropic'),
       },
     ],
     usage: {
@@ -167,7 +148,7 @@ export function translateClaudeChunkToOpenAI(eventObj, chunkId, req = {}) {
               content: null,
               reasoning_content: null,
             },
-            finish_reason: FINISH_REASON_MAP[delta.stop_reason] || delta.stop_reason || 'stop',
+            finish_reason: mapFinishReason(delta.stop_reason, 'anthropic'),
           },
         ],
         usage: dataJson.usage ? {

@@ -95,7 +95,7 @@ describe('ConfigLoader – Logger Integration', () => {
     const validConfig = {
       gateway: { port: 8080 },
       logging: { enable_console: true, enable_file: false, format: 'json' },
-      clients: [{ token: 'tok', rate_limit: { window_ms: 1000, max: 10 } }],
+      clients: [{ name: 'test', token: 'tok', rate_limit: { window_ms: 1000, max: 10 } }],
       providers: {
         gemini: {
           keys: ['key-1'],
@@ -175,7 +175,7 @@ describe('ConfigLoader – Logger Integration', () => {
       const parsedYaml = {
         gateway: { port: 8080 },
         logging: { enable_console: true, enable_file: false, format: 'json' },
-        clients: [{ token: 'tok', rate_limit: { window_ms: 1000, max: 10 } }],
+        clients: [{ name: 'test', token: 'tok', rate_limit: { window_ms: 1000, max: 10 } }],
         providers: {
           gemini: {
             type: 'openai-compatible', // should trigger the reserved provider warning
@@ -199,7 +199,7 @@ describe('ConfigLoader – Logger Integration', () => {
       const parsedYaml = {
         gateway: { port: 8080 },
         logging: { enable_console: true, enable_file: false, format: 'json' },
-        clients: [{ token: 'tok', rate_limit: { window_ms: 1000, max: 10 } }],
+        clients: [{ name: 'test', token: 'tok', rate_limit: { window_ms: 1000, max: 10 } }],
         providers: {
           gemini: {
             type: 'openai-compatible',

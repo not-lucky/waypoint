@@ -1,9 +1,18 @@
+/**
+ * @fileoverview Dynamic lifecycle engine for managing graceful process termination and teardown.
+ * Hooks into OS process signals (SIGINT, SIGTERM) to drain active connections,
+ * clean up registry timers, execute registered modules' teardown logic, and flush log buffers.
+ * @module lifecycle
+ */
+
 import { flushLogs } from './utils/logger.js';
 import { teardownRegistry } from './registry/TeardownRegistry.js';
 
-// Module-level guard to enforce idempotency. Prevents race conditions and duplicate
-// teardown execution if multiple termination signals (e.g., SIGTERM followed by SIGINT)
-// are received in rapid succession.
+/**
+ * Module-level guard to enforce idempotency of the teardown process.
+ * Prevents race conditions and duplicate teardown execution.
+ * @type {boolean}
+ */
 let isTearingDown = false;
 
 // Store listeners globally so they survive module cache resets during unit/integration tests.
@@ -21,6 +30,8 @@ global.waypointSigterm = global.waypointSigterm || null;
  * between isolated test cases.
  *
  * WHAT: Resets module state and unbinds process listeners.
+ *
+ * @returns {void}
  */
 export function resetLifecycleState() {
   isTearingDown = false;
@@ -47,12 +58,12 @@ export function resetLifecycleState() {
  * WHAT: Coordinates server shutdown, aborts in-flight requests, clears intervals, flushes
  * logs, and finally exits the process.
  *
- * @param {Object} params
- * @param {Object} params.server - Node HTTP Server instance
- * @param {Object} params.configLoader - Configuration loader instance
- * @param {Object} params.keyRegistry - Key registry instance
- * @param {Object} params.logger - Logger instance
- * @returns {Promise<void>} Resolves when teardown is complete (or exits process)
+ * @param {Object} params - The teardown parameters.
+ * @param {import('http').Server} params.server - Node HTTP Server instance.
+ * @param {Object} params.configLoader - Configuration loader instance.
+ * @param {Object} params.keyRegistry - Key registry instance.
+ * @param {Object|null} params.logger - Logger instance.
+ * @returns {Promise<void>} Resolves when teardown is complete (or exits process).
  */
 export async function teardown({
   server,
@@ -200,11 +211,12 @@ export async function teardown({
  *
  * WHAT: Binds OS process signals to the teardown handler.
  *
- * @param {Object} params
- * @param {Object} params.server - Node HTTP Server instance
- * @param {Object} params.configLoader - Configuration loader instance
- * @param {Object} params.keyRegistry - Key registry instance
- * @param {Object} params.logger - Logger instance
+ * @param {Object} params - Registration options.
+ * @param {import('http').Server} params.server - Node HTTP Server instance.
+ * @param {Object} params.configLoader - Configuration loader instance.
+ * @param {Object} params.keyRegistry - Key registry instance.
+ * @param {Object|null} params.logger - Logger instance.
+ * @returns {void}
  */
 export function registerLifecycle({
   server,

@@ -1,19 +1,32 @@
+/**
+ * @fileoverview Sliding window rate limiting middleware for Express.
+ * Implements an in-memory sliding window algorithm based on timestamps
+ * to throttle incoming client requests.
+ * @module middleware/rateLimiter
+ */
+
 import { getAppLogger } from '../utils/logger.js';
 import { teardownRegistry } from '../registry/TeardownRegistry.js';
 
+/**
+ * @type {Object}
+ */
 const logger = getAppLogger('rate-limiter');
 
 /**
  * In-memory store mapping client names to an array of request timestamps (Unix epoch ms).
  * This forms the basis of the sliding window rate limiter.
- * Exported specifically so tests can inspect internal state (e.g., asserting timestamp pruning).
+ * Exported specifically so tests can inspect internal state.
+ *
+ * @type {Map<string, Array<number>>}
  */
 export const clientWindows = new Map();
 
 /**
  * In-memory store holding client rate limiter interval/timer handles.
- * Exported so the lifecycle shutdown handler can clear them during teardown,
- * preventing open handles from blocking graceful exit.
+ * Exported so the lifecycle shutdown handler can clear them during teardown.
+ *
+ * @type {Set<NodeJS.Timeout>}
  */
 export const rateLimiterIntervals = new Set();
 
@@ -48,9 +61,10 @@ teardownRegistry.add((loggerInstance) => {
  * - If `window_ms <= 0`, the sliding window is empty or non-existent, meaning
  *   every request is allowed (since timestamps are immediately pruned).
  *
- * @param {Object} req - Express request object.
- * @param {Object} res - Express response object.
- * @param {Function} next - Express next middleware function.
+ * @param {import('express').Request} req - Express request object.
+ * @param {import('express').Response} res - Express response object.
+ * @param {import('express').NextFunction} next - Express next middleware function.
+ * @returns {void|import('express').Response} Returns next call or 429 error response.
  */
 export const rateLimiter = (req, res, next) => {
   const { client } = req;
@@ -114,6 +128,8 @@ export const rateLimiter = (req, res, next) => {
 
 /**
  * Resets the in-memory rate limiter cache. Useful for isolating unit tests.
+ *
+ * @returns {void}
  */
 export const resetRateLimiter = () => {
   clientWindows.clear();

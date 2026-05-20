@@ -1,10 +1,23 @@
+/**
+ * @fileoverview Central registry for managing API key lifecycle, rotation, and health status.
+ * Abstracts load balancing (round-robin or fill-first) across pools of API keys for each provider,
+ * and handles cooldown/backoff behaviors on rate limiting or authentication failures.
+ * @module registry/KeyRegistry
+ */
+
 import { KeyObject, GENERIC_FAILURE_COOLDOWN_MS } from './KeyObject.js';
 
+/**
+ * @const {string}
+ */
 const DEFAULT_ROUTING_STRATEGY = 'round-robin';
 
 /**
  * Factory for creating a stateful pool of keys for a specific provider.
  * Maintains the sequence index for round-robin rotation.
+ *
+ * @param {Array<string>} [keys=[]] - Raw API key strings.
+ * @returns {Object} Pool object containing KeyObject array and round-robin index pointer.
  */
 const createKeyPool = (keys = []) => ({
   keys: keys.map((k) => new KeyObject(k)),
@@ -13,16 +26,36 @@ const createKeyPool = (keys = []) => ({
 
 /**
  * Central registry for managing API key lifecycle, rotation, and health status.
- * This class abstracts the complexities of load balancing across multiple keys,
- * enforcing cooldowns, and handling backoff behavior seamlessly.
  */
 export default class KeyRegistry {
+  /**
+   * Creates an instance of KeyRegistry.
+   *
+   * @param {Object} [config={}] - Application configuration object.
+   * @param {string|null} [strategy=null] - Overridden routing strategy.
+   */
   constructor(config = {}, strategy = null) {
+    /**
+     * @type {Object}
+     */
     this.config = config;
-    // Defines the algorithm for selecting the next available key (round-robin vs fill-first).
+
+    /**
+     * The active routing strategy.
+     * @type {string}
+     */
     this.strategy = strategy || config?.gateway?.routing?.strategy || DEFAULT_ROUTING_STRATEGY;
-    // Active Node.js timers for releasing cooldowns are tracked here to guarantee clean shutdowns.
+
+    /**
+     * Active Node.js timers for releasing cooldowns to guarantee clean shutdowns.
+     * @type {Set<NodeJS.Timeout>}
+     */
     this.timers = new Set();
+
+    /**
+     * Map of provider name to its stateful key pool.
+     * @type {Object<string, {keys: Array<KeyObject>, roundRobinIndex: number}>}
+     */
     this.pools = Object.fromEntries(
       Object.entries(config.providers || {}).map(([name, providerConfig]) => [
         name,
@@ -35,6 +68,9 @@ export default class KeyRegistry {
    * Retrieves the next available key for a requested provider using the active strategy.
    * By rotating keys (e.g. round-robin), we prevent artificially bottlenecking on a single
    * rate limit bucket, optimizing throughput across the key pool.
+   *
+   * @param {string} provider - The name of the provider (e.g. 'openai').
+   * @returns {string|null} The next available API key string, or null if none are available.
    */
   getKey(provider) {
     const pool = this.pools[provider];
@@ -58,6 +94,13 @@ export default class KeyRegistry {
     return null;
   }
 
+  /**
+   * Finds the KeyObject wrapper for a specific raw key string and provider.
+   *
+   * @param {string} provider - The provider name.
+   * @param {string} keyStr - The raw API key string.
+   * @returns {KeyObject|null} The KeyObject wrapper, or null if not found.
+   */
   findKey(provider, keyStr) {
     return this.pools[provider]?.keys.find((k) => k.keyStr === keyStr) ?? null;
   }
@@ -66,6 +109,10 @@ export default class KeyRegistry {
    * Puts a key on timeout for a specific duration.
    * This is used to implement exponential backoff logic dynamically without
    * permanently burning keys that encounter temporary network failures.
+   *
+   * @param {KeyObject} key - The KeyObject instance to put on cooldown.
+   * @param {number} durationMs - Cooldown duration in milliseconds.
+   * @param {boolean} [reactivate=false] - Whether to reactivate key after cooldown.
    */
   setCooldown(key, durationMs, reactivate = false) {
     const target = key;
@@ -83,8 +130,11 @@ export default class KeyRegistry {
   }
 
   /**
-   * Handles upstream error mapping and orchestrates the key lifecycle correctly
-   * based on HTTP error codes.
+   * Flags a key as failed and adjusts its lifecycle status based on the HTTP status code.
+   *
+   * @param {string} provider - The provider name.
+   * @param {string} keyStr - The raw key string that failed.
+   * @param {number} statusCode - The HTTP status code returned by the provider.
    */
   flagFailure(provider, keyStr, statusCode) {
     const key = this.findKey(provider, keyStr);
@@ -124,6 +174,9 @@ export default class KeyRegistry {
 
   /**
    * Resets the failure streak and cooldown state when a key successfully services a request.
+   *
+   * @param {string} provider - The provider name.
+   * @param {string} keyStr - The raw key string that succeeded.
    */
   flagSuccess(provider, keyStr) {
     const key = this.findKey(provider, keyStr);
@@ -136,6 +189,10 @@ export default class KeyRegistry {
 
   /**
    * Calculates health statistics for a single provider's key pool.
+   *
+   * @param {Object} pool - The key pool configuration object.
+   * @param {number} now - The current timestamp in milliseconds.
+   * @returns {{stats: Object, isDegraded: boolean}} The calculated stats and degradation status.
    * @private
    */
   static getProviderStats(pool, now) {
@@ -173,6 +230,7 @@ export default class KeyRegistry {
    * Calculates health statistics across all key pools.
    * If any key is currently exhausted or cooling down, the overall status is marked 'degraded'.
    * Provides insight into current routing pointers and overall pool saturation.
+   *
    * @returns {Object} Section 6E schema compatible health statistics.
    */
   getHealthStats() {

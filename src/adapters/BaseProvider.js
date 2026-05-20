@@ -1,8 +1,22 @@
+/**
+ * @fileoverview Abstract base provider interface and request/response mapping utilities.
+ * Defines the contract that all LLM provider adapters must implement to enable hot-swapping
+ * and unified execution in the gateway orchestrator.
+ * @module adapters/BaseProvider
+ */
+
 /* eslint-disable max-classes-per-file, class-methods-use-this, no-unused-vars */
 /* eslint-disable no-restricted-syntax, generator-star-spacing, camelcase */
 import { sanitizeUrl, serializeHeaders } from '../utils/requestLogger.js';
 
+/**
+ * Error class thrown when an adapter does not implement a required interface method.
+ */
 export class NotImplementedError extends Error {
+  /**
+   * Creates an instance of NotImplementedError.
+   * @param {string} [message='Not implemented'] - Error message.
+   */
   constructor(message = 'Not implemented') {
     super(message);
     this.name = 'NotImplementedError';
@@ -101,6 +115,7 @@ export class NotImplementedError extends Error {
 export class BaseProvider {
   /**
    * Map provider HTTP errors to internal registry behavior codes.
+   * @type {Object<number, {code: string, httpStatus: number}>}
    */
   static get ERROR_MAP() {
     return {
@@ -112,6 +127,10 @@ export class BaseProvider {
 
   /**
    * Normalizes an upstream provider error.
+   *
+   * @param {any} error - The caught upstream error object.
+   * @param {string} providerName - Name of the provider.
+   * @returns {NormalizedError} Mapped/standardized error payload.
    */
   static normalizeProviderError(error, providerName) {
     const status = error?.statusCode ?? error?.response?.status;
@@ -128,6 +147,10 @@ export class BaseProvider {
 
   /**
    * Parses an upstream error response.
+   *
+   * @param {Response} response - The Fetch Response object containing the failure status.
+   * @param {string} [fallbackMessage='Upstream error'] - Fallback error message.
+   * @returns {Promise<Error>} Standardized Error instance with statusCode and response properties.
    */
   static async parseUpstreamError(response, fallbackMessage = 'Upstream error') {
     const errorText = await response.text();
@@ -150,9 +173,11 @@ export class BaseProvider {
    * @param {Object} headers - Request headers.
    * @param {Object} payload - The JSON request body.
    * @param {AbortSignal} [signal] - Optional client abort signal.
-   * @param {Object} [requestLog] - Optional logger for auditing.
-   * @param {number} [timeoutMs] - Optional timeout in milliseconds.
-   * @returns {Promise<{ response: Response, fetchSignal: AbortSignal, cleanup: function }>}
+   * @param {Object|null} [requestLog=null] - Optional logger for auditing.
+   * @param {number|null} [timeoutMs=null] - Optional timeout in milliseconds.
+   * @returns {Promise<{ response: Response, fetchSignal: AbortSignal, cleanup: Function }>}
+   *    Resolves to HTTP response payload, active signal, and cleanup hook.
+   * @throws {Error} Relays HTTP transmission failure or non-2xx status code parsed error.
    */
   async performFetch(url, headers, payload, signal, requestLog = null, timeoutMs = null) {
     const { signal: fetchSignal, cleanup } = this.getTimeoutSignal(signal, timeoutMs);
@@ -196,7 +221,7 @@ export class BaseProvider {
    *
    * @param {AbortSignal} [signal] - Client abort signal.
    * @param {number} [timeoutMs] - Configured timeout in milliseconds.
-   * @returns {Object} Mapped signal and cleanup function.
+   * @returns {{ signal: AbortSignal, cleanup: Function }} Mapped signal and cleanup function.
    */
   getTimeoutSignal(signal, timeoutMs) {
     if (!timeoutMs) {
@@ -240,11 +265,12 @@ export class BaseProvider {
 
   /**
    * Generates a non-streaming completion.
+   *
    * @param {UnifiedRequest} req - The normalized internal request.
    * @param {string} apiKey - The upstream provider API key.
    * @param {AbortSignal} signal - Signal to abort the request.
-   * @returns {Promise<NormalizedResponse>}
-   * @throws {NotImplementedError}
+   * @returns {Promise<NormalizedResponse>} Standardized response payload.
+   * @throws {NotImplementedError} If subclasses do not override this method.
    */
   async generateCompletion(req, apiKey, signal) {
     throw new NotImplementedError();
@@ -252,11 +278,12 @@ export class BaseProvider {
 
   /**
    * Generates a streaming completion.
+   *
    * @param {UnifiedRequest} req - The normalized internal request.
    * @param {string} apiKey - The upstream provider API key.
    * @param {AbortSignal} signal - Signal to abort the stream.
-   * @returns {AsyncIterable<StreamChunk>}
-   * @throws {NotImplementedError}
+   * @returns {Promise<AsyncIterable<StreamChunk>>} Async generator yielding chunks.
+   * @throws {NotImplementedError} If subclasses do not override this method.
    */
   async generateStream(req, apiKey, signal) {
     throw new NotImplementedError();
@@ -264,9 +291,10 @@ export class BaseProvider {
 
   /**
    * Normalizes an upstream API error to a standard representation.
+   *
    * @param {any} error - The caught upstream error.
-   * @returns {NormalizedError}
-   * @throws {NotImplementedError}
+   * @returns {NormalizedError} Standardized internal error representation.
+   * @throws {NotImplementedError} If subclasses do not override this method.
    */
   normalizeError(error) {
     throw new NotImplementedError();
@@ -275,6 +303,10 @@ export class BaseProvider {
 
 /**
  * Default generic mapping for raw text completions.
+ *
+ * @param {UnifiedRequest} req - The normalized internal request.
+ * @param {Object} result - Unmapped text completion result.
+ * @returns {NormalizedResponse} Mapped completion response payload.
  */
 export const mapCompletionResult = (req, result) => ({
   id: `waypoint-${Date.now()}`,
@@ -299,12 +331,23 @@ export const mapCompletionResult = (req, result) => ({
   },
 });
 
+/**
+ * Chunk mapper table matching streaming event type to delta details.
+ * @private
+ * @type {Object<string, Function>}
+ */
 const chunkMappers = {
   'text-delta': (part) => ({ content: part.text || null, reasoning_content: null, finish_reason: null }),
   'reasoning-delta': (part) => ({ content: null, reasoning_content: part.text || null, finish_reason: null }),
   finish: (part) => ({ content: null, reasoning_content: null, finish_reason: part.finishReason || 'stop' }),
 };
 
+/**
+ * Maps standard SDK stream results to Express chunk tokens.
+ *
+ * @param {Object} result - Async stream result containing fullStream list.
+ * @returns {AsyncGenerator<StreamChunk>} Async generator yielding mapped StreamChunk objects.
+ */
 export const mapStreamResult = async function* mapStreamResult(result) {
   const chunkId = `waypoint-chunk-${Date.now()}`;
   for await (const part of result.fullStream) {

@@ -1,10 +1,20 @@
+/**
+ * @fileoverview Unified Orchestrator class.
+ * Acts as the entrypoint for routing and executing request completions.
+ * Manages request overrides, client disconnects, and fallback/retry engine.
+ * @module services/UnifiedOrchestrator
+ */
+
 import { applyRequestOverrides } from './requestOverrides.js';
 import { runOrchestrationLoop } from './orchestrationEngine.js';
 import { logDebug } from '../utils/loggerHelpers.js';
 import { teardownRegistry } from '../registry/TeardownRegistry.js';
 
-// Central registry of all active request AbortControllers.
-// Used during graceful shutdown (in index.js) to cancel all in-flight requests.
+/**
+ * Central registry of all active request AbortControllers.
+ * Used during graceful shutdown to cancel all in-flight requests.
+ * @type {Set<AbortController>}
+ */
 export const activeControllers = new Set();
 
 teardownRegistry.add((logger) => {
@@ -24,11 +34,18 @@ teardownRegistry.add((logger) => {
 });
 
 /**
- * WHAT: The central entry point for request routing and execution.
- * WHY: Orchestrates the request lifecycle: overrides headers, handles client aborts,
+ * Orchestrates the request lifecycle: overrides headers, handles client aborts,
  * invokes fallback and retry engines, and tracks active abort controllers.
  */
 export class UnifiedOrchestrator {
+  /**
+   * Creates an instance of UnifiedOrchestrator.
+   *
+   * @param {Object} keyRegistry - Stateful API key registry instance.
+   * @param {Object} providerFactory - Factory for creating provider adapter instances.
+   * @param {Object} [config={}] - Application gateway configuration.
+   * @param {Object|null} [logger=null] - Optional logger instance.
+   */
   constructor(keyRegistry, providerFactory, config = {}, logger = null) {
     this.keyRegistry = keyRegistry;
     this.providerFactory = providerFactory;
@@ -36,6 +53,17 @@ export class UnifiedOrchestrator {
     this.logger = logger;
   }
 
+  /**
+   * Main entrypoint to execute completion request.
+   * Standardizes incoming request formatting, applies config/header overrides,
+   * runs the fallback-retry engine, handles client disconnects, and manages stream iteration.
+   *
+   * @param {Object} unifiedReq - The unified/normalized request object.
+   * @param {import('express').Request} rawReq - The raw Express request object.
+   * @param {Object|null} requestLog - Telemetry / request logging context.
+   * @returns {Promise<Object|AsyncGenerator>} Completion response or chunk generator.
+   * @throws {Error} Relays adapter execution errors if retry limits are exceeded.
+   */
   async executeCompletion(unifiedReq, rawReq, requestLog) {
     // Clone requests to avoid mutations bubbling back to controllers
     const req = { isFallback: false, ...unifiedReq };

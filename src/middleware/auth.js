@@ -1,29 +1,32 @@
+/**
+ * @fileoverview Authentication middleware for client access control.
+ * Validates either Bearer tokens in the Authorization header or API keys in the x-api-key header,
+ * maps requests to client profiles, and populates `req.client`.
+ * @module middleware/auth
+ */
+
 import { getAppLogger } from '../utils/logger.js';
 
+/**
+ * @type {Object}
+ */
 const logger = getAppLogger('auth');
 
-// WeakMap resolution cache to hold resolved token maps. Keyed by the clients configuration
-// array reference. WeakMap allows the cached maps to be garbage collected when config
-// reloads discard the old config reference, preventing long-term memory leaks.
+/**
+ * WeakMap resolution cache to hold resolved token maps. Keyed by the clients configuration
+ * array reference. WeakMap allows the cached maps to be garbage collected when config
+ * reloads discard the old config reference, preventing long-term memory leaks.
+ *
+ * @type {WeakMap<Array<Object>, Map<string, Object>>}
+ */
 const clientCache = new WeakMap();
 
-/**
- * Authentication middleware for client access control.
- * Validates the Authorization header format (Bearer <token>)
- * and verifies that <token> matches a configured client token.
- *
- * We abstract auth to a middleware layer rather than controller layer to ensure
- * unified security enforcement across all routes, preventing accidental unauthorized exposure.
- *
- * @param {Object} configLoader - The configuration loader instance to fetch the current config.
- * @returns {Function} Express middleware function.
- */
 /**
  * Extracts authentication token from request headers.
  * Supports both Authorization: Bearer <token> and x-api-key header formats.
  *
- * @param {Object} headers - Express request headers
- * @returns {Object} Result object with {token: string|null, error: Object|null}
+ * @param {Object} headers - Express request headers.
+ * @returns {{token: string|null, error: Object|null}} Extraction result.
  */
 const extractAuthToken = (headers) => {
   const authHeader = headers.authorization;
@@ -72,6 +75,14 @@ const extractAuthToken = (headers) => {
   };
 };
 
+/**
+ * Authentication middleware creator for Express.
+ * Returns a middleware function that populates `req.client` with the client configuration
+ * on successful token validation, or terminates the request with a 401 response on failure.
+ *
+ * @param {Object} configLoader - The configuration loader instance to fetch the current config.
+ * @returns {Function} Express middleware function: (req, res, next) => void.
+ */
 export const authMiddleware = (configLoader) => (req, res, next) => {
   logger.debug('Auth attempt: checking credentials');
 

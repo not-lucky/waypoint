@@ -1,10 +1,21 @@
+/**
+ * @fileoverview Inner retry executor engine.
+ * Handles key rotation, retries, and cooldown mapping for a single provider.
+ * Integrates stream wrapping to monitor client aborts during active token generation.
+ * @module services/retryExecutor
+ */
+
 /* eslint-disable max-len */
 /* eslint-disable no-restricted-syntax, no-await-in-loop */
 import { logDebug, logWarning } from '../utils/loggerHelpers.js';
 
 /**
- * WHAT: Constructs a 503 error payload when all keys are unavailable.
- * WHY: Communicates retry delay based on minimum active cooldown duration.
+ * Constructs a 503 error payload when all keys are unavailable.
+ * Communicates retry delay based on minimum active cooldown duration.
+ *
+ * @param {string} provider - The provider name.
+ * @param {Object} keyRegistry - Stateful API key registry instance.
+ * @returns {Object} Normalized 503 error payload with retry duration.
  */
 export function buildAllKeysExhaustedError(provider, keyRegistry) {
   let retryAfterSeconds = 0;
@@ -35,8 +46,20 @@ export function buildAllKeysExhaustedError(provider, keyRegistry) {
 }
 
 /**
- * WHAT: Abstracts the retry/key-rotation loop for a single provider.
- * WHY: Encapsulates key lifecycle tracking and error backoff logic.
+ * Abstracts the retry/key-rotation loop for a single provider.
+ * Rotates through keys, invokes the adapter, and tracks success/failure.
+ *
+ * @param {Object} options - Retry parameters.
+ * @param {string} options.provider - The provider name.
+ * @param {Object} options.req - Normalized request payload.
+ * @param {Object} options.adapter - The provider adapter instance (e.g. GeminiAdapter).
+ * @param {Object} options.keyRegistry - Stateful API key registry instance.
+ * @param {AbortController} options.abortController - Abort controller for tracking client disconnects.
+ * @param {Object|null} options.requestLog - Telemetry / request logger.
+ * @param {number} options.retryLimit - Max retry attempts for key rotation.
+ * @param {Object|null} options.logger - Logger instance.
+ * @param {Function} options.onStreamResponse - Callback triggered when streaming starts.
+ * @returns {Promise<Object|AsyncGenerator>} The provider adapter's result or error structure.
  */
 export const executeWithRetry = async ({
   provider,

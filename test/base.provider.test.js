@@ -3,10 +3,12 @@ import {
 } from 'vitest';
 import {
   BaseProvider,
-  NotImplementedError,
+} from '../src/adapters/BaseProvider.js';
+import {
   mapCompletionResult,
   mapStreamResult,
-} from '../src/adapters/BaseProvider.js';
+} from '../src/adapters/mappers.js';
+import { NotImplementedError } from '../src/utils/errors.js';
 
 describe('BaseProvider Tests', () => {
   it('should throw NotImplementedError on base class methods', async () => {

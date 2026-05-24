@@ -102,7 +102,19 @@ export const translateOpenAIToClaude = (req) => {
   // reasoning without requiring new SDK versions.
   const thinkingEnabled = req.thinkingEnabled || req.thinking_supported || false;
   if (thinkingEnabled) {
-    const budget = req.thinkingBudget !== undefined ? req.thinkingBudget : 2048;
+    let budget = 2048;
+    const effort = req.reasoningEffort || req.thinkingLevel;
+    if (effort) {
+      const effortBudgets = {
+        minimal: 1024,
+        low: 1024,
+        medium: 2048,
+        high: 4096,
+        xhigh: 16384,
+        max: 32768,
+      };
+      budget = effortBudgets[effort.toLowerCase()] || 2048;
+    }
     payload.thinking = {
       type: 'enabled',
       budget_tokens: budget,

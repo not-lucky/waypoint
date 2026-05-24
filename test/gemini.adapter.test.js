@@ -47,7 +47,7 @@ describe('GeminiAdapter Tests', () => {
       actualModelId: 'gemini-2.5-pro',
       messages: [{ role: 'user', content: 'hello' }],
       thinkingEnabled: true,
-      thinkingBudget: 1024,
+      thinkingLevel: 'low',
     };
 
     const response = await adapter.generateCompletion(req, 'gemini-key');
@@ -192,7 +192,7 @@ describe('GeminiAdapter Tests', () => {
     expect(chunks[1].choices[0].finish_reason).toBe('stop');
   });
 
-  it('assert: thinkingEnabled true without thinkingBudget uses default thinkingBudget 2048', async () => {
+  it('assert: thinkingEnabled true without thinkingLevel uses default thinkingLevel medium', async () => {
     const adapter = new GeminiAdapter();
 
     mockFetch.mockResolvedValue({
@@ -219,7 +219,7 @@ describe('GeminiAdapter Tests', () => {
     );
   });
 
-  it('assert: thinking_supported true enables thinking option with default or configured budget', async () => {
+  it('assert: thinking_supported true enables thinking option with default or configured effort', async () => {
     const adapter = new GeminiAdapter();
 
     mockFetch.mockResolvedValue({
@@ -234,7 +234,7 @@ describe('GeminiAdapter Tests', () => {
       actualModelId: 'gemini-2.5-pro',
       messages: [],
       thinking_supported: true,
-      thinkingBudget: 10240,
+      thinkingLevel: 'high',
     };
 
     await adapter.generateCompletion(req, 'gemini-key');
@@ -268,7 +268,7 @@ describe('GeminiAdapter Tests', () => {
       actualModelId: 'gemini-2.5-pro',
       messages: [],
       thinkingEnabled: true,
-      thinkingBudget: 4096,
+      thinkingLevel: 'high',
       temperature: 0.5,
       maxTokens: 500,
     };

@@ -81,7 +81,6 @@ export class UnifiedOrchestrator {
       provider: req.provider,
       stream: req.stream,
       thinkingEnabled: req.thinkingEnabled,
-      thinkingBudget: req.thinkingBudget,
     });
 
     const target = rawReq?.res || rawReq;

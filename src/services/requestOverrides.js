@@ -20,12 +20,6 @@ export const applyRequestOverrides = (req, rawReq) => {
     // eslint-disable-next-line no-param-reassign
     req.thinkingEnabled = true;
 
-    // Map the categorical level to standard token budget bounds if not explicitly overridden
-    const budgets = { low: 1024, medium: 2048, high: 4096 };
-    if (req.thinkingBudget === undefined && budgets[level]) {
-      // eslint-disable-next-line no-param-reassign
-      req.thinkingBudget = budgets[level];
-    }
   }
 
   // Check for the custom x-gateway-temperature header to override default generation temperature
@@ -36,5 +30,17 @@ export const applyRequestOverrides = (req, rawReq) => {
       // eslint-disable-next-line no-param-reassign
       req.temperature = parsedTemp;
     }
+  }
+
+  // Re-apply locked config overrides to ignore client-supplied overrides
+  // eslint-disable-next-line no-underscore-dangle
+  if (req._overrides) {
+    // eslint-disable-next-line no-underscore-dangle
+    Object.entries(req._overrides).forEach(([key, val]) => {
+      if (val !== undefined) {
+        // eslint-disable-next-line no-param-reassign
+        req[key] = val;
+      }
+    });
   }
 };

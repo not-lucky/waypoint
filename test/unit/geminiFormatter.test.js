@@ -53,20 +53,6 @@ describe('geminiFormatter Unit Tests', () => {
       expect(getThinkingLevel({ thinkingLevel: 'custom-level' })).toBe('custom-level');
     });
 
-    it('should map numeric thinkingBudget correctly', () => {
-      // <= 1024 -> low
-      expect(getThinkingLevel({ thinkingBudget: 512 })).toBe('low');
-      expect(getThinkingLevel({ thinkingBudget: 1024 })).toBe('low');
-
-      // <= 2048 -> medium
-      expect(getThinkingLevel({ thinkingBudget: 1025 })).toBe('medium');
-      expect(getThinkingLevel({ thinkingBudget: 2048 })).toBe('medium');
-
-      // > 2048 -> high
-      expect(getThinkingLevel({ thinkingBudget: 2049 })).toBe('high');
-      expect(getThinkingLevel({ thinkingBudget: 4096 })).toBe('high');
-    });
-
     it('should default to medium when no thinkingLevel or budget is specified', () => {
       expect(getThinkingLevel({})).toBe('medium');
     });

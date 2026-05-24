@@ -508,11 +508,6 @@ describe('Configuration Validation Tests', () => {
     config = getBaseValidConfig();
     config.providers.gemini.models[0].thinking_supported = 'not-a-bool';
     expect(() => validateConfig(config)).toThrow('process.exit called');
-
-    // 15. invalid model default_thinking_budget not positive integer
-    config = getBaseValidConfig();
-    config.providers.gemini.models[0].default_thinking_budget = -100;
-    expect(() => validateConfig(config)).toThrow('process.exit called');
   });
 
   describe('ConfigLoader specific edge cases', () => {

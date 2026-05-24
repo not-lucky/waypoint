@@ -117,14 +117,14 @@ describe('Translators Comprehensive Tests', () => {
         const res1 = translateOpenAIToClaude({
           messages: [],
           thinkingEnabled: true,
-          thinkingBudget: 1000,
+          reasoningEffort: 'low',
           maxTokens: 500,
         });
         expect(res1.thinking).toEqual({
           type: 'enabled',
-          budget_tokens: 1000,
+          budget_tokens: 1024,
         });
-        expect(res1.max_tokens).toBe(3048);
+        expect(res1.max_tokens).toBe(3072);
 
         // maxTokens > budget case
         const res2 = translateOpenAIToClaude({
@@ -185,16 +185,11 @@ describe('Translators Comprehensive Tests', () => {
           messages: [],
           temperature: 0.7,
           maxTokens: 100,
-          thinkingEnabled: true,
-          thinkingBudget: 1024,
         };
         const res1 = translateOpenAIToGemini(req1);
         expect(res1.generationConfig).toEqual({
           temperature: 0.7,
           maxOutputTokens: 100,
-          thinkingConfig: {
-            thinkingBudget: 1024,
-          },
         });
 
         const req2 = {
@@ -202,11 +197,7 @@ describe('Translators Comprehensive Tests', () => {
           thinking_supported: true,
         };
         const res2 = translateOpenAIToGemini(req2);
-        expect(res2.generationConfig).toEqual({
-          thinkingConfig: {
-            thinkingBudget: 2048,
-          },
-        });
+        expect(res2.generationConfig).toBeUndefined();
       });
 
       it('should handle missing messages or other roles', () => {

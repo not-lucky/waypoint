@@ -16,8 +16,8 @@ describe('AnthropicController Edge Case Tests', () => {
           {
             id: 'gemini-2.5-pro-preview-05-06',
             aliases: ['gemini-2.5-pro', 'gemini-pro', 'pro'],
-            thinking_supported: true,
-            default_thinking_budget: 2048,
+            reasoning_supported: true,
+            reasoning_effort: 'medium',
             fallback_model: 'openai/gpt-4o',
           },
         ],
@@ -81,7 +81,9 @@ describe('AnthropicController Edge Case Tests', () => {
           actualModelId: 'gemini-2.5-pro-preview-05-06',
           fallbackModel: 'openai/gpt-4o',
           thinking_supported: true,
-          thinkingBudget: 2048,
+          thinkingLevel: 'medium',
+          thinkingEnabled: true,
+          reasoningEffort: 'medium',
         }),
         expect.any(Object),
         expect.any(Object),
@@ -144,7 +146,7 @@ describe('AnthropicController Edge Case Tests', () => {
 
       expect(mockOrchestrator.executeCompletion).toHaveBeenCalledWith(
         expect.objectContaining({
-          thinkingBudget: 512,
+          thinkingLevel: 'low',
           thinkingEnabled: true,
         }),
         expect.any(Object),
@@ -164,7 +166,7 @@ describe('AnthropicController Edge Case Tests', () => {
 
       expect(mockOrchestrator.executeCompletion).toHaveBeenCalledWith(
         expect.objectContaining({
-          thinkingBudget: 8192,
+          thinkingLevel: 'high',
           thinkingEnabled: true,
         }),
         expect.any(Object),
@@ -184,7 +186,8 @@ describe('AnthropicController Edge Case Tests', () => {
 
       expect(mockOrchestrator.executeCompletion).toHaveBeenCalledWith(
         expect.objectContaining({
-          thinkingBudget: 2048, // stays default
+          thinkingLevel: 'invalid',
+          thinkingEnabled: true,
         }),
         expect.any(Object),
         expect.any(Object),

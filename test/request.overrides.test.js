@@ -11,7 +11,7 @@ describe('Request Overrides Tests', () => {
     expect(req.temperature).toBe(0.5);
   });
 
-  it('should map thinking levels to budgets when undefined', () => {
+  it('should set thinking level and thinkingEnabled from header overrides', () => {
     const req = {};
     const rawReq = {
       headers: {
@@ -21,33 +21,6 @@ describe('Request Overrides Tests', () => {
     applyRequestOverrides(req, rawReq);
     expect(req.thinkingLevel).toBe('high');
     expect(req.thinkingEnabled).toBe(true);
-    expect(req.thinkingBudget).toBe(4096);
-  });
-
-  it('should not overwrite thinking budget if already defined', () => {
-    const req = { thinkingBudget: 999 };
-    const rawReq = {
-      headers: {
-        'x-gateway-thinking-level': 'low',
-      },
-    };
-    applyRequestOverrides(req, rawReq);
-    expect(req.thinkingLevel).toBe('low');
-    expect(req.thinkingEnabled).toBe(true);
-    expect(req.thinkingBudget).toBe(999);
-  });
-
-  it('should map invalid thinking level name to undefined budget without crashing', () => {
-    const req = {};
-    const rawReq = {
-      headers: {
-        'x-gateway-thinking-level': 'ultra',
-      },
-    };
-    applyRequestOverrides(req, rawReq);
-    expect(req.thinkingLevel).toBe('ultra');
-    expect(req.thinkingEnabled).toBe(true);
-    expect(req.thinkingBudget).toBeUndefined();
   });
 
   it('should apply valid temperature and ignore NaN temperature', () => {

@@ -7,15 +7,16 @@ import { StreamAccumulator } from '../utils/StreamAccumulator.js';
  * Extracts and categorizes reasoning/thinking effort from the incoming request.
  */
 const getReasoningEffort = (req) => {
-  const effort = req.thinkingLevel || req.reasoningEffort;
+  let effort = req.thinkingLevel || req.reasoningEffort;
+  if (effort) {
+    effort = effort.toLowerCase();
+    if (effort === 'minimal') return 'low';
+    if (['xhigh', 'max'].includes(effort)) return 'high';
+    return effort;
+  }
   const thinkingEnabled = req.thinkingEnabled || req.thinking_supported || false;
 
-  if (!effort && thinkingEnabled) {
-    if (req.thinkingBudget !== undefined) {
-      if (req.thinkingBudget <= 1024) return 'low';
-      if (req.thinkingBudget <= 2048) return 'medium';
-      return 'high';
-    }
+  if (thinkingEnabled) {
     return 'medium';
   }
   return effort;

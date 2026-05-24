@@ -81,7 +81,6 @@ describe('Detailed Validator Tests', () => {
     const config = getBaseValidConfig();
     config.providers.openai.models[0].aliases = ['gpt4'];
     config.providers.openai.models[0].thinking_supported = true;
-    config.providers.openai.models[0].default_thinking_budget = 1000;
     expect(() => validateConfig(config, false)).not.toThrow();
 
     config.providers.openai.models[0].aliases = 'not-an-array';
@@ -92,8 +91,6 @@ describe('Detailed Validator Tests', () => {
     expect(() => validateConfig(config, false)).toThrow("Invalid 'thinking_supported'");
 
     config.providers.openai.models[0].thinking_supported = true;
-    config.providers.openai.models[0].default_thinking_budget = -1;
-    expect(() => validateConfig(config, false)).toThrow("Invalid 'default_thinking_budget'");
   });
 
   describe('Fallback Model Validation', () => {

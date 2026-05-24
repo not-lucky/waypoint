@@ -163,8 +163,8 @@ providers:
       - id: "gemini-2.5-pro"
         aliases: ["gemini-pro"]
         actual_model_id: "gemini-2.5-pro-preview-05-06"
-        thinking_supported: true
-        default_thinking_budget: 2048
+        reasoning_supported: true
+        reasoning_effort: "medium"
         fallback_model: "openai/gpt-4o"
 ```
 

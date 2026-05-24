@@ -91,17 +91,6 @@ export const translateOpenAIToGemini = (req) => {
     generationConfig.maxOutputTokens = req.maxTokens;
   }
 
-  // Rationale: Support for Gemini's extended thinking/reasoning modes.
-  // We accommodate varying request shapes by checking multiple possible flag names.
-  // This ensures experimental or non-standard client implementations don't drop thinking features.
-  const thinkingEnabled = req.thinkingEnabled || req.thinking_supported || false;
-  if (thinkingEnabled) {
-    // Configure Gemini's specific thinking budget parameters
-    generationConfig.thinkingConfig = {
-      thinkingBudget: req.thinkingBudget !== undefined ? req.thinkingBudget : 2048,
-    };
-  }
-
   // Assemble the final payload.
   // Gemini will reject requests with an empty `contents` array if there's no system instruction,
   // but we build it eagerly.

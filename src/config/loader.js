@@ -161,7 +161,18 @@ export class ConfigLoader {
             {
               ...providerConf,
               ...(Array.isArray(providerConf?.models) && {
-                models: providerConf.models.map((model) => coerceToInt(model, 'default_thinking_budget')),
+                models: providerConf.models.map((model) => {
+                  let m = { ...model };
+                  m = coerceToInt(m, 'max_tokens');
+                  m = coerceToInt(m, 'maxTokens');
+                  if (m.overrides && typeof m.overrides === 'object') {
+                    let o = m.overrides;
+                    o = coerceToInt(o, 'max_tokens');
+                    o = coerceToInt(o, 'maxTokens');
+                    m = { ...m, overrides: o };
+                  }
+                  return m;
+                }),
               }),
             },
           ]),

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { resolveModel } from '../../src/utils/ModelRouter.js';
-import { transformRequest, THINKING_BUDGETS } from '../../src/utils/RequestTransformer.js';
+import { transformRequest } from '../../src/utils/RequestTransformer.js';
 
 describe('modelResolver & RequestTransformer Unit Tests', () => {
   describe('resolveModel', () => {
@@ -136,41 +136,33 @@ describe('modelResolver & RequestTransformer Unit Tests', () => {
         modelConfig: {
           id: 'claude-thinking',
           thinking_supported: true,
-          default_thinking_budget: 1024,
+          reasoning_effort: 'medium',
         },
       };
 
       const { unifiedReq } = transformRequest(baseReq, rawReq, resolved);
       expect(unifiedReq.thinking_supported).toBe(true);
       expect(unifiedReq.thinkingEnabled).toBe(true);
-      expect(unifiedReq.thinkingBudget).toBe(1024);
+      expect(unifiedReq.reasoningEffort).toBe('medium');
     });
 
-    it('should override thinking level and map to budget constants case-insensitively', () => {
+    it('should override thinking level case-insensitively', () => {
       const baseReq = {};
 
-      // low -> 512
       const rawReq1 = { headers: { 'x-gateway-thinking-level': 'Low' } };
       const { unifiedReq: req1 } = transformRequest(baseReq, rawReq1, null);
-      expect(req1.thinkingBudget).toBe(THINKING_BUDGETS.low);
+      expect(req1.thinkingLevel).toBe('low');
       expect(req1.thinkingEnabled).toBe(true);
 
-      // medium -> 2048
       const rawReq2 = { headers: { 'x-gateway-thinking-level': 'MEDIUM' } };
       const { unifiedReq: req2 } = transformRequest(baseReq, rawReq2, null);
-      expect(req2.thinkingBudget).toBe(THINKING_BUDGETS.medium);
+      expect(req2.thinkingLevel).toBe('medium');
       expect(req2.thinkingEnabled).toBe(true);
 
-      // high -> 8192
       const rawReq3 = { headers: { 'x-gateway-thinking-level': 'high' } };
       const { unifiedReq: req3 } = transformRequest(baseReq, rawReq3, null);
-      expect(req3.thinkingBudget).toBe(THINKING_BUDGETS.high);
+      expect(req3.thinkingLevel).toBe('high');
       expect(req3.thinkingEnabled).toBe(true);
-
-      // Invalid thinking level is ignored if not defined
-      const rawReq4 = { headers: { 'x-gateway-thinking-level': 'ultra' } };
-      const { unifiedReq: req4 } = transformRequest(baseReq, rawReq4, null);
-      expect(req4.thinkingBudget).toBeUndefined();
     });
 
     it('should override temperature and clamp/ignore out-of-bounds or invalid values', () => {

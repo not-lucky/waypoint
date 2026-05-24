@@ -7,6 +7,7 @@
 
 /* eslint-disable no-restricted-syntax, no-constant-condition */
 import { resolveModel } from '../utils/ModelRouter.js';
+import { applyModelConfigToRequest } from '../utils/RequestTransformer.js';
 import { executeWithRetry } from './retryExecutor.js';
 import { logDebug } from '../utils/loggerHelpers.js';
 
@@ -24,19 +25,28 @@ const updateRequestWithModelConfig = (currentReq, config) => {
   if (!resolved) return currentReq;
 
   const { modelConfig } = resolved;
-  return {
-    ...currentReq,
+
+  // Rebuild the request from the client's original parameters if available
+  // to avoid state bleed from previous models
+  // eslint-disable-next-line no-underscore-dangle
+  const base = currentReq._clientReq ? { ...currentReq._clientReq } : { ...currentReq };
+
+  base.model = currentReq.model;
+  base.isFallback = currentReq.isFallback;
+
+  let req = {
+    ...base,
     provider: resolved.provider,
-    actualModelId: modelConfig.id,
-    fallbackModel: modelConfig.fallback_model || currentReq.fallbackModel,
-    thinking_supported: modelConfig.thinking_supported || currentReq.thinking_supported,
-    thinkingEnabled: modelConfig.thinking_supported !== undefined
-      ? modelConfig.thinking_supported
-      : currentReq.thinkingEnabled,
-    thinkingBudget: modelConfig.default_thinking_budget !== undefined
-      ? modelConfig.default_thinking_budget
-      : currentReq.thinkingBudget,
+    actualModelId: modelConfig.actual_model_id || modelConfig.id,
   };
+
+  req = applyModelConfigToRequest(req, modelConfig);
+
+  // Preserve the client request property for future fallbacks
+  // eslint-disable-next-line no-underscore-dangle
+  req._clientReq = base;
+
+  return req;
 };
 
 /**

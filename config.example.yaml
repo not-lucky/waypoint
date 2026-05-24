@@ -95,12 +95,21 @@ providers:
     models:
       - id: "gemini-2.5-pro-preview-05-06"              # The model ID exposed by the gateway (required, string)
         aliases: ["gemini-2.5-pro", "gemini-pro", "pro"] # Alternative IDs to match this model (optional, array of strings)
-        thinking_supported: true                        # Whether the model supports thinking/reasoning (optional, boolean)
-        default_thinking_budget: 2048                   # Default thinking budget if supported (optional, positive integer)
+        reasoning_supported: true                       # Whether the model supports reasoning/thinking (optional, boolean)
         fallback_model: "openai/gpt-4o"                 # Model to use if all keys for this provider fail (optional format: provider/model-id)
+      - id: "gemini-flash-lite-latest-low"
+        actual_model_id: "gemini-flash-lite-latest"     # The underlying model to call upstream (optional, string)
+        reasoning_supported: true                       # Whether reasoning is supported (optional, boolean)
+        temperature: 0.3                                # Default parameters applied if not specified by client (optional)
+        reasoning_effort: "low"                         # Unified reasoning level: minimal | low | medium | high | xhigh | max
+      - id: "gemini-flash-lite-latest-high"
+        actual_model_id: "gemini-flash-lite-latest"
+        reasoning_supported: true
+        overrides:                                      # Locked settings that ignore/override client-supplied values or headers (optional, object)
+          reasoning_effort: "high"
       - id: "gemini-2.0-flash"
         aliases: ["flash"]
-        thinking_supported: false
+        reasoning_supported: false
 
   anthropic:
     keys:
@@ -108,8 +117,8 @@ providers:
     models:
       - id: "claude-sonnet-4-20250514"
         aliases: ["claude-sonnet-4", "sonnet"]
-        thinking_supported: true
-        default_thinking_budget: 4096
+        reasoning_supported: true
+        reasoning_effort: "medium"
         fallback_model: "gemini/gemini-2.5-pro-preview-05-06"
 
   openai:
@@ -118,7 +127,7 @@ providers:
     models:
       - id: "gpt-4o"
         aliases: ["gpt4"]
-        thinking_supported: false
+        reasoning_supported: false
 
   # Custom OpenAI-compatible provider example
   custom-openai:
@@ -129,7 +138,7 @@ providers:
     models:
       - id: "gpt-4o"
         aliases: ["custom-gpt"]
-        thinking_supported: false
+        reasoning_supported: false
 
   # Custom Anthropic-compatible provider example
   custom-anthropic:
@@ -140,8 +149,8 @@ providers:
     models:
       - id: "claude-sonnet-4"
         aliases: ["custom-sonnet"]
-        thinking_supported: true
-        default_thinking_budget: 12000
+        reasoning_supported: true
+        reasoning_effort: "high"
 
   # Local or self-hosted provider example (e.g. Ollama)
   local-ollama:
@@ -151,4 +160,4 @@ providers:
     models:
       - id: "llama3:70b"
         aliases: ["llama3"]
-        thinking_supported: false
+        reasoning_supported: false

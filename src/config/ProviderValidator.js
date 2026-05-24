@@ -111,30 +111,96 @@ export class ProviderValidator {
         if (!isNonEmptyString(model.id)) {
           logErrorAndExitOrThrow(`Missing or empty model 'id' at index ${j} for provider '${providerName}'.`, shouldExit, customLogger);
         }
-        if (model.aliases !== undefined && !Array.isArray(model.aliases)) {
-          logErrorAndExitOrThrow(
-            `Invalid 'aliases' at index ${j} for provider '${providerName}'. Must be an array.`,
-            shouldExit,
-            customLogger,
-          );
-        }
-        if (model.thinking_supported !== undefined && typeof model.thinking_supported !== 'boolean') {
-          logErrorAndExitOrThrow(
-            `Invalid 'thinking_supported' at index ${j} for provider '${providerName}'. Must be a boolean.`,
-            shouldExit,
-            customLogger,
-          );
-        }
-        if (
-          model.default_thinking_budget !== undefined
-          && !isPositiveInteger(model.default_thinking_budget)
-        ) {
-          logErrorAndExitOrThrow(
-            `Invalid 'default_thinking_budget' at index ${j} for provider '${providerName}'. Must be a positive integer.`,
-            shouldExit,
-            customLogger,
-          );
-        }
+        const VALID_MODEL_KEYS = [
+          'id',
+          'aliases',
+          'actual_model_id',
+          'fallback_model',
+          'thinking_supported',
+          'reasoning_supported',
+          'overrides',
+          'temperature',
+          'max_tokens',
+          'maxTokens',
+          'thinking_enabled',
+          'thinkingEnabled',
+          'thinking_level',
+          'thinkingLevel',
+          'reasoning_effort',
+          'reasoningEffort',
+        ];
+
+        Object.entries(model).forEach(([key, val]) => {
+          if (!VALID_MODEL_KEYS.includes(key)) {
+            logErrorAndExitOrThrow(
+              `Invalid model configuration key '${key}' at index ${j} for provider '${providerName}'.`,
+              shouldExit,
+              customLogger,
+            );
+          }
+
+          if (key === 'aliases') {
+            if (!Array.isArray(val)) {
+              logErrorAndExitOrThrow(
+                `Invalid 'aliases' at index ${j} for provider '${providerName}'. Must be an array.`,
+                shouldExit,
+                customLogger,
+              );
+            }
+          } else if (key === 'actual_model_id') {
+            if (!isNonEmptyString(val)) {
+              logErrorAndExitOrThrow(
+                `Invalid 'actual_model_id' at index ${j} for provider '${providerName}'. Must be a non-empty string.`,
+                shouldExit,
+                customLogger,
+              );
+            }
+          } else if (key === 'thinking_supported' || key === 'reasoning_supported') {
+            if (typeof val !== 'boolean') {
+              logErrorAndExitOrThrow(
+                `Invalid '${key}' at index ${j} for provider '${providerName}'. Must be a boolean.`,
+                shouldExit,
+                customLogger,
+              );
+            }
+          } else if (key === 'temperature') {
+            if (typeof val !== 'number' || val < 0 || val > 2) {
+              logErrorAndExitOrThrow(
+                `Setting 'temperature' at index ${j} for provider '${providerName}' must be a number between 0 and 2.`,
+                shouldExit,
+                customLogger,
+              );
+            }
+          } else if (key === 'max_tokens' || key === 'maxTokens') {
+            const coerced = Number(val);
+            if (!Number.isInteger(coerced) || coerced <= 0) {
+              logErrorAndExitOrThrow(
+                `Setting '${key}' at index ${j} for provider '${providerName}' must be a positive integer.`,
+                shouldExit,
+                customLogger,
+              );
+            }
+          } else if (key === 'thinking_enabled' || key === 'thinkingEnabled') {
+            if (typeof val !== 'boolean') {
+              logErrorAndExitOrThrow(
+                `Setting '${key}' at index ${j} for provider '${providerName}' must be a boolean.`,
+                shouldExit,
+                customLogger,
+              );
+            }
+          } else if (key === 'thinking_level' || key === 'thinkingLevel' || key === 'reasoning_effort' || key === 'reasoningEffort') {
+            const allowed = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+            if (typeof val !== 'string' || !allowed.includes(val.toLowerCase())) {
+              logErrorAndExitOrThrow(
+                `Setting '${key}' at index ${j} for provider '${providerName}' must be one of 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'.`,
+                shouldExit,
+                customLogger,
+              );
+            }
+          } else if (key === 'overrides') {
+            ProviderValidator.validateSettings(val, `models[${j}].overrides`, providerName, shouldExit, customLogger);
+          }
+        });
 
         if (model.fallback_model !== undefined) {
           validateFallbackModel(
@@ -148,6 +214,91 @@ export class ProviderValidator {
           );
         }
       });
+    });
+  }
+
+  /**
+   * Validates a settings block (defaults or overrides) for a model.
+   *
+   * @param {Object} settings - The settings configuration object.
+   * @param {string} path - The path identifier for error messages.
+   * @param {string} providerName - The provider name.
+   * @param {boolean} shouldExit - Whether the process should exit on validation failure.
+   * @param {Object|null} customLogger - Logger instance.
+   */
+  static validateSettings(settings, path, providerName, shouldExit, customLogger) {
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+      logErrorAndExitOrThrow(
+        `Invalid settings object at '${path}' for provider '${providerName}'.`,
+        shouldExit,
+        customLogger,
+      );
+      return;
+    }
+
+    const VALID_KEYS = [
+      'temperature',
+      'max_tokens',
+      'maxTokens',
+      'thinking_enabled',
+      'thinkingEnabled',
+      'thinking_level',
+      'thinkingLevel',
+      'reasoning_supported',
+      'reasoningSupported',
+      'reasoning_effort',
+      'reasoningEffort',
+    ];
+
+    Object.entries(settings).forEach(([key, val]) => {
+      if (!VALID_KEYS.includes(key)) {
+        logErrorAndExitOrThrow(
+          `Invalid setting key '${key}' at '${path}' for provider '${providerName}'.`,
+          shouldExit,
+          customLogger,
+        );
+      }
+      if (key === 'temperature') {
+        if (typeof val !== 'number' || val < 0 || val > 2) {
+          logErrorAndExitOrThrow(
+            `Setting 'temperature' at '${path}' for provider '${providerName}' must be a number between 0 and 2.`,
+            shouldExit,
+            customLogger,
+          );
+        }
+      } else if (key === 'max_tokens' || key === 'maxTokens') {
+        const coerced = Number(val);
+        if (!isPositiveInteger(coerced)) {
+          logErrorAndExitOrThrow(
+            `Setting '${key}' at '${path}' for provider '${providerName}' must be a positive integer.`,
+            shouldExit,
+            customLogger,
+          );
+        }
+      } else if (
+        key === 'thinking_enabled' || key === 'thinkingEnabled'
+        || key === 'reasoning_supported' || key === 'reasoningSupported'
+      ) {
+        if (typeof val !== 'boolean') {
+          logErrorAndExitOrThrow(
+            `Setting '${key}' at '${path}' for provider '${providerName}' must be a boolean.`,
+            shouldExit,
+            customLogger,
+          );
+        }
+      } else if (
+        key === 'thinking_level' || key === 'thinkingLevel'
+        || key === 'reasoning_effort' || key === 'reasoningEffort'
+      ) {
+        const allowed = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+        if (typeof val !== 'string' || !allowed.includes(val.toLowerCase())) {
+          logErrorAndExitOrThrow(
+            `Setting '${key}' at '${path}' for provider '${providerName}' must be one of 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'.`,
+            shouldExit,
+            customLogger,
+          );
+        }
+      }
     });
   }
 }

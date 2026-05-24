@@ -107,7 +107,7 @@ describe('AnthropicAdapter Tests', () => {
       actualModelId: 'claude-3-5-sonnet',
       messages: [{ role: 'user', content: 'solve' }],
       thinkingEnabled: true,
-      thinkingBudget: 4096,
+      thinkingLevel: 'high',
     };
 
     const response = await adapter.generateCompletion(req, 'anthropic-key');
@@ -215,7 +215,7 @@ describe('AnthropicAdapter Tests', () => {
     expect(chunks[2].choices[0].finish_reason).toBe('stop');
   });
 
-  it('assert: thinkingEnabled true without thinkingBudget uses default thinkingBudget 2048', async () => {
+  it('assert: thinkingEnabled true without thinkingLevel uses default budget 2048', async () => {
     const adapter = new AnthropicAdapter();
     const req = {
       model: 'anthropic/claude-3-5-sonnet',
@@ -276,7 +276,7 @@ describe('AnthropicAdapter Tests', () => {
       actualModelId: 'claude-3-5-sonnet',
       messages: [],
       thinkingEnabled: true,
-      thinkingBudget: 1000,
+      thinkingLevel: 'low',
       temperature: 0.8,
       maxTokens: 2000,
     };
@@ -313,7 +313,7 @@ describe('AnthropicAdapter Tests', () => {
           temperature: 0.8,
           thinking: {
             type: 'enabled',
-            budget_tokens: 1000,
+            budget_tokens: 1024,
           },
           stream: true,
         }),

@@ -15,6 +15,28 @@ export function translateUsage(usage) {
   };
 }
 
+export const getGeminiThinkingLevel = (effort, modelId = '') => {
+  const cleanEffort = String(effort || '').toLowerCase();
+  const isPro = modelId.includes('pro');
+
+  const knownLevels = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+  if (!knownLevels.includes(cleanEffort)) {
+    return effort;
+  }
+
+  if (isPro) {
+    if (cleanEffort === 'minimal' || cleanEffort === 'low') return 'low';
+    if (cleanEffort === 'medium') return 'medium';
+    if (['high', 'xhigh', 'max'].includes(cleanEffort)) return 'high';
+    return 'medium';
+  }
+  if (cleanEffort === 'minimal') return 'minimal';
+  if (cleanEffort === 'low') return 'low';
+  if (cleanEffort === 'medium') return 'medium';
+  if (['high', 'xhigh', 'max'].includes(cleanEffort)) return 'high';
+  return 'medium';
+};
+
 /**
  * WHAT: Resolves the internal thinking level mapping to upstream specific levels.
  * WHY: Maps numeric thinking budget to Gemini's categorical low/medium/high scale.
@@ -23,12 +45,9 @@ export function translateUsage(usage) {
  * @returns {string} Gemini thinking level.
  */
 export const getThinkingLevel = (req) => {
-  if (req.thinkingLevel) return req.thinkingLevel;
-  if (req.thinkingBudget !== undefined) {
-    // Tiered conversion from numeric reasoning budgets to categorical tiers
-    if (req.thinkingBudget <= 1024) return 'low';
-    if (req.thinkingBudget <= 2048) return 'medium';
-    return 'high';
+  const effort = req.thinkingLevel || req.reasoningEffort;
+  if (effort) {
+    return getGeminiThinkingLevel(effort, req.actualModelId || req.model || '');
   }
   return 'medium';
 };

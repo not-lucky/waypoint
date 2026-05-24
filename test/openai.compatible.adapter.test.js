@@ -305,7 +305,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
     ]);
   });
 
-  it('assert: generateCompletion maps thinkingLevel and thinkingBudget correctly to reasoningEffort', async () => {
+  it('assert: generateCompletion maps thinkingLevel correctly to reasoningEffort', async () => {
     const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
 
     mockFetch.mockResolvedValue({
@@ -320,51 +320,6 @@ describe('OpenAICompatibleAdapter Tests', () => {
       actualModelId: 'gpt-4o',
       messages: [],
       thinkingLevel: 'high',
-    }, 'test-api-key');
-
-    expect(mockFetch).toHaveBeenLastCalledWith(
-      expect.any(String),
-      expect.objectContaining({
-        body: expect.stringContaining('"reasoning_effort":"high"'),
-      }),
-    );
-
-    // Case 2: thinkingEnabled is true, budget <= 1024 -> low
-    await adapter.generateCompletion({
-      actualModelId: 'gpt-4o',
-      messages: [],
-      thinkingEnabled: true,
-      thinkingBudget: 1024,
-    }, 'test-api-key');
-
-    expect(mockFetch).toHaveBeenLastCalledWith(
-      expect.any(String),
-      expect.objectContaining({
-        body: expect.stringContaining('"reasoning_effort":"low"'),
-      }),
-    );
-
-    // Case 3: thinkingEnabled is true, budget <= 2048 -> medium
-    await adapter.generateCompletion({
-      actualModelId: 'gpt-4o',
-      messages: [],
-      thinkingEnabled: true,
-      thinkingBudget: 2000,
-    }, 'test-api-key');
-
-    expect(mockFetch).toHaveBeenLastCalledWith(
-      expect.any(String),
-      expect.objectContaining({
-        body: expect.stringContaining('"reasoning_effort":"medium"'),
-      }),
-    );
-
-    // Case 4: thinkingEnabled is true, budget > 2048 -> high
-    await adapter.generateCompletion({
-      actualModelId: 'gpt-4o',
-      messages: [],
-      thinkingEnabled: true,
-      thinkingBudget: 4096,
     }, 'test-api-key');
 
     expect(mockFetch).toHaveBeenLastCalledWith(
@@ -635,7 +590,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
     const req = {
       messages: [],
       thinkingEnabled: true,
-      thinkingBudget: 1000,
+      thinkingLevel: 'low',
     };
 
     const chunks = [];

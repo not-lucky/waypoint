@@ -27,7 +27,6 @@ import { NotImplementedError } from '../utils/errors.js';
  * @property {number} [maxTokens] - Max tokens to generate
  * @property {boolean} [stream] - Whether to stream the response
  * @property {boolean} [thinkingEnabled] - Whether thinking is enabled
- * @property {number} [thinkingBudget] - The reasoning budget for reasoning models
  * @property {string} [thinkingLevel] - The thinking level ('low', 'medium', 'high')
  * @property {string} [reasoningEffort] - OpenAI-specific reasoning effort ('low', 'medium', 'high')
  * @property {string} [fallbackModel] - Fallback model identifier

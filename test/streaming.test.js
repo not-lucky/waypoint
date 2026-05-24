@@ -379,7 +379,6 @@ describe('Streaming End-to-End Tests', () => {
 
     expect(capturedReq.thinkingLevel).toBe('high');
     expect(capturedReq.thinkingEnabled).toBe(true);
-    expect(capturedReq.thinkingBudget).toBe(4096);
     expect(capturedReq.temperature).toBe(1.2);
   });
 

@@ -5,7 +5,6 @@
  * @module services/UnifiedOrchestrator
  */
 
-import { applyRequestOverrides } from './requestOverrides.js';
 import { runOrchestrationLoop } from './orchestrationEngine.js';
 import { logDebug } from '../utils/loggerHelpers.js';
 import { teardownRegistry } from '../registry/TeardownRegistry.js';
@@ -67,9 +66,6 @@ export class UnifiedOrchestrator {
   async executeCompletion(unifiedReq, rawReq, requestLog) {
     // Clone requests to avoid mutations bubbling back to controllers
     const req = { isFallback: false, ...unifiedReq };
-
-    // Apply header-based overrides (temperature, thinking levels)
-    applyRequestOverrides(req, rawReq);
 
     // Fetch the global retry limit from gateway configuration
     const retryLimit = this.config.gateway?.global_retry_limit ?? 3;

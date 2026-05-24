@@ -353,35 +353,6 @@ describe('Streaming End-to-End Tests', () => {
     expect(firstResult.done).toBe(true);
   });
 
-  it('assert: header and temperature overrides are passed to the generator', async () => {
-    let capturedReq = null;
-    mockAdapter.generateStream = async function* (req, apiKey, signal) {
-      capturedReq = req;
-      yield { id: 'chunk-1', choices: [{ index: 0, delta: { content: 'ok' } }] };
-    };
-
-    const mockReq = {
-      res: { writableEnded: false, on: () => {} },
-      headers: {
-        'x-gateway-thinking-level': 'high',
-        'x-gateway-temperature': '1.2',
-      },
-    };
-
-    const orchestratorRes = await orchestrator.executeCompletion({
-      model: 'mock-provider/test-model',
-      messages: [],
-      stream: true,
-    }, mockReq);
-
-    const iterator = orchestratorRes[Symbol.asyncIterator]();
-    await iterator.next();
-
-    expect(capturedReq.thinkingLevel).toBe('high');
-    expect(capturedReq.thinkingEnabled).toBe(true);
-    expect(capturedReq.temperature).toBe(1.2);
-  });
-
   it('assert: abort controller cancels loop mid-retry after chunk retrieval', async () => {
     let triggerAbort = null;
     mockAdapter.generateStream = async function* (req, apiKey, signal) {

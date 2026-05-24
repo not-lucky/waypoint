@@ -91,8 +91,7 @@ Waypoint enforces strict **Separation of Concerns** using a layered Clean Archit
 Waypoint resolves parameters (e.g., `temperature`, `max_tokens`, `reasoning_effort`) using a deterministic hierarchy:
 1. **Flat Model Defaults**: Settings configured directly at the root of a model's YAML config block.
 2. **Client Payload**: Body parameters supplied in the incoming client HTTP call.
-3. **Client Headers**: Custom ingress override headers (`x-gateway-thinking-level` or `x-gateway-temperature`).
-4. **Configuration Overrides**: Values inside the model's `overrides` block, acting as a locked policy that client options cannot bypass.
+3. **Configuration Overrides**: Values inside the model's `overrides` block, acting as a locked policy that client options cannot bypass.
 
 ### 5. Automated Fallback Routing
 - If all API keys in a provider pool are rate-limited or exhausted for a given model, Waypoint automatically failovers to a designated `fallback_model` (e.g., from Gemini to OpenAI) to maintain request reliability.

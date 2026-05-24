@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { ProviderValidator } from '../../src/config/ProviderValidator.js';
 import { ConfigLoader } from '../../src/config/loader.js';
 import { transformRequest, applyModelConfigToRequest } from '../../src/utils/RequestTransformer.js';
-import { applyRequestOverrides } from '../../src/services/requestOverrides.js';
 import { translateOpenAIToClaude } from '../../src/translators/request/openai-to-claude.js';
 import { getThinkingLevel } from '../../src/adapters/geminiFormatter.js';
 
@@ -215,47 +214,6 @@ describe('Model-Level Defaults, Overrides, and Reasoning Unit Tests', () => {
 
       expect(unifiedReq.temperature).toBe(0.8); // client wins over defaults
       expect(unifiedReq.maxTokens).toBe(1000); // model overrides wins over client
-    });
-
-    it('should allow client headers to override defaults and body, but get overridden by overrides', () => {
-      const baseReq = {
-        model: 'custom-model',
-        temperature: 0.8,
-      };
-      const rawReq = {
-        headers: {
-          'x-gateway-temperature': '1.5',
-          'x-gateway-thinking-level': 'low', // overridden by model overrides
-        },
-      };
-
-      const { unifiedReq } = transformRequest(baseReq, rawReq, resolved);
-
-      expect(unifiedReq.temperature).toBe(1.5); // header wins over body and defaults
-      expect(unifiedReq.reasoningEffort).toBe('high'); // model overrides wins over header
-    });
-  });
-
-  describe('Enforcement in Header Overrides', () => {
-    it('should ignore header overrides if the property is locked in overrides', () => {
-      const req = {
-        temperature: 0.5,
-        thinkingLevel: 'high',
-        _overrides: {
-          thinkingLevel: 'high',
-        },
-      };
-      const rawReq = {
-        headers: {
-          'x-gateway-thinking-level': 'low',
-          'x-gateway-temperature': '1.8',
-        },
-      };
-
-      applyRequestOverrides(req, rawReq);
-
-      expect(req.temperature).toBe(1.8); // temperature not locked, gets updated
-      expect(req.thinkingLevel).toBe('high'); // thinkingLevel is locked, stays high!
     });
   });
 

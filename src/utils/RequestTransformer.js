@@ -11,13 +11,19 @@ export const normalizeSettings = (settingsObj) => {
 
   if (settingsObj.temperature !== undefined) normalized.temperature = settingsObj.temperature;
 
-  const maxTokens = settingsObj.max_tokens !== undefined ? settingsObj.max_tokens : settingsObj.maxTokens;
+  const maxTokens = settingsObj.max_tokens !== undefined
+    ? settingsObj.max_tokens
+    : settingsObj.maxTokens;
   if (maxTokens !== undefined) normalized.maxTokens = maxTokens;
 
-  const thinkingEnabled = settingsObj.thinking_enabled !== undefined ? settingsObj.thinking_enabled : settingsObj.thinkingEnabled;
+  const thinkingEnabled = settingsObj.thinking_enabled !== undefined
+    ? settingsObj.thinking_enabled
+    : settingsObj.thinkingEnabled;
   if (thinkingEnabled !== undefined) normalized.thinkingEnabled = thinkingEnabled;
 
-  const thinkingLevel = settingsObj.thinking_level !== undefined ? settingsObj.thinking_level : settingsObj.thinkingLevel;
+  const thinkingLevel = settingsObj.thinking_level !== undefined
+    ? settingsObj.thinking_level
+    : settingsObj.thinkingLevel;
   if (thinkingLevel !== undefined) {
     const cleanLevel = thinkingLevel.toLowerCase();
     normalized.thinkingLevel = cleanLevel;
@@ -26,10 +32,14 @@ export const normalizeSettings = (settingsObj) => {
     }
   }
 
-  const reasoningSupported = settingsObj.reasoning_supported !== undefined ? settingsObj.reasoning_supported : settingsObj.reasoningSupported;
+  const reasoningSupported = settingsObj.reasoning_supported !== undefined
+    ? settingsObj.reasoning_supported
+    : settingsObj.reasoningSupported;
   if (reasoningSupported !== undefined) normalized.thinkingEnabled = reasoningSupported;
 
-  const reasoningEffort = settingsObj.reasoning_effort !== undefined ? settingsObj.reasoning_effort : settingsObj.reasoningEffort;
+  const reasoningEffort = settingsObj.reasoning_effort !== undefined
+    ? settingsObj.reasoning_effort
+    : settingsObj.reasoningEffort;
   if (reasoningEffort !== undefined) {
     const cleanEffort = reasoningEffort.toLowerCase();
     normalized.reasoningEffort = cleanEffort;
@@ -86,14 +96,6 @@ export const applyModelConfigToRequest = (req, modelConfig) => {
     }
   });
 
-  // Keep track of the overrides block so subsequent header override phases respect it
-  // eslint-disable-next-line no-underscore-dangle
-  finalReq._overrides = {
-    // eslint-disable-next-line no-underscore-dangle
-    ...(finalReq._overrides || {}),
-    ...overrides,
-  };
-
   return finalReq;
 };
 
@@ -107,28 +109,10 @@ export const applyModelConfigToRequest = (req, modelConfig) => {
  * @returns {{ unifiedReq: Object, cleanRawReq: Object }}
  */
 export const transformRequest = (baseReq, rawReq, resolved) => {
-  const headers = rawReq?.headers || {};
-
   // 1. Start with the incoming request body parameters
   let req = { ...baseReq };
 
-  // 2. Parse client header overrides (thinking level, temperature)
-  const thinkingLevelHeader = headers['x-gateway-thinking-level'];
-  if (thinkingLevelHeader) {
-    const cleanLevel = thinkingLevelHeader.toLowerCase();
-    req.thinkingLevel = cleanLevel;
-    req.thinkingEnabled = true;
-  }
-
-  const tempHeader = headers['x-gateway-temperature'];
-  if (tempHeader !== undefined) {
-    const parsed = parseFloat(tempHeader);
-    if (!Number.isNaN(parsed) && parsed >= 0.0 && parsed <= 2.0) {
-      req.temperature = parsed;
-    }
-  }
-
-  // Store the client-only parameters (payload + headers) for fallback reconstruction
+  // 2. Store the client-only parameters for fallback reconstruction
   const clientReq = { ...req };
 
   // 3. If model config is resolved, apply actualModelId, provider, defaults, and overrides
@@ -151,12 +135,5 @@ export const transformRequest = (baseReq, rawReq, resolved) => {
     ...(actualModelId ? { actualModelId } : {}),
   };
 
-  const sanitizedHeaders = { ...headers };
-  delete sanitizedHeaders['x-gateway-thinking-level'];
-  delete sanitizedHeaders['x-gateway-temperature'];
-
-  const cleanRawReq = Object.create(rawReq || {});
-  cleanRawReq.headers = sanitizedHeaders;
-
-  return { unifiedReq, cleanRawReq };
+  return { unifiedReq, cleanRawReq: rawReq || {} };
 };

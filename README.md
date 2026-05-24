@@ -1,137 +1,180 @@
-# Waypoint: Core Configuration & Key Registry
+# Waypoint: Unified LLM Proxy & Gateway
 
-Waypoint is a lightweight, opinionated local proxy and gateway designed for developer-first workflows. It provides a single entry point for sharing a pool of API keys across multiple LLM providers with automatic load distribution, cooldown circuit breaking, and failure recovery.
+Waypoint is a lightweight, opinionated, developer-first local proxy and gateway. It provides a single entry point for sharing a pool of API keys across multiple LLM providers (Google Gemini, Anthropic Claude, OpenAI, and custom OpenAI/Anthropic-compatible services) with automatic load distribution, cooldown circuit breaking, and dynamic failure recovery.
 
 > [!WARNING]
-> WIP — do not use in production.
+> **Waypoint is currently a Work In Progress (WIP)**. It is intended as a local companion gateway for developer workflows and is not certified for production use.
 
 ---
 
-## Implementation Status
+## 📌 Project Framing & Scope Rationale
+Waypoint is designed to demonstrate systems-level clean architecture, protocol translation, and stateful in-memory key registry design. While comprehensive tools like LiteLLM exist for enterprise-scale multi-provider routing, Waypoint is optimized as a **zero-dependency, single-process local sidecar** that developer tools (like Open WebUI, Claude Code, or IDE extensions) can use locally without managing databases or external caches. 
 
-| Component | Status | Notes |
-|---|---|---|
-| Config loader & hot-reload | ✅ Done | YAML parsing, env var interpolation, file watcher |
-| Config validation (Zod) | ✅ Done | Fail-fast on startup, degraded-mode key warnings |
-| KeyObject entity | ✅ Done | Tracks availability, cooldown, exhaustion state |
-| KeyRegistry — round-robin | ✅ Done | Sequential rotation across active keys |
-| KeyRegistry — fill-first | ✅ Done | Drains first available key before failing over |
-| Circuit breaking & cooldown | ✅ Done | 429 exponential backoff, 402/403 permanent exhaustion |
-| ProviderFactory | ✅ Done | Adapter registration/retrieval scaffold |
-| HTTP server + `/health` | ✅ Done | Express server with graceful shutdown |
-| ESLint (airbnb-base) | ✅ Done | Enforced across all source files |
-| Request routing / proxying | ✅ Done | Ingress controllers translate to unified internal schema, route, and map back responses |
-| Model aliasing / fallback routing | ✅ Done | Resolves prefixes/aliases and automates failover to fallback models on exhaustion |
-| Unified Streaming Support | ✅ Done | Iterates generator, flags success after first chunk, maps SSE formats (OpenAI / Anthropic), aborts early |
-| Provider adapters (Gemini, Anthropic, OpenAI) | ✅ Done | Implemented with Vercel AI SDK, utilizing Modern JS patterns (pure functions, immutability) |
-| Client authentication | ✅ Done | Bearer token validation middleware |
-| Per-client rate limiting | ✅ Done | In-memory sliding window rate limiter |
-| CORS & payload limits | ✅ Done | Allowed origins list and dynamic request body size constraints |
-| Logging (file + console) | ⬜ Planned | Config schema present; logger not wired up |
+All state—including rate limits, sequential rotations, and circuit breakers—is stored in-memory, ensuring near-zero latency and high portability.
 
 ---
 
-## Key Features (implemented)
+## 🏛️ System Architecture
+
+Waypoint enforces strict **Separation of Concerns** using a layered Clean Architecture model. Inbound client payloads are decrypted, authenticated, validated, and normalized before being passed to key registries and provider SDK adapters.
+
+```text
+               ┌─────────────────────────────────────────────────┐
+               │              Inbound HTTP Requests              │
+               │     (e.g., OpenAI, Anthropic, Gemini client)    │
+               └────────────────────────┬────────────────────────┘
+                                         │
+                                         ▼
+               ┌─────────────────────────────────────────────────┐
+               │          Ingress Validation & Security          │
+               │  - Client Authentication - Token Rate Limiter   │
+               │  - Zod/Payload Validator - Custom Header Parser │
+               └────────────────────────┬────────────────────────┘
+                                         │
+                                         ▼
+               ┌─────────────────────────────────────────────────┐
+               │              Protocol Controllers               │
+               │  - Translate Incoming Protocol to Unified Model │
+               │  - Standardize Outputs/Error Schemas for Client │
+               └────────────────────────┬────────────────────────┘
+                                         │
+                                         ▼
+               ┌─────────────────────────────────────────────────┐
+               │              Unified Service Layer              │
+               │  - Retry Loop Engine    - Failover Director     │
+               │  - Strategy Selector                            │
+               └────────────────────────┬────────────────────────┘
+                                         │
+                                         ▼
+               ┌─────────────────────────────────────────────────┐
+               │            Key Registry Service                 │
+               │  - Round-Robin Pointer   - Cooldown Circuit     │
+               │  - Exhaustion Tracking                          │
+               └────────────────────────┬────────────────────────┘
+                                         │
+                                         ▼
+               ┌─────────────────────────────────────────────────┐
+               │            Provider Factory & Adapters          │
+               │  - Abstract BaseProvider Interface              │
+               │  - Provider Adapters (Vercel AI SDK wrappers)  │
+               │  - Mock Strategy Registry (for unit tests)      │
+               └─────────────────────────────────────────────────┘
+```
+
+---
+
+## ⚡ Core Features
 
 ### 1. Robust Configuration & Hot-Reloading
-- Reads `config/config.yaml` and resolves `${ENV_VAR}` references at startup.
-- Watches the config file for changes and reloads key pools automatically, without restarting the process.
-- Validates the full config structure with Zod on every load — fails fast on structural errors.
-- Starts in **degraded mode** if only some keys in a provider pool are missing; aborts if *all* keys for a provider are absent.
+- **Environment Interpolation**: Resolves `${ENV_VAR}` tokens in `config/config.yaml` during boot and on updates.
+- **FS Watcher Hot-Reload**: Watches the YAML file and updates key pools on-the-fly without dropping active requests or restarting the process.
+- **Fail-Fast Structural Zod Validation**: Validates the entire configuration structure on load, stopping startup instantly on format errors to prevent silent configuration failures.
 
-### 2. In-Memory API Key Pool Management
-- Maintains a per-provider pool of `KeyObject` instances tracking each key's state.
-- Two routing strategies selectable via config:
-  - **`round-robin`** *(default)*: Distributes requests evenly across all active keys.
-  - **`fill-first`**: Always uses the first available key, falling over only when it becomes unavailable — optimises for prompt cache locality.
-- **Circuit breaking** on upstream errors:
-  - **429 (Rate Limited)**: Exponential backoff cooldown (`base_seconds × 2ⁿ`, capped at `max_seconds`), then auto-reactivation.
-  - **402 / 403 (Quota / Forbidden)**: Permanently marks the key as exhausted.
-  - **Other errors**: Brief transient cooldown, key remains inactive for the duration.
-- `flagSuccess` resets consecutive failure counters and reactivates a key.
+### 2. API Key Pool Management & Circuit Breaking
+- Maintains stateful `KeyObject` telemetry in-memory for each provider key pool.
+- **Routing Strategies**:
+  - `round-robin`: Rotates keys sequentially per request to balance load evenly across active keys.
+  - `fill-first`: Uses the first available key and fails over only when exhausted, optimizing for upstream **prompt cache locality**.
+- **Circuit Breaking**:
+  - **429 Rate Limits**: Cooldowns key with exponential backoff (`base_seconds × 2ⁿ`, capped at `max_seconds`), then auto-reactivates it.
+  - **402/403 Quota Errors**: Marks the key as permanently exhausted.
+  - **Other errors**: Briefly disables the key under a transient cooldown period.
 
-### 3. Unified Request Routing & Protocol Translation
-- Supports both OpenAI chat completions and Anthropic Messages ingress APIs.
-- Normalizes incoming requests, maps model names/aliases, and routes them to the correct backend provider adapter.
-- Normalizes response shapes, mapping thinking/reasoning blocks and usage data back to the protocol expected by the client.
+### 3. Unified Reasoning Model
+- Normalizes reasoning/thinking efforts using standard levels (`minimal`, `low`, `medium`, `high`, `xhigh`, `max`).
+- Maps levels dynamically to adapter specifications:
+  - **OpenAI**: Translates to `reasoning_effort` (`low`, `medium`, `high`).
+  - **Anthropic (Claude 3.7+)**: Interpolates extended thinking `budget_tokens`.
+  - **Gemini (Flash-Lite / Pro)**: Translates to model-specific native thinking levels (`minimal`, `low`, `medium`, `high`).
 
-### 4. Unified Streaming (SSE)
-- Streams response chunks from Google Gemini, Anthropic Claude, and OpenAI models.
-- Provides unified retry/fallback behavior during stream initialization.
-- Converts stream chunks into the correct SSE protocol events (OpenAI or Anthropic Messages SSE).
-- Intercepts connection close events to abort active upstream requests, preserving API key quota.
+### 4. Settings Precedence Hierarchy
+Waypoint resolves parameters (e.g., `temperature`, `max_tokens`, `reasoning_effort`) using a deterministic hierarchy:
+1. **Flat Model Defaults**: Settings configured directly at the root of a model's YAML config block.
+2. **Client Payload**: Body parameters supplied in the incoming client HTTP call.
+3. **Client Headers**: Custom ingress override headers (`x-gateway-thinking-level` or `x-gateway-temperature`).
+4. **Configuration Overrides**: Values inside the model's `overrides` block, acting as a locked policy that client options cannot bypass.
 
-### 5. ProviderFactory
-- A simple adapter registry — `register(name, adapter)` / `get(name)` — wired up with provider-specific adapters.
+### 5. Automated Fallback Routing
+- If all API keys in a provider pool are rate-limited or exhausted for a given model, Waypoint automatically failovers to a designated `fallback_model` (e.g., from Gemini to OpenAI) to maintain request reliability.
 
-### 6. HTTP Server
-- Express server that binds to `config.gateway.port`.
-- Exposes a `GET /health` endpoint returning `{ "status": "ok" }`.
+### 6. Logging & Telemetry Auditing
+- **LogTape Integration**: Integrated via `@logtape/logtape` and `@logtape/file` to support text-based developer formats or JSON telemetry streams.
+- **Per-Request Auditing**: If `log_requests` is enabled, captures every phase of the request/response lifecycle under `request_log_path` in separate files:
+  - `01_client_request.json`: Incoming HTTP client request headers (redacted) and body.
+  - `02_provider_request.json`: Payload translated and sent to the upstream provider.
+  - `03_provider_response.json`: Raw response received from the upstream provider.
+  - `04_client_response.json`: Final unified payload sent to the client.
+  - `05_event_stream.jsonl`: Complete chunk-by-chunk stream logs for Server-Sent Events (SSE).
 
-### 7. Client Authentication & Authorization
-- Secures standard endpoints with API token validation.
-- Validates the incoming header `Authorization: Bearer <token>` and maps the request to a configured client profile.
-
-### 8. Sliding-Window Rate Limiting
-- Evaluates per-client API limits dynamically based on the matched client token.
-- Uses an in-memory sliding window to track request timestamps, returning `429 Rate Limit Exceeded` when limits are reached.
-
-### 9. CORS & Dynamic Request Body Size Constraints
-- Dynamically configures allowed origins based on CORS configuration.
-- Enforces request body size limits dynamically (e.g. `'10mb'`), returning a `413 Payload Too Large` to prevent oversized request exploits.
+### 7. Core Gateway Operations
+- Secure endpoint authentication with bearer token mappings (`Authorization: Bearer <token>`).
+- Client-level sliding window rate limiting.
+- Ingress payload size constraints and CORS controls.
 
 ---
 
-## Getting Started
+## 🚀 Getting Started
 
 ### Prerequisites
 - Node.js v18+
-- pnpm (or npm)
+- npm
 
 ### Installation
+Clone the repository and install dependencies:
 ```bash
-pnpm install
+npm install
 ```
 
 ### Running Waypoint
-Development mode (file-watch auto-restart):
+Run the gateway in development mode (with file-watch and auto-restart):
 ```bash
-pnpm dev
+npm run dev
 ```
 
-### Production mode
+Run in production mode:
 ```bash
-pnpm start
+npm start
 ```
 
 ### Running Tests
-202 unit/integration tests across 21 test files, run via **Vitest**:
+Waypoint features a comprehensive test suite (627 unit, integration, and edge-case tests) executed via **Vitest**:
 ```bash
-pnpm test
+npm test
 ```
 
-### Linting
+### Code Quality & Linting
+Validate codebase constraints under ESLint (Airbnb-base preset):
 ```bash
-pnpm lint
+npm run lint
 ```
 
 ---
 
-## Configuration Guide
+## ⚙️ Configuration Guide
 
-Waypoint reads configuration from `config/config.yaml`. Environment variables inside the YAML (formatted as `${ENV_VAR}`) are interpolated at startup and on every hot-reload.
+Waypoint reads configuration from `config/config.yaml` or a path designated in `process.env.WAYPOINT_CONFIG_PATH`.
 
-### Example Configuration
+### Complete YAML Example
 ```yaml
 gateway:
+  # Port the proxy server binds to
   port: 20128
+  
+  # Maximum retries for failed upstream provider calls
   global_retry_limit: 3
-  max_payload_size: "10mb" # Maximum allowed payload size for requests
+  
+  # Size limit on inbound requests to prevent memory exhaustion
+  max_payload_size: "10mb"
+  
+  # Cooldown limits for rate-limiting exponential backoffs
   cooldown:
     base_seconds: 30
     max_seconds: 3600
+    
+  # Routing algorithm: "round-robin" or "fill-first"
   routing:
-    strategy: "round-robin" # "round-robin" or "fill-first"
+    strategy: "round-robin"
+    
   cors:
     allowed_origins:
       - "*"
@@ -140,7 +183,10 @@ logging:
   enable_console: true
   enable_file: true
   file_path: "./logs/waypoint.log"
-  format: "json"
+  format: "json" # "json" | "text"
+  level: "info" # "debug" | "info" | "warning" | "error" | "fatal"
+  log_requests: true # Enables per-request lifecycle file logging
+  request_log_path: "./logs/requests"
 
 clients:
   - name: "open-webui"
@@ -155,6 +201,7 @@ clients:
       max: 30
 
 providers:
+  # Reserved provider name (gemini, anthropic, openai do not require base_url)
   gemini:
     keys:
       - "${GEMINI_API_KEY_1}"
@@ -164,25 +211,43 @@ providers:
         aliases: ["gemini-pro"]
         actual_model_id: "gemini-2.5-pro-preview-05-06"
         reasoning_supported: true
-        reasoning_effort: "medium"
-        fallback_model: "openai/gpt-4o"
+        reasoning_effort: "medium" # Default reasoning level
+        fallback_model: "openai/gpt-4o" # Route fallback on key exhaustion
+      - id: "gemini-flash-lite-latest-high"
+        actual_model_id: "gemini-flash-lite-latest"
+        reasoning_supported: true
+        overrides:
+          # Locked setting that cannot be overridden by client requests or headers
+          reasoning_effort: "high"
+
+  anthropic:
+    keys:
+      - "${ANTHROPIC_API_KEY_1}"
+    models:
+      - id: "claude-sonnet-4"
+        aliases: ["sonnet"]
+        actual_model_id: "claude-sonnet-4-20250514"
+        reasoning_supported: true
+        reasoning_effort: "high"
+
+  # Custom non-reserved provider example (base_url is required)
+  local-ollama:
+    base_url: "http://localhost:11434/v1"
+    type: "openai-compatible" # "openai-compatible" | "anthropic-compatible"
+    keys:
+      - "dummy-key-required"
+    models:
+      - id: "llama3"
+        actual_model_id: "llama3:70b"
+        reasoning_supported: false
 ```
 
-### Fail-Fast & Degraded-Mode Policy
-
-> [!WARNING]
-> **Fail-fast**: Missing client tokens, invalid numeric fields, or structural config errors will log a fatal error and abort startup immediately.
->
-> **Degraded mode**: If some (but not all) keys in a provider's `keys:` array resolve to empty strings, Waypoint logs a warning and starts with only the valid keys. If *all* keys for a configured provider are missing, startup is aborted.
+### Key Resolution Policies
+> [!IMPORTANT]
+> - **Fail-Fast**: If non-key environment variables (e.g. client tokens or port settings) resolve to empty values, Waypoint aborts startup immediately.
+> - **Degraded Mode**: If some (but not all) API keys for a provider resolve to empty values, Waypoint emits a warning and boots using the remaining active keys. If *all* keys for a configured provider are missing, startup aborts.
 
 ---
 
-## API Endpoints
-
-### `GET /health`
-Returns gateway health status.
-
-**Response**:
-```json
-{ "status": "ok" }
-```
+## 🛡️ License
+Waypoint is open-source software licensed under the [MIT License](./LICENSE).

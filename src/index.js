@@ -101,9 +101,29 @@ app.use(
   createOpenaiRouter({ auth, openAIController, modelCache }),
 );
 
+logger.debug('Mounting dryrun OpenAI routes at /dryrun/openai/v1 and /dryrun/openai');
+app.use(
+  ['/dryrun/openai/v1', '/dryrun/openai'],
+  (req, res, next) => {
+    req.isDryRun = true;
+    next();
+  },
+  createOpenaiRouter({ auth, openAIController, modelCache }),
+);
+
 logger.debug('Mounting Anthropic routes at /anthropic/v1 and /anthropic');
 app.use(
   ['/anthropic/v1', '/anthropic'],
+  createAnthropicRouter({ auth, anthropicController, modelCache }),
+);
+
+logger.debug('Mounting dryrun Anthropic routes at /dryrun/anthropic/v1 and /dryrun/anthropic');
+app.use(
+  ['/dryrun/anthropic/v1', '/dryrun/anthropic'],
+  (req, res, next) => {
+    req.isDryRun = true;
+    next();
+  },
   createAnthropicRouter({ auth, anthropicController, modelCache }),
 );
 

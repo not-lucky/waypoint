@@ -55,6 +55,7 @@ export class RequestLog {
     this.dir = dir;
     this.id = id;
     this.startTime = startTime;
+    this.isDryRun = false;
     /** @type {Promise[]} Pending write operations to await on finalize. */
     this.pendingWrites = [];
     /** @type {string[]} Buffered stream event lines to flush periodically. */
@@ -91,7 +92,7 @@ export class RequestLog {
    * @param {number} durationMs - Time in ms from provider request to response.
    */
   logProviderResponse(response, durationMs) {
-    if (this.finalized) return;
+    if (this.finalized || this.isDryRun) return;
     const isStream = response && typeof response[Symbol.asyncIterator] === 'function';
     const data = {
       timestamp: new Date().toISOString(),
@@ -117,7 +118,7 @@ export class RequestLog {
    * @param {Object} data - Streaming log data including _format, _eventCount, and summary.
    */
   logProviderStreamSummary(data) {
-    if (this.finalized) return;
+    if (this.finalized || this.isDryRun) return;
     const logData = {
       _streamed: true,
       _format: data._format || 'sse-json',
@@ -136,7 +137,7 @@ export class RequestLog {
    * @param {Object} data - Streaming log data including _format, _eventCount, and summary.
    */
   logClientStreamSummary(data) {
-    if (this.finalized) return;
+    if (this.finalized || this.isDryRun) return;
     const logData = {
       _streamed: true,
       _format: data._format || 'sse-json',
@@ -156,7 +157,7 @@ export class RequestLog {
    * @param {Object} body - The response body sent (or summary for streams).
    */
   logClientResponse(statusCode, body) {
-    if (this.finalized) return;
+    if (this.finalized || this.isDryRun) return;
     const data = {
       timestamp: new Date().toISOString(),
       statusCode,
@@ -176,7 +177,7 @@ export class RequestLog {
    * @param {*} data - The event data (chunk object or raw SSE string).
    */
   appendStreamEvent(direction, data) {
-    if (this.finalized) return;
+    if (this.finalized || this.isDryRun) return;
     this.streamBuffer.push({
       direction,
       timestamp: new Date().toISOString(),
@@ -212,6 +213,7 @@ export class RequestLog {
    * @returns {Promise<void>}
    */
   async writeStreamLog() {
+    if (this.isDryRun) return;
     const providerEvents = this.streamBuffer.filter((e) => e.direction === 'provider');
     const clientEvents = this.streamBuffer.filter((e) => e.direction === 'client');
 
@@ -288,6 +290,9 @@ export function createRequestLog(req, config) {
   }
 
   const reqLog = new RequestLog(dir, id, Date.now());
+  if (req?.isDryRun) {
+    reqLog.isDryRun = true;
+  }
 
   // Write stage 1: client raw request
   const clientReqData = {

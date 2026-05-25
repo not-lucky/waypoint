@@ -1,0 +1,42 @@
+gateway:
+  port: 20129
+  global_retry_limit: 3
+  routing:
+    strategy: "round-robin"
+  cors:
+    allowed_origins:
+      - "*"
+
+logging:
+  enable_console: false
+  enable_file: false
+  format: "json"
+  log_requests: true
+  request_log_path: "./logs/dryrun-requests"
+
+clients:
+  - name: "open-webui"
+    token: "mock-webui-token"
+    rate_limit:
+      window_ms: 60000
+      max: 100
+
+providers:
+  gemini:
+    keys:
+      - "gemini-key"
+    models:
+      - id: "gemini-2.5-pro-preview-05-06"
+        aliases: ["gemini-pro"]
+  anthropic:
+    keys:
+      - "anthropic-key"
+    models:
+      - id: "claude-sonnet-4"
+        aliases: ["sonnet"]
+  openai:
+    keys:
+      - "openai-key"
+    models:
+      - id: "gpt-4o"
+        aliases: ["gpt4"]

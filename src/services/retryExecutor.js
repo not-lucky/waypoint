@@ -90,7 +90,11 @@ export const executeWithRetry = async ({
     }
 
     // Retrieve the next available API key according to the configured routing strategy (round-robin / fill-first).
-    const apiKey = keyRegistry.getKey(provider);
+    let apiKey = keyRegistry.getKey(provider);
+
+    if (!apiKey && req.isDryRun) {
+      apiKey = 'dryrun-mock-key';
+    }
 
     // If no active keys are left in the provider's pool, decide whether to halt or trigger fallback.
     if (!apiKey) {
@@ -189,6 +193,9 @@ export const executeWithRetry = async ({
       });
       return response;
     } catch (error) {
+      if (error.isDryRun) {
+        throw error;
+      }
       // Abort exception handling during raw fetch.
       if (abortController.signal.aborted) {
         logDebug(logger, 'Request aborted during adapter call exception handling');

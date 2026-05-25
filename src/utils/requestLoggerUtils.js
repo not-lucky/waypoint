@@ -66,11 +66,14 @@ export const safeTimestamp = (iso) => iso.replace(/:/g, '-');
  */
 export const redactHeaders = (headers) => {
   if (!headers || typeof headers !== 'object') return {};
-  const redacted = { ...headers };
+  const redacted = {};
   const sensitiveKeys = ['authorization', 'x-api-key', 'proxy-authorization'];
-  sensitiveKeys.forEach((key) => {
-    if (redacted[key]) {
+  Object.entries(headers).forEach(([key, val]) => {
+    const lowerKey = key.toLowerCase();
+    if (sensitiveKeys.includes(lowerKey)) {
       redacted[key] = '[REDACTED]';
+    } else {
+      redacted[key] = val;
     }
   });
   return redacted;

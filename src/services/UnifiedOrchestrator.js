@@ -66,6 +66,9 @@ export class UnifiedOrchestrator {
   async executeCompletion(unifiedReq, rawReq, requestLog) {
     // Clone requests to avoid mutations bubbling back to controllers
     const req = { isFallback: false, ...unifiedReq };
+    if (rawReq?.isDryRun) {
+      req.isDryRun = true;
+    }
 
     // Fetch the global retry limit from gateway configuration
     const retryLimit = this.config.gateway?.global_retry_limit ?? 3;

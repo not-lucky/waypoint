@@ -7,7 +7,7 @@
 
 /* eslint-disable class-methods-use-this, no-unused-vars */
 /* eslint-disable no-restricted-syntax, generator-star-spacing, camelcase */
-import { sanitizeUrl, serializeHeaders } from '../utils/requestLogger.js';
+import { sanitizeUrl, serializeHeaders, redactHeaders } from '../utils/requestLogger.js';
 import { NotImplementedError } from '../utils/errors.js';
 
 /**
@@ -166,6 +166,17 @@ export class BaseProvider {
    * @throws {Error} Relays HTTP transmission failure or non-2xx status code parsed error.
    */
   async performFetch(url, headers, payload, signal, requestLog = null, timeoutMs = null) {
+    if (requestLog && requestLog.isDryRun) {
+      requestLog.logProviderRequest(sanitizeUrl(url), {}, payload);
+
+      const dryRunErr = new Error('Dry Run Interrupt');
+      dryRunErr.isDryRun = true;
+      dryRunErr.url = sanitizeUrl(url);
+      dryRunErr.headers = redactHeaders(headers);
+      dryRunErr.payload = payload;
+      throw dryRunErr;
+    }
+
     const { signal: fetchSignal, cleanup } = this.getTimeoutSignal(signal, timeoutMs);
     let response;
     try {
@@ -211,20 +222,20 @@ export class BaseProvider {
    */
   getTimeoutSignal(signal, timeoutMs) {
     if (!timeoutMs) {
-      return { signal, cleanup: () => {} };
+      return { signal, cleanup: () => { } };
     }
 
     const timeoutSignal = AbortSignal.timeout(timeoutMs);
 
     if (!signal) {
-      return { signal: timeoutSignal, cleanup: () => {} };
+      return { signal: timeoutSignal, cleanup: () => { } };
     }
 
     // Try using the native AbortSignal.any if running on newer Node versions
     if (typeof AbortSignal.any === 'function') {
       try {
         const combinedSignal = AbortSignal.any([signal, timeoutSignal]);
-        return { signal: combinedSignal, cleanup: () => {} };
+        return { signal: combinedSignal, cleanup: () => { } };
       } catch (err) {
         // Fall back to manual combination
       }

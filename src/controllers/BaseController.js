@@ -89,6 +89,19 @@ export class BaseController {
       await reqLog.finalize();
       return res.json(finalResponse);
     } catch (err) {
+      if (err.isDryRun) {
+        const dryRunResponse = {
+          dryRun: true,
+          message: 'Dry run completed successfully. Request not sent to provider.',
+          request: {
+            url: err.url,
+            headers: err.headers,
+            body: err.payload,
+          },
+        };
+        await reqLog.finalize();
+        return res.json(dryRunResponse);
+      }
       this.logger.error(`Unexpected ${protocolName} completion error:`, err);
       return this.handleError(res, reqLog, err);
     }

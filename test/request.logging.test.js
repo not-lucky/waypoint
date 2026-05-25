@@ -698,9 +698,12 @@ describe('Request Logging Format and Sanitization Tests', () => {
       // Cleanup
       await import('node:fs/promises').then((fsp) => fsp.rm(tempDir, { recursive: true, force: true }));
       // Cleanup default path if created
-      const defaultPath = path.resolve('./logs/requests');
+      const defaultPath = path.resolve(process.env.VITEST ? './logs/requests-test' : './logs/requests');
+      if (reqLogNoPath.dir && fs.existsSync(reqLogNoPath.dir)) {
+        await import('node:fs/promises').then((fsp) => fsp.rm(reqLogNoPath.dir, { recursive: true, force: true }));
+      }
       if (fs.existsSync(defaultPath)) {
-        await import('node:fs/promises').then((fsp) => fsp.rm(defaultPath, { recursive: true, force: true }));
+        await import('node:fs/promises').then((fsp) => fsp.rmdir(defaultPath)).catch(() => {});
       }
     });
   });

@@ -278,7 +278,13 @@ export function createRequestLog(req, config) {
 
   const now = new Date();
   const id = shortId();
-  const basePath = path.resolve(loggingConfig.request_log_path || './logs/requests');
+  let logPath = loggingConfig.request_log_path;
+  if (process.env.VITEST) {
+    if (!logPath || logPath === './logs/requests' || logPath === 'logs/requests' || logPath.endsWith('/logs/requests') || logPath.endsWith('\\logs/requests')) {
+      logPath = './logs/requests-test';
+    }
+  }
+  const basePath = path.resolve(logPath || './logs/requests');
   const folderName = `${safeTimestamp(now.toISOString())}_${id}`;
   const dir = path.join(basePath, folderName);
 

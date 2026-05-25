@@ -169,10 +169,16 @@ const customTextFormatter = (record) => {
 export async function configureLogging(config) {
   const loggingConfig = config?.logging || {};
   const enableConsole = loggingConfig.enable_console !== false;
-  const enableFile = !!loggingConfig.enable_file;
-  const filePath = loggingConfig.file_path || '';
+  let enableFile = !!loggingConfig.enable_file;
+  let filePath = loggingConfig.file_path || '';
   const format = loggingConfig.format || 'json';
   const level = loggingConfig.level || 'info';
+
+  if (process.env.VITEST) {
+    if (filePath === './logs/Waypoint.log' || filePath === 'logs/Waypoint.log' || filePath.endsWith('/logs/Waypoint.log') || filePath.endsWith('\\logs/Waypoint.log')) {
+      enableFile = false;
+    }
+  }
 
   const sinks = {};
   const activeSinks = [];

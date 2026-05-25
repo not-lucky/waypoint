@@ -3,6 +3,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     passWithNoTests: true,
+    silent: true,
     setupFiles: ['./test/setup.js'],
     env: {
       OPEN_WEBUI_TOKEN: 'mock-webui-token',

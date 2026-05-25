@@ -5,6 +5,8 @@ import {
 } from '@logtape/logtape';
 import { getFileSink } from '@logtape/file';
 
+const sessionTimestamp = new Date().toISOString().replace(/[:.]/g, '-');
+
 /**
  * Early-boot logger initialization using synchronous configuration.
  * Rationale: During system startup, application configuration (e.g., from YAML) may fail.
@@ -178,6 +180,11 @@ export async function configureLogging(config) {
     if (filePath === './logs/Waypoint.log' || filePath === 'logs/Waypoint.log' || filePath.endsWith('/logs/Waypoint.log') || filePath.endsWith('\\logs/Waypoint.log')) {
       enableFile = false;
     }
+  }
+
+  if (filePath && !process.env.VITEST) {
+    const parsedPath = path.parse(filePath);
+    filePath = path.join(parsedPath.dir, `${parsedPath.name}_${sessionTimestamp}${parsedPath.ext}`);
   }
 
   const sinks = {};

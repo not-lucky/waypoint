@@ -1,24 +1,24 @@
 gateway:
   port: 20129
-  global_retry_limit: 3
+  globalRetryLimit: 3
   routing:
     strategy: "round-robin"
   cors:
-    allowed_origins:
+    allowedOrigins:
       - "*"
 
 logging:
-  enable_console: false
-  enable_file: false
+  enableConsole: false
+  enableFile: false
   format: "json"
-  log_requests: true
-  request_log_path: "./logs/dryrun-requests"
+  logRequests: true
+  requestLogPath: "./logs/dryrun-requests"
 
 clients:
   - name: "open-webui"
     token: "mock-webui-token"
-    rate_limit:
-      window_ms: 60000
+    rateLimit:
+      windowMs: 60000
       max: 100
 
 providers:

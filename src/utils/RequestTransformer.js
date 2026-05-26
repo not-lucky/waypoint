@@ -1,51 +1,28 @@
 /**
- * Normalizes a settings object, mapping snake_case keys to camelCase request fields.
+ * Normalizes a model settings object into unified request fields.
  * Case-insensitively maps unified reasoning levels (minimal, low, medium, high, xhigh, max).
  *
  * @param {Object} settingsObj - Raw settings block from configuration.
  * @returns {Object} Mapped/normalized settings object.
  */
-export const normalizeSettings = (settingsObj) => {
+const normalizeSettings = (settingsObj) => {
   if (!settingsObj) return {};
   const normalized = {};
 
   if (settingsObj.temperature !== undefined) normalized.temperature = settingsObj.temperature;
 
-  const maxTokens = settingsObj.max_tokens !== undefined
-    ? settingsObj.max_tokens
-    : settingsObj.maxTokens;
-  if (maxTokens !== undefined) normalized.maxTokens = maxTokens;
-
-  const thinkingEnabled = settingsObj.thinking_enabled !== undefined
-    ? settingsObj.thinking_enabled
-    : settingsObj.thinkingEnabled;
-  if (thinkingEnabled !== undefined) normalized.thinkingEnabled = thinkingEnabled;
-
-  const thinkingLevel = settingsObj.thinking_level !== undefined
-    ? settingsObj.thinking_level
-    : settingsObj.thinkingLevel;
-  if (thinkingLevel !== undefined) {
-    const cleanLevel = thinkingLevel.toLowerCase();
-    normalized.thinkingLevel = cleanLevel;
-    if (normalized.thinkingEnabled === undefined) {
-      normalized.thinkingEnabled = true;
-    }
+  if (settingsObj.maxTokens !== undefined) {
+    normalized.maxTokens = parseInt(settingsObj.maxTokens, 10);
   }
 
-  const reasoningSupported = settingsObj.reasoning_supported !== undefined
-    ? settingsObj.reasoning_supported
-    : settingsObj.reasoningSupported;
-  if (reasoningSupported !== undefined) normalized.thinkingEnabled = reasoningSupported;
+  if (settingsObj.reasoningSupported !== undefined) {
+    normalized.reasoningSupported = settingsObj.reasoningSupported;
+  }
 
-  const reasoningEffort = settingsObj.reasoning_effort !== undefined
-    ? settingsObj.reasoning_effort
-    : settingsObj.reasoningEffort;
-  if (reasoningEffort !== undefined) {
-    const cleanEffort = reasoningEffort.toLowerCase();
-    normalized.reasoningEffort = cleanEffort;
-    normalized.thinkingLevel = cleanEffort;
-    if (normalized.thinkingEnabled === undefined) {
-      normalized.thinkingEnabled = true;
+  if (settingsObj.reasoningEffort !== undefined) {
+    normalized.reasoningEffort = settingsObj.reasoningEffort.toLowerCase();
+    if (normalized.reasoningSupported === undefined) {
+      normalized.reasoningSupported = true;
     }
   }
 
@@ -63,33 +40,19 @@ export const applyModelConfigToRequest = (req, modelConfig) => {
   const defaults = normalizeSettings(modelConfig);
   const overrides = modelConfig?.overrides ? normalizeSettings(modelConfig.overrides) : {};
 
-  // Build the default settings block from legacy settings and defaults block
-  const hasLegacyReasoning = modelConfig?.thinking_supported !== undefined
-    || modelConfig?.reasoning_supported !== undefined;
-  const legacyReasoning = hasLegacyReasoning
-    ? (modelConfig.thinking_supported || modelConfig.reasoning_supported || false)
-    : undefined;
   const resolvedDefaults = {
-    ...(modelConfig?.fallback_model ? { fallbackModel: modelConfig.fallback_model } : {}),
-    ...(hasLegacyReasoning
-      ? {
-        thinking_supported: legacyReasoning,
-        thinkingEnabled: legacyReasoning,
-      }
-      : {}),
+    ...(modelConfig?.fallbackModel ? { fallbackModel: modelConfig.fallbackModel } : {}),
     ...defaults,
   };
 
   const finalReq = { ...req };
 
-  // Apply defaults if the request properties are not defined
   Object.entries(resolvedDefaults).forEach(([key, val]) => {
     if (finalReq[key] === undefined && val !== undefined) {
       finalReq[key] = val;
     }
   });
 
-  // Apply overrides (locked settings) - always wins
   Object.entries(overrides).forEach(([key, val]) => {
     if (val !== undefined) {
       finalReq[key] = val;
@@ -100,40 +63,29 @@ export const applyModelConfigToRequest = (req, modelConfig) => {
 };
 
 /**
- * Creates a new, immutable UnifiedRequest context from the base request payload,
- * configuration, and headers, avoiding side effects or mutations.
+ * Creates a unified request context from the base payload and resolved model metadata.
  *
  * @param {Object} baseReq - The base request payload.
- * @param {Object} rawReq - The raw Express request.
  * @param {Object} resolved - The resolved model metadata from ModelRouter.
- * @returns {{ unifiedReq: Object, cleanRawReq: Object }}
+ * @returns {Object} Unified request object.
  */
-export const transformRequest = (baseReq, rawReq, resolved) => {
-  // 1. Start with the incoming request body parameters
+export const transformRequest = (baseReq, resolved) => {
   let req = { ...baseReq };
+  const clientParams = { ...req };
 
-  // 2. Store the client-only parameters for fallback reconstruction
-  const clientReq = { ...req };
-
-  // 3. If model config is resolved, apply actualModelId, provider, defaults, and overrides
   let provider;
   let actualModelId;
   if (resolved) {
     provider = resolved.provider;
     const { modelConfig } = resolved;
-    actualModelId = modelConfig.actual_model_id || modelConfig.id;
-
-    // Apply defaults and overrides from the model configuration
+    actualModelId = modelConfig.actualModelId || modelConfig.id;
     req = applyModelConfigToRequest(req, modelConfig);
   }
 
-  // 4. Construct the unified request payload
-  const unifiedReq = {
+  return {
     ...req,
-    _clientReq: clientReq,
+    clientParams,
     ...(provider ? { provider } : {}),
     ...(actualModelId ? { actualModelId } : {}),
   };
-
-  return { unifiedReq, cleanRawReq: rawReq || {} };
 };

@@ -2,7 +2,7 @@
  * Centralized finish reason mapping from various provider-specific terms
  * to the OpenAI-compatible standard finish_reason enum.
  */
-export const FINISH_REASONS = {
+const FINISH_REASONS = {
   ANTHROPIC: {
     end_turn: 'stop',
     max_tokens: 'length',

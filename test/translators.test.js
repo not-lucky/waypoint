@@ -116,7 +116,7 @@ describe('Translators Comprehensive Tests', () => {
         // maxTokens <= budget case
         const res1 = translateOpenAIToClaude({
           messages: [],
-          thinkingEnabled: true,
+          reasoningSupported: true,
           reasoningEffort: 'low',
           maxTokens: 500,
         });
@@ -129,7 +129,7 @@ describe('Translators Comprehensive Tests', () => {
         // maxTokens > budget case
         const res2 = translateOpenAIToClaude({
           messages: [],
-          thinking_supported: true,
+          reasoningSupported: true,
           maxTokens: 3000,
         });
         expect(res2.thinking).toEqual({
@@ -194,7 +194,7 @@ describe('Translators Comprehensive Tests', () => {
 
         const req2 = {
           messages: [],
-          thinking_supported: true,
+          reasoningSupported: true,
         };
         const res2 = translateOpenAIToGemini(req2);
         expect(res2.generationConfig).toBeUndefined();

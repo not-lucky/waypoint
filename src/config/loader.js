@@ -1,10 +1,9 @@
 import fs from 'node:fs';
 import yaml from 'js-yaml';
-import { deepFreeze, isDeepEqual } from '../utils/objectUtils.js';
+import { deepFreeze } from '../utils/objectUtils.js';
 import {
   logDebug,
   logWarning,
-  logError,
   logFatal,
 } from './loggerWrapper.js';
 import {
@@ -12,24 +11,17 @@ import {
   replaceEnvVars,
   getMissingEnvVar,
   coerceToInt,
-  checkStructuralChanges,
 } from './utils.js';
 import { validateConfig } from './validator.js';
 
-export { deepFreeze, isDeepEqual, validateConfig };
-
 /**
- * ConfigLoader manages parsing, environment variable interpolation, validation,
- * and hot-reloading of configuration files.
+ * ConfigLoader manages parsing, environment variable interpolation, and validation
+ * of configuration files.
  */
 export class ConfigLoader {
   constructor() {
     this.currentConfig = null;
     this.currentConfigPath = null;
-    this.isWatching = false;
-    this.watcher = null;
-    this.listeners = [];
-    this.debounceTimeout = null;
     this.logger = null;
   }
 
@@ -41,8 +33,7 @@ export class ConfigLoader {
   }
 
   /**
-   * Loads the YAML configuration file, parses it, interpolates env variables,
-   * and sets up hot-reloading file watch.
+   * Loads the YAML configuration file, parses it, and interpolates env variables.
    * Fails fast and terminates process if configuration is invalid at startup.
    */
   loadConfig(configPath = process.env.WAYPOINT_CONFIG_PATH || 'config/config.yaml', reservedProviders = RESERVED_PROVIDERS) {
@@ -62,46 +53,13 @@ export class ConfigLoader {
       process.exit(1);
     }
 
-    this.startWatcher(configPath, reservedProviders);
-
     return this.currentConfig;
-  }
-
-  /**
-   * Registers a callback to be triggered when the configuration changes.
-   */
-  onConfigChange(callback) {
-    this.listeners.push(callback);
-    return () => {
-      this.listeners = this.listeners.filter((listener) => listener !== callback);
-    };
-  }
-
-  /**
-   * Stops watching the configuration file and clears any listeners.
-   */
-  stopWatcher() {
-    this.isWatching = false;
-    if (this.watcher) {
-      try {
-        this.watcher.close();
-      } catch (e) {
-        // ignore close error
-      }
-      this.watcher = null;
-    }
-    if (this.debounceTimeout) {
-      clearTimeout(this.debounceTimeout);
-      this.debounceTimeout = null;
-    }
-    this.listeners = [];
   }
 
   /**
    * Resets the loader module state.
    */
   resetConfig() {
-    this.stopWatcher();
     this.currentConfig = null;
     this.currentConfigPath = null;
   }
@@ -122,8 +80,7 @@ export class ConfigLoader {
     // Coerce numeric properties immutably
     const coerced = ConfigLoader.coerceNumericProperties(interpolated);
 
-    // Call validateConfig with shouldExit = false so hot reloads gracefully
-    // fail on invalid configs.
+    // Call validateConfig with shouldExit = false for test flexibility.
     validateConfig(coerced, false, reservedProviders, this.logger);
 
     return coerced;
@@ -140,18 +97,18 @@ export class ConfigLoader {
       ...(config.gateway && {
         gateway: [
           (g) => coerceToInt(g, 'port'),
-          (g) => coerceToInt(g, 'global_retry_limit'),
-          (g) => coerceToInt(g, 'http_timeout_ms'),
+          (g) => coerceToInt(g, 'globalRetryLimit'),
+          (g) => coerceToInt(g, 'httpTimeoutMs'),
           (g) => (g.cooldown ? {
             ...g,
-            cooldown: coerceToInt(coerceToInt(g.cooldown, 'base_seconds'), 'max_seconds'),
+            cooldown: coerceToInt(coerceToInt(g.cooldown, 'baseSeconds'), 'maxSeconds'),
           } : g),
         ].reduce((acc, fn) => fn(acc), config.gateway),
       }),
       ...(Array.isArray(config.clients) && {
-        clients: config.clients.map((client) => (client?.rate_limit ? {
+        clients: config.clients.map((client) => (client?.rateLimit ? {
           ...client,
-          rate_limit: coerceToInt(coerceToInt(client.rate_limit, 'window_ms'), 'max'),
+          rateLimit: coerceToInt(coerceToInt(client.rateLimit, 'windowMs'), 'max'),
         } : client)),
       }),
       ...(config.providers && typeof config.providers === 'object' && {
@@ -162,14 +119,9 @@ export class ConfigLoader {
               ...providerConf,
               ...(Array.isArray(providerConf?.models) && {
                 models: providerConf.models.map((model) => {
-                  let m = { ...model };
-                  m = coerceToInt(m, 'max_tokens');
-                  m = coerceToInt(m, 'maxTokens');
+                  let m = coerceToInt({ ...model }, 'maxTokens');
                   if (m.overrides && typeof m.overrides === 'object') {
-                    let o = m.overrides;
-                    o = coerceToInt(o, 'max_tokens');
-                    o = coerceToInt(o, 'maxTokens');
-                    m = { ...m, overrides: o };
+                    m = { ...m, overrides: coerceToInt({ ...m.overrides }, 'maxTokens') };
                   }
                   return m;
                 }),
@@ -232,103 +184,5 @@ export class ConfigLoader {
     }
 
     return val;
-  }
-
-  /**
-   * Starts the fs.watch process on the config file.
-   * Handles 'rename' event by closing the old watcher and re-initializing to address atomic saves
-   * (e.g. vim/nano replacing the inode).
-   */
-  startWatcher(configPath, reservedProviders = RESERVED_PROVIDERS) {
-    if (this.isWatching) {
-      return;
-    }
-    this.isWatching = true;
-    this.currentConfigPath = configPath;
-
-    let retryCount = 0;
-    const setupWatch = () => {
-      if (this.watcher) {
-        try {
-          this.watcher.close();
-        } catch (e) {
-          // ignore close error
-        }
-        this.watcher = null;
-      }
-
-      if (!this.isWatching) return;
-
-      try {
-        logDebug(this.logger, `Starting config file watcher for: ${configPath}`);
-        this.watcher = fs.watch(configPath, (eventType) => {
-          logDebug(this.logger, `Config file watcher detected event '${eventType}' on: ${configPath}`);
-          if (eventType === 'rename') {
-            // Atomic save detected (rename). Re-initialize watcher on the file path.
-            setTimeout(() => {
-              setupWatch();
-              this.handleConfigChange(configPath, reservedProviders);
-            }, 50);
-          } else if (eventType === 'change') {
-            this.handleConfigChange(configPath, reservedProviders);
-          }
-        });
-        retryCount = 0;
-      } catch (err) {
-        retryCount += 1;
-        if (retryCount >= 5) {
-          const msg = 'WARNING: Stopped watching configuration file after 5 failed attempts.';
-          logWarning(this.logger, msg);
-          this.stopWatcher();
-          return;
-        }
-        // If file is temporarily missing or locked during rename, retry after a delay.
-        setTimeout(setupWatch, 100);
-      }
-    };
-
-    setupWatch();
-  }
-
-  /**
-   * Handles file content changes with debouncing to prevent race conditions during write cycles.
-   */
-  handleConfigChange(configPath, reservedProviders) {
-    if (this.debounceTimeout) clearTimeout(this.debounceTimeout);
-
-    this.debounceTimeout = setTimeout(() => {
-      try {
-        if (!fs.existsSync(configPath)) {
-          return;
-        }
-        const raw = fs.readFileSync(configPath, 'utf8');
-        const parsed = yaml.load(raw);
-        const newConfig = deepFreeze(this.interpolateAndValidate(parsed, reservedProviders));
-
-        // Warn if port or other structural parameters changed since we can't hot reload those.
-        const structuralChanged = checkStructuralChanges(this.currentConfig, newConfig);
-        if (structuralChanged) {
-          const msg = 'WARNING: Structural configuration changed. A process restart is required to apply these changes.';
-          logWarning(this.logger, msg);
-        }
-
-        // Swap configuration references atomically to prevent request-processing race conditions.
-        const oldConfig = this.currentConfig;
-        this.currentConfig = newConfig;
-
-        // Notify all registered change subscribers.
-        this.listeners.forEach((listener) => {
-          try {
-            listener(this.currentConfig, oldConfig);
-          } catch (err) {
-            logError(this.logger, 'Error in config change listener:', err);
-          }
-        });
-      } catch (err) {
-        // At runtime, we catch validation errors and keep the server process online.
-        const msg = `Error reloading configuration file on change: ${err.message}`;
-        logError(this.logger, msg);
-      }
-    }, 100);
   }
 }

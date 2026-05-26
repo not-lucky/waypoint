@@ -113,5 +113,3 @@ export const translateOpenAIToGemini = (req) => {
 
   return payload;
 };
-
-export default translateOpenAIToGemini;

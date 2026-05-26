@@ -4,7 +4,7 @@ import { OpenAICompatibleAdapter } from '../src/adapters/OpenAICompatibleAdapter
 import { AnthropicAdapter } from '../src/adapters/AnthropicAdapter.js';
 
 describe('ProviderFactory Tests', () => {
-  it("assert: 'openai' (no base_url) -> OpenAICompatibleAdapter whose baseUrl is 'https://api.openai.com/v1'", () => {
+  it("assert: 'openai' (no baseUrl) -> OpenAICompatibleAdapter whose baseUrl is 'https://api.openai.com/v1'", () => {
     const config = {
       providers: {
         openai: {
@@ -19,11 +19,11 @@ describe('ProviderFactory Tests', () => {
     expect(adapter.providerName).toBe('openai');
   });
 
-  it('assert: custom provider, no type field -> OpenAICompatibleAdapter(base_url)', () => {
+  it('assert: custom provider, no type field -> OpenAICompatibleAdapter(baseUrl)', () => {
     const config = {
       providers: {
         'custom-no-type': {
-          base_url: 'https://my-custom.api/v1',
+          baseUrl: 'https://my-custom.api/v1',
           keys: ['test-key-custom'],
         },
       },
@@ -35,12 +35,12 @@ describe('ProviderFactory Tests', () => {
     expect(adapter.providerName).toBe('custom-no-type');
   });
 
-  it("assert: custom provider, type:'openai-compatible' -> OpenAICompatibleAdapter(base_url) — same result", () => {
+  it("assert: custom provider, type:'openai-compatible' -> OpenAICompatibleAdapter(baseUrl) — same result", () => {
     const config = {
       providers: {
         'custom-openai': {
           type: 'openai-compatible',
-          base_url: 'https://my-custom-openai.api/v1',
+          baseUrl: 'https://my-custom-openai.api/v1',
           keys: ['test-key-custom-openai'],
         },
       },
@@ -52,12 +52,12 @@ describe('ProviderFactory Tests', () => {
     expect(adapter.providerName).toBe('custom-openai');
   });
 
-  it("assert: custom provider, type:'anthropic-compatible' -> AnthropicAdapter instance constructed with base_url", () => {
+  it("assert: custom provider, type:'anthropic-compatible' -> AnthropicAdapter instance constructed with baseUrl", () => {
     const config = {
       providers: {
         'custom-anthropic': {
           type: 'anthropic-compatible',
-          base_url: 'https://my-custom-anthropic.api/v1',
+          baseUrl: 'https://my-custom-anthropic.api/v1',
           keys: ['test-key-custom-anthropic'],
         },
       },

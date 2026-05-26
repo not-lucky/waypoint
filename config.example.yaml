@@ -6,15 +6,15 @@ gateway:
   port: 20128
   
   # Maximum number of retry attempts for failed upstream calls (optional, positive integer)
-  global_retry_limit: 3
+  globalRetryLimit: 3
   
   # Cooldown settings for rate-limiting exponential backoff (optional)
   cooldown:
-    base_seconds: 30       # Base cooldown for rate-limit exponential backoff
-    max_seconds: 3600      # Cap for exponential backoff cooldowns (1 hour)
+    baseSeconds: 30       # Base cooldown for rate-limit exponential backoff
+    maxSeconds: 3600      # Cap for exponential backoff cooldowns (1 hour)
   
   # Maximum allowed payload size for requests (optional string)
-  max_payload_size: "10mb"
+  maxPayloadSize: "10mb"
   
   # Routing configuration (optional)
   routing:
@@ -27,18 +27,18 @@ gateway:
     
   # CORS configuration (optional)
   cors:
-    allowed_origins:
+    allowedOrigins:
       - "*"
 
 logging:
   # Enable console logging output (required boolean)
-  enable_console: true
+  enableConsole: true
   
   # Enable logging to a file (required boolean)
-  enable_file: true
+  enableFile: true
   
-  # File path to output logs (required if enable_file is true)
-  file_path: "./logs/Waypoint.log"
+  # File path to output logs (required if enableFile is true)
+  filePath: "./logs/Waypoint.log"
   
   # Log format structure: "json" | "text" (required)
   format: "json"
@@ -47,17 +47,17 @@ logging:
   level: "info"
 
   # Enable per-request debug logging (optional, default: false)
-  # When enabled, creates a timestamped folder per request under request_log_path
+  # When enabled, creates a timestamped folder per request under requestLogPath
   # containing separate log files for each stage of the request lifecycle:
   #   01_client_request.json   - Raw incoming HTTP request (headers redacted)
   #   02_provider_request.json - Transformed request sent to the upstream provider
   #   03_provider_response.json - Response received from the provider
   #   04_client_response.json  - Final response sent back to the client
   #   05_event_stream.jsonl    - SSE events for streaming requests (both directions)
-  log_requests: false
+  logRequests: false
 
   # Directory for per-request debug folders (optional, default: "./logs/requests")
-  request_log_path: "./logs/requests"
+  requestLogPath: "./logs/requests"
 
 clients:
   # At least one client is required
@@ -65,23 +65,23 @@ clients:
     # The Bearer token the client uses to authenticate. Environment variables are supported via ${VAR_NAME} (required)
     token: "${OPEN_WEBUI_TOKEN}"
     # Rate limit configuration (required)
-    rate_limit:
+    rateLimit:
       # Time window in milliseconds (required, positive integer)
-      window_ms: 60000
+      windowMs: 60000
       # Maximum requests allowed per window (required, positive integer)
       max: 100
   - name: "codex-agent"
     token: "${CODEX_AGENT_TOKEN}"
-    rate_limit:
-      window_ms: 60000
+    rateLimit:
+      windowMs: 60000
       max: 30
 
 # Providers definition (required, at least one provider must be defined)
 # Reserved provider names: gemini, anthropic, openai
-# These use Vercel AI SDK provider packages and do NOT require a base_url.
+# These are built-in providers with known upstream endpoints and do NOT require a baseUrl.
 # Reserved providers must NOT carry a 'type' field — it is ignored with a warning if present.
 #
-# Custom providers MUST specify a base_url.
+# Custom providers MUST specify a baseUrl.
 # Custom providers support an optional 'type' field:
 #   - Omitting 'type' is identical to type: "openai-compatible" (the default).
 #   - The only other accepted value is "anthropic-compatible".
@@ -95,21 +95,21 @@ providers:
     models:
       - id: "gemini-2.5-pro-preview-05-06"              # The model ID exposed by the gateway (required, string)
         aliases: ["gemini-2.5-pro", "gemini-pro", "pro"] # Alternative IDs to match this model (optional, array of strings)
-        reasoning_supported: true                       # Whether the model supports reasoning/thinking (optional, boolean)
-        fallback_model: "openai/gpt-4o"                 # Model to use if all keys for this provider fail (optional format: provider/model-id)
+        reasoningSupported: true                       # Whether the model supports reasoning/thinking (optional, boolean)
+        fallbackModel: "openai/gpt-4o"                 # Model to use if all keys for this provider fail (optional format: provider/model-id)
       - id: "gemini-flash-lite-latest-low"
-        actual_model_id: "gemini-flash-lite-latest"     # The underlying model to call upstream (optional, string)
-        reasoning_supported: true                       # Whether reasoning is supported (optional, boolean)
+        actualModelId: "gemini-flash-lite-latest"     # The underlying model to call upstream (optional, string)
+        reasoningSupported: true                       # Whether reasoning is supported (optional, boolean)
         temperature: 0.3                                # Default parameters applied if not specified by client (optional)
-        reasoning_effort: "low"                         # Unified reasoning level: minimal | low | medium | high | xhigh | max
+        reasoningEffort: "low"                         # Unified reasoning level: minimal | low | medium | high | xhigh | max
       - id: "gemini-flash-lite-latest-high"
-        actual_model_id: "gemini-flash-lite-latest"
-        reasoning_supported: true
+        actualModelId: "gemini-flash-lite-latest"
+        reasoningSupported: true
         overrides:                                      # Locked settings that ignore/override client-supplied values or headers (optional, object)
-          reasoning_effort: "high"
+          reasoningEffort: "high"
       - id: "gemini-2.0-flash"
         aliases: ["flash"]
-        reasoning_supported: false
+        reasoningSupported: false
 
   anthropic:
     keys:
@@ -117,9 +117,9 @@ providers:
     models:
       - id: "claude-sonnet-4-20250514"
         aliases: ["claude-sonnet-4", "sonnet"]
-        reasoning_supported: true
-        reasoning_effort: "medium"
-        fallback_model: "gemini/gemini-2.5-pro-preview-05-06"
+        reasoningSupported: true
+        reasoningEffort: "medium"
+        fallbackModel: "gemini/gemini-2.5-pro-preview-05-06"
 
   openai:
     keys:
@@ -127,37 +127,37 @@ providers:
     models:
       - id: "gpt-4o"
         aliases: ["gpt4"]
-        reasoning_supported: false
+        reasoningSupported: false
 
   # Custom OpenAI-compatible provider example
   custom-openai:
     type: "openai-compatible"                     # Defaults to openai-compatible if omitted
-    base_url: "https://api.openai.com/v1"         # Required for custom providers
+    baseUrl: "https://api.openai.com/v1"         # Required for custom providers
     keys:
       - "${OPENAI_API_KEY_1}"
     models:
       - id: "gpt-4o"
         aliases: ["custom-gpt"]
-        reasoning_supported: false
+        reasoningSupported: false
 
   # Custom Anthropic-compatible provider example
   custom-anthropic:
     type: "anthropic-compatible"                  # Explicit type for Anthropic compatible endpoints
-    base_url: "https://api.anthropic.com/v1"
+    baseUrl: "https://api.anthropic.com/v1"
     keys:
       - "${ANTHROPIC_API_KEY_1}"
     models:
       - id: "claude-sonnet-4"
         aliases: ["custom-sonnet"]
-        reasoning_supported: true
-        reasoning_effort: "high"
+        reasoningSupported: true
+        reasoningEffort: "high"
 
   # Local or self-hosted provider example (e.g. Ollama)
   local-ollama:
-    base_url: "http://localhost:11434/v1"
+    baseUrl: "http://localhost:11434/v1"
     keys:
       - "dummy-key-required-but-unused"           # A key is required even if unused by the endpoint
     models:
       - id: "llama3:70b"
         aliases: ["llama3"]
-        reasoning_supported: false
+        reasoningSupported: false

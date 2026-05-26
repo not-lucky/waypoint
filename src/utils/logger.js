@@ -170,9 +170,9 @@ const customTextFormatter = (record) => {
  */
 export async function configureLogging(config) {
   const loggingConfig = config?.logging || {};
-  const enableConsole = loggingConfig.enable_console !== false;
-  let enableFile = !!loggingConfig.enable_file;
-  let filePath = loggingConfig.file_path || '';
+  const enableConsole = loggingConfig.enableConsole !== false;
+  let enableFile = !!loggingConfig.enableFile;
+  let filePath = loggingConfig.filePath || '';
   const format = loggingConfig.format || 'json';
   const level = loggingConfig.level || 'info';
 

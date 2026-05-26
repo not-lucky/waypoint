@@ -15,7 +15,7 @@ describe('Key Registry Failures & Cooldowns', () => {
   it('429 -> key inactive + cooldownUntil set; vi.runAllTimers() -> key active again', () => {
     const config = {
       gateway: {
-        cooldown: { base_seconds: 30, max_seconds: 3600 },
+        cooldown: { baseSeconds: 30, maxSeconds: 3600 },
       },
       providers: { gemini: { keys: ['Key_A'] } },
     };
@@ -62,7 +62,7 @@ describe('Key Registry Failures & Cooldowns', () => {
   it('three consecutive 429s -> backoff is 30 s, 60 s, 120 s (base=30)', () => {
     const config = {
       gateway: {
-        cooldown: { base_seconds: 30, max_seconds: 3600 },
+        cooldown: { baseSeconds: 30, maxSeconds: 3600 },
       },
       providers: { gemini: { keys: ['Key_A'] } },
     };
@@ -103,7 +103,7 @@ describe('Key Registry Failures & Cooldowns', () => {
   it('flagSuccess -> consecutiveFailures===0, active===true, cooldownUntil===null', () => {
     const config = {
       gateway: {
-        cooldown: { base_seconds: 30, max_seconds: 3600 },
+        cooldown: { baseSeconds: 30, maxSeconds: 3600 },
       },
       providers: { gemini: { keys: ['Key_A'] } },
     };
@@ -128,7 +128,7 @@ describe('Key Registry Failures & Cooldowns', () => {
   it('cleanup() clears all timeout handles in the Set', () => {
     const config = {
       gateway: {
-        cooldown: { base_seconds: 30, max_seconds: 3600 },
+        cooldown: { baseSeconds: 30, maxSeconds: 3600 },
       },
       providers: { gemini: { keys: ['Key_A'] } },
     };

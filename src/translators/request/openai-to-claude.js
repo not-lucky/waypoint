@@ -100,10 +100,10 @@ export const translateOpenAIToClaude = (req) => {
   // Capability Extension: Maps bespoke custom flags into Anthropic's native extended thinking
   // configuration. This allows standard OpenAI SDKs to unlock Claude's Chain-of-Thought
   // reasoning without requiring new SDK versions.
-  const thinkingEnabled = req.thinkingEnabled || req.thinking_supported || false;
-  if (thinkingEnabled) {
+  const reasoningSupported = req.reasoningSupported || false;
+  if (reasoningSupported) {
     let budget = 2048;
-    const effort = req.reasoningEffort || req.thinkingLevel;
+    const effort = req.reasoningEffort;
     if (effort) {
       const effortBudgets = {
         minimal: 1024,
@@ -132,5 +132,3 @@ export const translateOpenAIToClaude = (req) => {
 
   return payload;
 };
-
-export default translateOpenAIToClaude;

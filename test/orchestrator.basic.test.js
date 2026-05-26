@@ -34,7 +34,6 @@ class MockAdapter {
       message: error.message,
       httpStatus: 500,
       provider: 'mock-provider',
-      providerName: 'mock-provider',
     };
   }
 }
@@ -94,7 +93,7 @@ describe('UnifiedOrchestrator Basic Tests', () => {
 
     expect(res).toEqual({
       error: {
-        code: 'all_keys_exhausted',
+        code: 'allKeysExhausted',
         message: expect.stringContaining('cooldown'),
         retryAfterSeconds: expect.any(Number),
         provider: 'mock-provider',
@@ -200,7 +199,7 @@ describe('UnifiedOrchestrator Basic Tests', () => {
     const result = await promise;
     expect(capturedSignal.aborted).toBe(true);
     expect(result.error).toBeDefined();
-    expect(result.error.code).toBe('request_cancelled');
+    expect(result.error.code).toBe('requestCancelled');
     expect(result.error.httpStatus).toBe(499);
   });
 

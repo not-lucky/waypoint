@@ -1,39 +1,8 @@
 /* eslint-disable no-restricted-syntax */
-import { parseSSEStream } from '../utils/sseParser.js';
-import { translateUsage, getThinkingLevel } from './geminiFormatter.js';
+import { parseSSEStream, parseSSEEventData } from '../utils/sseParser.js';
+import { getThinkingLevel } from './geminiFormatter.js';
+import { mapUsage } from './openaiResponse.js';
 import { ThinkingBuffer } from '../utils/ThinkingBuffer.js';
-
-/**
- * Processes buffered text from a stream and extracts thoughts enclosed in `<thought>` tags.
- * Transitions state between 'text' and 'thinking' based on token tag matches.
- */
-export const processThinkingBuffer = (buffer, state, flush, sendThinking, sendText) => {
-  const tb = new ThinkingBuffer({ initialState: state });
-  tb.buffer = buffer;
-  const deltas = tb.process('', flush);
-  for (const d of deltas) {
-    if (d.type === 'thinking') {
-      sendThinking(d.content);
-    } else {
-      sendText(d.content);
-    }
-  }
-  return { buffer: tb.buffer, state: tb.state };
-};
-
-/**
- * Safely parses Server-Sent Events (SSE) string data payloads into JSON.
- */
-export function parseSSEEventData(data) {
-  if (data === '[DONE]') {
-    return null;
-  }
-  try {
-    return JSON.parse(data);
-  } catch (err) {
-    return null;
-  }
-}
 
 /**
  * Executes a streaming completion for Gemini models with thinking/reasoning enabled.
@@ -109,7 +78,7 @@ export async function* executeThinkingStream(req, apiKey, signal, requestLog, ad
           id: chunkId,
           object: 'chat.completion.chunk',
           choices: [],
-          usage: translateUsage(parsedData.usage),
+          usage: mapUsage(parsedData.usage),
         };
         continue;
       }
@@ -117,7 +86,7 @@ export async function* executeThinkingStream(req, apiKey, signal, requestLog, ad
       const c = choices[0];
       if (c.delta?.content) accumulatedContent += c.delta.content;
       if (c.delta?.reasoning_content) accumulatedReasoningContent += c.delta.reasoning_content;
-      if (c.finish_reason || c.finishReason) lastFinishReason = c.finish_reason || c.finishReason;
+      if (c.finish_reason) lastFinishReason = c.finish_reason;
 
       const deltasToYield = [];
       if (c.delta?.reasoning_content) {
@@ -141,9 +110,9 @@ export async function* executeThinkingStream(req, apiKey, signal, requestLog, ad
           choices: [{
             index: c.index ?? 0,
             delta,
-            finish_reason: c.finish_reason ?? c.finishReason ?? null,
+            finish_reason: c.finish_reason ?? null,
           }],
-          usage: translateUsage(parsedData.usage),
+          usage: mapUsage(parsedData.usage),
         };
       }
 
@@ -154,9 +123,9 @@ export async function* executeThinkingStream(req, apiKey, signal, requestLog, ad
           choices: [{
             index: c.index ?? 0,
             delta: { content: null, reasoning_content: null },
-            finish_reason: c.finish_reason ?? c.finishReason ?? null,
+            finish_reason: c.finish_reason ?? null,
           }],
-          usage: translateUsage(parsedData.usage),
+          usage: mapUsage(parsedData.usage),
         };
       }
     }
@@ -195,11 +164,7 @@ export async function* executeThinkingStream(req, apiKey, signal, requestLog, ad
         }],
       };
       if (finalUsage) {
-        summary.usage = {
-          prompt_tokens: finalUsage.prompt_tokens ?? finalUsage.promptTokens ?? 0,
-          completion_tokens: finalUsage.completion_tokens ?? finalUsage.completionTokens ?? 0,
-          total_tokens: finalUsage.total_tokens ?? finalUsage.totalTokens ?? 0,
-        };
+        summary.usage = mapUsage(finalUsage);
       }
       requestLog.logProviderStreamSummary({
         _format: 'sse-json',

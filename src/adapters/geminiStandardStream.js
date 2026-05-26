@@ -1,20 +1,6 @@
 /* eslint-disable no-restricted-syntax */
 import { FORMATS, translateRequest, translateStreamChunk } from '../translators/index.js';
-import { parseSSEStream } from '../utils/sseParser.js';
-
-/**
- * Safely parses Server-Sent Events (SSE) string data payloads into JSON.
- */
-function parseSSEEventData(data) {
-  if (data === '[DONE]') {
-    return null;
-  }
-  try {
-    return JSON.parse(data);
-  } catch (err) {
-    return null;
-  }
-}
+import { parseSSEStream, parseSSEEventData } from '../utils/sseParser.js';
 
 /**
  * Executes a streaming completion for standard Gemini models (without thinking enabled).

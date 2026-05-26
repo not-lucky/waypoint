@@ -60,42 +60,17 @@ describe('StreamAccumulator Unit Tests', () => {
     expect(resp.choices[0].finish_reason).toBe('stop'); // default fallback
   });
 
-  it('should capture finish_reason and finishReason correctly', () => {
-    // Test finish_reason
-    const acc1 = new StreamAccumulator();
-    acc1.processChunk({
+  it('should capture finish_reason from stream chunks', () => {
+    const acc = new StreamAccumulator();
+    acc.processChunk({
       choices: [{ index: 0, finish_reason: 'length' }],
     });
-    expect(acc1.buildNormalizedResponse().choices[0].finish_reason).toBe('length');
-
-    // Test finishReason
-    const acc2 = new StreamAccumulator();
-    acc2.processChunk({
-      choices: [{ index: 0, finishReason: 'content_filter' }],
-    });
-    expect(acc2.buildNormalizedResponse().choices[0].finish_reason).toBe('content_filter');
+    expect(acc.buildNormalizedResponse().choices[0].finish_reason).toBe('length');
   });
 
-  it('should handle alternative token usage structures', () => {
+  it('should accumulate token usage from stream chunks', () => {
     const acc = new StreamAccumulator();
 
-    // Test camelCase usage tokens
-    acc.processChunk({
-      usage: {
-        promptTokens: 10,
-        completionTokens: 20,
-        totalTokens: 30,
-      },
-    });
-
-    let resp = acc.buildNormalizedResponse();
-    expect(resp.usage).toEqual({
-      prompt_tokens: 10,
-      completion_tokens: 20,
-      total_tokens: 30,
-    });
-
-    // Test snake_case usage tokens
     acc.processChunk({
       usage: {
         prompt_tokens: 15,
@@ -104,7 +79,7 @@ describe('StreamAccumulator Unit Tests', () => {
       },
     });
 
-    resp = acc.buildNormalizedResponse();
+    const resp = acc.buildNormalizedResponse();
     expect(resp.usage).toEqual({
       prompt_tokens: 15,
       completion_tokens: 25,

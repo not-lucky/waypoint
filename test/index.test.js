@@ -4,7 +4,7 @@ import {
 import request from 'supertest';
 import { app, server } from '../src/index.js';
 import { UnifiedOrchestrator } from '../src/services/UnifiedOrchestrator.js';
-import { ConfigLoader } from '../src/config/loader.js';
+import { ModelCache } from '../src/utils/ModelCache.js';
 
 describe('Index Endpoints Coverage', () => {
   beforeEach(() => {
@@ -15,20 +15,12 @@ describe('Index Endpoints Coverage', () => {
       choices: [{ message: { role: 'assistant', content: 'mock' } }],
     });
 
-    vi.spyOn(ConfigLoader.prototype, 'loadConfig').mockReturnValue({
-      gateway: { port: 20128, max_payload_size: '10mb', cors: { allowed_origins: ['*'] } },
-      clients: [{ name: 'open-webui', token: 'mock-webui-token' }],
-      providers: {
-        mock_provider: {
-          models: [
-            { id: 'mock-model-1' },
-            { aliases: ['mock-alias-1'] },
-            { id: 'mock-model-2', aliases: ['mock-alias-2'] },
-            { },
-          ],
-        },
-      },
-    });
+    vi.spyOn(ModelCache.prototype, 'getUniqueModels').mockReturnValue([
+      'mock_provider/mock-model-1',
+      'mock_provider/mock-alias-1',
+      'mock_provider/mock-model-2',
+      'mock_provider/mock-alias-2',
+    ]);
   });
 
   afterEach(() => {
@@ -74,7 +66,7 @@ describe('Index Endpoints Coverage', () => {
       .set('Authorization', 'Bearer mock-webui-token')
       .expect(200);
     expect(res.body).toHaveProperty('status');
-    expect(res.body).toHaveProperty('uptime_seconds');
+    expect(res.body).toHaveProperty('uptimeSeconds');
   });
 
   it('GET /anthropic/models', async () => {
@@ -103,7 +95,7 @@ describe('Index Endpoints Coverage', () => {
       .set('Content-Type', 'application/json')
       .send('invalid json'); // This will throw a syntax error in body-parser
     expect(res.status).toBe(400); // Because of SyntaxError middleware or our global error handler
-    expect(res.body.error.code).toBe('bad_request');
+    expect(res.body.error.code).toBe('badRequest');
   });
 
   it('Global Error Handler - 413', async () => {
@@ -115,14 +107,11 @@ describe('Index Endpoints Coverage', () => {
       .send(`{"model":"gpt-4","messages":[{"role":"user","content":"${largeString}"}]}`);
 
     expect(res.status).toBe(413);
-    expect(res.body.error.code).toBe('payload_too_large');
+    expect(res.body.error.code).toBe('payloadTooLarge');
   });
 
   it('GET /openai/models with missing providers config', async () => {
-    vi.spyOn(ConfigLoader.prototype, 'loadConfig').mockReturnValue({
-      gateway: { port: 20128, max_payload_size: '10mb', cors: { allowed_origins: ['*'] } },
-      clients: [{ name: 'open-webui', token: 'mock-webui-token' }],
-    });
+    vi.spyOn(ModelCache.prototype, 'getUniqueModels').mockReturnValue([]);
     const res = await request(app)
       .get('/openai/models')
       .set('Authorization', 'Bearer mock-webui-token')
@@ -135,7 +124,7 @@ describe('Index Endpoints Coverage', () => {
     it('should handle error with status property', async () => {
       const err = new Error('Status 400 Error');
       err.status = 400;
-      vi.spyOn(ConfigLoader.prototype, 'loadConfig').mockImplementation(() => {
+      vi.spyOn(ModelCache.prototype, 'getUniqueModels').mockImplementation(() => {
         throw err;
       });
 
@@ -144,14 +133,14 @@ describe('Index Endpoints Coverage', () => {
         .set('Authorization', 'Bearer mock-webui-token')
         .expect(400);
 
-      expect(res.body.error.code).toBe('bad_request');
+      expect(res.body.error.code).toBe('badRequest');
       expect(res.body.error.message).toBe('Status 400 Error');
     });
 
     it('should handle error with statusCode property', async () => {
       const err = new Error('StatusCode 413 Error');
       err.statusCode = 413;
-      vi.spyOn(ConfigLoader.prototype, 'loadConfig').mockImplementation(() => {
+      vi.spyOn(ModelCache.prototype, 'getUniqueModels').mockImplementation(() => {
         throw err;
       });
 
@@ -160,13 +149,13 @@ describe('Index Endpoints Coverage', () => {
         .set('Authorization', 'Bearer mock-webui-token')
         .expect(413);
 
-      expect(res.body.error.code).toBe('payload_too_large');
+      expect(res.body.error.code).toBe('payloadTooLarge');
       expect(res.body.error.message).toBe('StatusCode 413 Error');
     });
 
     it('should handle error with default 500 status', async () => {
       const err = new Error('Default 500 Error');
-      vi.spyOn(ConfigLoader.prototype, 'loadConfig').mockImplementation(() => {
+      vi.spyOn(ModelCache.prototype, 'getUniqueModels').mockImplementation(() => {
         throw err;
       });
 
@@ -175,7 +164,7 @@ describe('Index Endpoints Coverage', () => {
         .set('Authorization', 'Bearer mock-webui-token')
         .expect(500);
 
-      expect(res.body.error.code).toBe('internal_server_error');
+      expect(res.body.error.code).toBe('internalServerError');
       expect(res.body.error.message).toBe('Default 500 Error');
     });
   });

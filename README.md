@@ -16,7 +16,7 @@ All state—including rate limits, sequential rotations, and circuit breakers—
 
 ## 🏛️ System Architecture
 
-Waypoint enforces strict **Separation of Concerns** using a layered Clean Architecture model. Inbound client payloads are decrypted, authenticated, validated, and normalized before being passed to key registries and provider SDK adapters.
+Waypoint enforces strict **Separation of Concerns** using a layered Clean Architecture model. Inbound client payloads are authenticated, validated, and normalized before being passed to key registries and provider adapters.
 
 ```text
                ┌─────────────────────────────────────────────────┐
@@ -56,7 +56,7 @@ Waypoint enforces strict **Separation of Concerns** using a layered Clean Archit
                ┌─────────────────────────────────────────────────┐
                │            Provider Factory & Adapters          │
                │  - Abstract BaseProvider Interface              │
-               │  - Provider Adapters (Vercel AI SDK wrappers)  │
+               │  - Provider Adapters (direct HTTP integrations) │
                │  - Mock Strategy Registry (for unit tests)      │
                └─────────────────────────────────────────────────┘
 ```
@@ -65,9 +65,8 @@ Waypoint enforces strict **Separation of Concerns** using a layered Clean Archit
 
 ## ⚡ Core Features
 
-### 1. Robust Configuration & Hot-Reloading
-- **Environment Interpolation**: Resolves `${ENV_VAR}` tokens in `config/config.yaml` during boot and on updates.
-- **FS Watcher Hot-Reload**: Watches the YAML file and updates key pools on-the-fly without dropping active requests or restarting the process.
+### 1. Robust Configuration Management
+- **Environment Interpolation**: Resolves `${ENV_VAR}` tokens in `config/config.yaml` during boot.
 - **Fail-Fast Structural Zod Validation**: Validates the entire configuration structure on load, stopping startup instantly on format errors to prevent silent configuration failures.
 
 ### 2. API Key Pool Management & Circuit Breaking
@@ -76,7 +75,7 @@ Waypoint enforces strict **Separation of Concerns** using a layered Clean Archit
   - `round-robin`: Rotates keys sequentially per request to balance load evenly across active keys.
   - `fill-first`: Uses the first available key and fails over only when exhausted, optimizing for upstream **prompt cache locality**.
 - **Circuit Breaking**:
-  - **429 Rate Limits**: Cooldowns key with exponential backoff (`base_seconds × 2ⁿ`, capped at `max_seconds`), then auto-reactivates it.
+  - **429 Rate Limits**: Cooldowns key with exponential backoff (`baseSeconds × 2ⁿ`, capped at `maxSeconds`), then auto-reactivates it.
   - **402/403 Quota Errors**: Marks the key as permanently exhausted.
   - **Other errors**: Briefly disables the key under a transient cooldown period.
 
@@ -88,17 +87,17 @@ Waypoint enforces strict **Separation of Concerns** using a layered Clean Archit
   - **Gemini (Flash-Lite / Pro)**: Translates to model-specific native thinking levels (`minimal`, `low`, `medium`, `high`).
 
 ### 4. Settings Precedence Hierarchy
-Waypoint resolves parameters (e.g., `temperature`, `max_tokens`, `reasoning_effort`) using a deterministic hierarchy:
+Waypoint resolves parameters (e.g., `temperature`, `maxTokens`, `reasoningEffort`) using a deterministic hierarchy:
 1. **Flat Model Defaults**: Settings configured directly at the root of a model's YAML config block.
 2. **Client Payload**: Body parameters supplied in the incoming client HTTP call.
 3. **Configuration Overrides**: Values inside the model's `overrides` block, acting as a locked policy that client options cannot bypass.
 
 ### 5. Automated Fallback Routing
-- If all API keys in a provider pool are rate-limited or exhausted for a given model, Waypoint automatically failovers to a designated `fallback_model` (e.g., from Gemini to OpenAI) to maintain request reliability.
+- If all API keys in a provider pool are rate-limited or exhausted for a given model, Waypoint automatically failovers to a designated `fallbackModel` (e.g., from Gemini to OpenAI) to maintain request reliability.
 
 ### 6. Logging & Telemetry Auditing
 - **LogTape Integration**: Integrated via `@logtape/logtape` and `@logtape/file` to support text-based developer formats or JSON telemetry streams.
-- **Per-Request Auditing**: If `log_requests` is enabled, captures every phase of the request/response lifecycle under `request_log_path` in separate files:
+- **Per-Request Auditing**: If `logRequests` is enabled, captures every phase of the request/response lifecycle under `requestLogPath` in separate files:
   - `01_client_request.json`: Incoming HTTP client request headers (redacted) and body.
   - `02_provider_request.json`: Payload translated and sent to the upstream provider.
   - `03_provider_response.json`: Raw response received from the upstream provider.
@@ -136,7 +135,7 @@ npm start
 ```
 
 ### Running Tests
-Waypoint features a comprehensive test suite (627 unit, integration, and edge-case tests) executed via **Vitest**:
+Waypoint features a comprehensive test suite (590 unit, integration, and edge-case tests) executed via **Vitest**:
 ```bash
 npm test
 ```
@@ -158,49 +157,49 @@ Waypoint reads configuration from `config/config.yaml` or a path designated in `
 gateway:
   # Port the proxy server binds to
   port: 20128
-  
+
   # Maximum retries for failed upstream provider calls
-  global_retry_limit: 3
-  
+  globalRetryLimit: 3
+
   # Size limit on inbound requests to prevent memory exhaustion
-  max_payload_size: "10mb"
-  
+  maxPayloadSize: "10mb"
+
   # Cooldown limits for rate-limiting exponential backoffs
   cooldown:
-    base_seconds: 30
-    max_seconds: 3600
-    
+    baseSeconds: 30
+    maxSeconds: 3600
+
   # Routing algorithm: "round-robin" or "fill-first"
   routing:
     strategy: "round-robin"
-    
+
   cors:
-    allowed_origins:
+    allowedOrigins:
       - "*"
 
 logging:
-  enable_console: true
-  enable_file: true
-  file_path: "./logs/waypoint.log"
+  enableConsole: true
+  enableFile: true
+  filePath: "./logs/waypoint.log"
   format: "json" # "json" | "text"
   level: "info" # "debug" | "info" | "warning" | "error" | "fatal"
-  log_requests: true # Enables per-request lifecycle file logging
-  request_log_path: "./logs/requests"
+  logRequests: true # Enables per-request lifecycle file logging
+  requestLogPath: "./logs/requests"
 
 clients:
   - name: "open-webui"
     token: "${OPEN_WEBUI_TOKEN}"
-    rate_limit:
-      window_ms: 60000
+    rateLimit:
+      windowMs: 60000
       max: 100
   - name: "codex-agent"
     token: "${CODEX_AGENT_TOKEN}"
-    rate_limit:
-      window_ms: 60000
+    rateLimit:
+      windowMs: 60000
       max: 30
 
 providers:
-  # Reserved provider name (gemini, anthropic, openai do not require base_url)
+  # Reserved provider names (gemini, anthropic, openai do not require baseUrl)
   gemini:
     keys:
       - "${GEMINI_API_KEY_1}"
@@ -208,16 +207,16 @@ providers:
     models:
       - id: "gemini-2.5-pro"
         aliases: ["gemini-pro"]
-        actual_model_id: "gemini-2.5-pro-preview-05-06"
-        reasoning_supported: true
-        reasoning_effort: "medium" # Default reasoning level
-        fallback_model: "openai/gpt-4o" # Route fallback on key exhaustion
+        actualModelId: "gemini-2.5-pro-preview-05-06"
+        reasoningSupported: true
+        reasoningEffort: "medium" # Default reasoning level
+        fallbackModel: "openai/gpt-4o" # Route fallback on key exhaustion
       - id: "gemini-flash-lite-latest-high"
-        actual_model_id: "gemini-flash-lite-latest"
-        reasoning_supported: true
+        actualModelId: "gemini-flash-lite-latest"
+        reasoningSupported: true
         overrides:
           # Locked setting that cannot be overridden by client requests or headers
-          reasoning_effort: "high"
+          reasoningEffort: "high"
 
   anthropic:
     keys:
@@ -225,20 +224,20 @@ providers:
     models:
       - id: "claude-sonnet-4"
         aliases: ["sonnet"]
-        actual_model_id: "claude-sonnet-4-20250514"
-        reasoning_supported: true
-        reasoning_effort: "high"
+        actualModelId: "claude-sonnet-4-20250514"
+        reasoningSupported: true
+        reasoningEffort: "high"
 
-  # Custom non-reserved provider example (base_url is required)
+  # Custom non-reserved provider example (baseUrl is required)
   local-ollama:
-    base_url: "http://localhost:11434/v1"
+    baseUrl: "http://localhost:11434/v1"
     type: "openai-compatible" # "openai-compatible" | "anthropic-compatible"
     keys:
       - "dummy-key-required"
     models:
       - id: "llama3"
-        actual_model_id: "llama3:70b"
-        reasoning_supported: false
+        actualModelId: "llama3:70b"
+        reasoningSupported: false
 ```
 
 ### Key Resolution Policies

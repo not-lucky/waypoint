@@ -160,67 +160,7 @@ describe('Provider Endpoints Integration Tests', () => {
         .expect(400);
 
       // Verify we get 400 Bad Request / validation_error (from zod validation)
-      expect(res.body.error.code).toBe('validation_error');
-    });
-  });
-
-  describe('Configuration Hot Reloading Response', () => {
-    it('should dynamically update the model listing when configuration is updated at runtime', async () => {
-      // Import ConfigLoader dynamically to avoid cached module interference
-      const { ConfigLoader } = await import('../src/config/loader.js');
-
-      // Spy on loadConfig to simulate a runtime hot-reload of config.yaml
-      const loadConfigSpy = vi.spyOn(ConfigLoader.prototype, 'loadConfig');
-
-      const mockedRuntimeConfig = {
-        gateway: {
-          port: 20128,
-        },
-        clients: [
-          {
-            name: 'temp-client',
-            token: 'temp-secret-token',
-          },
-        ],
-        providers: {
-          mock_reload_provider: {
-            models: [
-              {
-                id: 'reloaded-model-pro',
-                aliases: ['reloaded-alias'],
-              },
-            ],
-          },
-        },
-      };
-
-      loadConfigSpy.mockReturnValue(mockedRuntimeConfig);
-
-      // Verify that the new secret token is authorized immediately
-      await request(app)
-        .get('/openai/models')
-        .set('Authorization', 'Bearer temp-secret-token')
-        .expect(200);
-
-      // Verify that the old token is now rejected since it is no longer in the mock config
-      await request(app)
-        .get('/openai/models')
-        .set('Authorization', 'Bearer mock-webui-token')
-        .expect(401);
-
-      // Verify that the models list reflects the dynamic mocked models
-      const res = await request(app)
-        .get('/openai/models')
-        .set('Authorization', 'Bearer temp-secret-token')
-        .expect(200);
-
-      const modelIds = res.body.data.map((m) => m.id);
-      // mock_reload_provider/reloaded-model-pro + mock_reload_provider/reloaded-alias
-      expect(modelIds).toHaveLength(2);
-      expect(modelIds).toContain('mock_reload_provider/reloaded-model-pro');
-      expect(modelIds).toContain('mock_reload_provider/reloaded-alias');
-
-      loadConfigSpy.mockRestore();
+      expect(res.body.error.code).toBe('validationError');
     });
   });
 

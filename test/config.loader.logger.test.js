@@ -1,44 +1,8 @@
 import {
   describe, it, expect, beforeEach, afterEach, vi,
 } from 'vitest';
-import fs from 'fs';
-import path from 'path';
-import { ConfigLoader, validateConfig } from '../src/config/loader.js';
-
-const tempConfigPath = path.resolve('test/temp_config_logger.yaml');
-
-/**
- * Writes YAML content to the test config file, auto-appending required
- * logging and clients blocks if they are missing from the provided content.
- */
-function writeTempConfig(content) {
-  let fullContent = content;
-  if (!content.includes('logging:')) {
-    fullContent += `
-logging:
-  enable_console: true
-  enable_file: false
-  format: "json"
-`;
-  }
-  if (!content.includes('clients:')) {
-    fullContent += `
-clients:
-  - name: "test-client"
-    token: "test-token"
-    rate_limit:
-      window_ms: 60000
-      max: 100
-`;
-  }
-  fs.writeFileSync(tempConfigPath, fullContent, 'utf8');
-}
-
-function removeTempConfig() {
-  if (fs.existsSync(tempConfigPath)) {
-    try { fs.unlinkSync(tempConfigPath); } catch { /* ignore */ }
-  }
-}
+import { ConfigLoader } from '../src/config/loader.js';
+import { validateConfig } from '../src/config/validator.js';
 
 /**
  * Creates a mock logger with spy methods.
@@ -65,7 +29,6 @@ describe('ConfigLoader – Logger Integration', () => {
   afterEach(() => {
     process.env = originalEnv;
     configLoader.resetConfig();
-    removeTempConfig();
     vi.restoreAllMocks();
   });
 
@@ -94,8 +57,8 @@ describe('ConfigLoader – Logger Integration', () => {
   describe('validateConfig – logger parameter', () => {
     const validConfig = {
       gateway: { port: 8080 },
-      logging: { enable_console: true, enable_file: false, format: 'json' },
-      clients: [{ name: 'test', token: 'tok', rate_limit: { window_ms: 1000, max: 10 } }],
+      logging: { enableConsole: true, enableFile: false, format: 'json' },
+      clients: [{ name: 'test', token: 'tok', rateLimit: { windowMs: 1000, max: 10 } }],
       providers: {
         gemini: {
           keys: ['key-1'],
@@ -174,8 +137,8 @@ describe('ConfigLoader – Logger Integration', () => {
 
       const parsedYaml = {
         gateway: { port: 8080 },
-        logging: { enable_console: true, enable_file: false, format: 'json' },
-        clients: [{ name: 'test', token: 'tok', rate_limit: { window_ms: 1000, max: 10 } }],
+        logging: { enableConsole: true, enableFile: false, format: 'json' },
+        clients: [{ name: 'test', token: 'tok', rateLimit: { windowMs: 1000, max: 10 } }],
         providers: {
           gemini: {
             type: 'openai-compatible', // should trigger the reserved provider warning
@@ -198,8 +161,8 @@ describe('ConfigLoader – Logger Integration', () => {
 
       const parsedYaml = {
         gateway: { port: 8080 },
-        logging: { enable_console: true, enable_file: false, format: 'json' },
-        clients: [{ name: 'test', token: 'tok', rate_limit: { window_ms: 1000, max: 10 } }],
+        logging: { enableConsole: true, enableFile: false, format: 'json' },
+        clients: [{ name: 'test', token: 'tok', rateLimit: { windowMs: 1000, max: 10 } }],
         providers: {
           gemini: {
             type: 'openai-compatible',
@@ -284,236 +247,6 @@ describe('ConfigLoader – Logger Integration', () => {
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('Skipping undefined or empty key'),
       );
-    });
-  });
-
-  // ── Hot-reload logger integration ─────────────────────────────────────
-
-  describe('Hot-reload – logger usage', () => {
-    it('should route structural change warning to logger.warn during hot-reload', () => new Promise((resolve, reject) => {
-      writeTempConfig(`
-gateway:
-  port: 20128
-  routing:
-    strategy: "round-robin"
-providers:
-  gemini:
-    keys:
-      - "key-1"
-    models:
-      - id: "gemini-pro"
-`);
-
-      configLoader.loadConfig(tempConfigPath);
-      const logger = createMockLogger();
-      configLoader.setLogger(logger);
-
-      const unsubscribe = configLoader.onConfigChange(() => {
-        try {
-          // Structural change (port) should be warned via logger
-          expect(logger.warn).toHaveBeenCalledWith(
-            expect.stringContaining('Structural configuration changed'),
-          );
-          unsubscribe();
-          resolve();
-        } catch (err) {
-          unsubscribe();
-          reject(err);
-        }
-      });
-
-      // Trigger structural change (port changed)
-      writeTempConfig(`
-gateway:
-  port: 30000
-  routing:
-    strategy: "round-robin"
-providers:
-  gemini:
-    keys:
-      - "key-1"
-    models:
-      - id: "gemini-pro"
-`);
-    }));
-
-    it('should route config reload error to logger.error during hot-reload', () => new Promise((resolve, reject) => {
-      writeTempConfig(`
-gateway:
-  port: 20128
-  routing:
-    strategy: "round-robin"
-providers:
-  gemini:
-    keys:
-      - "key-1"
-    models:
-      - id: "gemini-pro"
-`);
-
-      configLoader.loadConfig(tempConfigPath);
-      const logger = createMockLogger();
-      configLoader.setLogger(logger);
-
-      // Mock process.exit so test doesn't actually exit
-      vi.spyOn(process, 'exit').mockImplementation(() => {
-        throw new Error('process.exit called');
-      });
-
-      // Wait for the error to be logged
-      setTimeout(() => {
-        try {
-          expect(logger.error).toHaveBeenCalledWith(
-            expect.stringContaining('Error reloading configuration file on change'),
-          );
-          resolve();
-        } catch (err) {
-          reject(err);
-        }
-      }, 250);
-
-      // Trigger invalid config change (no providers, invalid port)
-      writeTempConfig(`
-gateway:
-  port: -1
-  routing:
-    strategy: "round-robin"
-providers:
-  gemini:
-    keys: []
-    models:
-      - id: "gemini-pro"
-`);
-    }));
-
-    it('should route listener errors to logger.error during hot-reload', () => new Promise((resolve, reject) => {
-      writeTempConfig(`
-gateway:
-  port: 20128
-  routing:
-    strategy: "round-robin"
-providers:
-  gemini:
-    keys:
-      - "key-1"
-    models:
-      - id: "gemini-pro"
-`);
-
-      configLoader.loadConfig(tempConfigPath);
-      const logger = createMockLogger();
-      configLoader.setLogger(logger);
-
-      // Register a listener that throws
-      configLoader.onConfigChange(() => {
-        throw new Error('Listener boom');
-      });
-
-      // Second listener verifies the error was caught and logged
-      setTimeout(() => {
-        try {
-          expect(logger.error).toHaveBeenCalledWith(
-            'Error in config change listener:',
-            expect.any(Error),
-          );
-          resolve();
-        } catch (err) {
-          reject(err);
-        }
-      }, 250);
-
-      // Trigger a valid config change
-      writeTempConfig(`
-gateway:
-  port: 20128
-  routing:
-    strategy: "round-robin"
-providers:
-  gemini:
-    keys:
-      - "key-2"
-    models:
-      - id: "gemini-pro"
-`);
-    }));
-  });
-
-  // ── Watcher retry exhaustion – logger usage ───────────────────────────
-
-  describe('Watcher retry exhaustion – logger', () => {
-    it('should route the "5 failed attempts" warning to logger.warn', () => {
-      vi.useFakeTimers();
-      const logger = createMockLogger();
-
-      vi.spyOn(fs, 'watch').mockImplementation(() => {
-        throw new Error('Watch failed');
-      });
-
-      writeTempConfig(`
-gateway:
-  port: 20128
-  routing:
-    strategy: "round-robin"
-providers:
-  gemini:
-    keys:
-      - "key-1"
-    models:
-      - id: "gemini-pro"
-`);
-
-      configLoader.loadConfig(tempConfigPath);
-      configLoader.setLogger(logger);
-
-      // Reset the config and watcher so we can test the logger path
-      configLoader.isWatching = false;
-      configLoader.startWatcher(tempConfigPath);
-
-      vi.runAllTimers();
-
-      expect(logger.warn).toHaveBeenCalledWith(
-        expect.stringContaining('Stopped watching configuration file after 5 failed attempts'),
-      );
-      expect(configLoader.isWatching).toBe(false);
-
-      vi.useRealTimers();
-    });
-
-    it('should fall back to console.warn for "5 failed attempts" when logger is null', () => {
-      vi.useFakeTimers();
-      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-      vi.spyOn(fs, 'watch').mockImplementation(() => {
-        throw new Error('Watch failed');
-      });
-
-      writeTempConfig(`
-gateway:
-  port: 20128
-  routing:
-    strategy: "round-robin"
-providers:
-  gemini:
-    keys:
-      - "key-1"
-    models:
-      - id: "gemini-pro"
-`);
-
-      configLoader.loadConfig(tempConfigPath);
-      // No logger set, should fall back to console.warn
-
-      // Need to trigger the watch retry path from scratch
-      configLoader.isWatching = false;
-      configLoader.startWatcher(tempConfigPath);
-
-      vi.runAllTimers();
-
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Stopped watching configuration file after 5 failed attempts'),
-      );
-
-      vi.useRealTimers();
     });
   });
 });

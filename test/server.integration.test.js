@@ -58,7 +58,7 @@ describe('Server Route Integration Tests', () => {
       .expect(200);
 
     expect(res.body.status).toBe('ok');
-    expect(res.body).toHaveProperty('uptime_seconds');
+    expect(res.body).toHaveProperty('uptimeSeconds');
     expect(res.body).toHaveProperty('providers');
     expect(res.body).toHaveProperty('routing');
   });
@@ -97,7 +97,7 @@ describe('Server Route Integration Tests', () => {
   it('POST /openai/chat/completions - status code mapping on error', async () => {
     const mockErrorResponse = {
       error: {
-        code: 'upstream_rate_limited',
+        code: 'upstreamRateLimited',
         message: 'All keys are in cooldown',
         provider: 'openai',
         httpStatus: 503,

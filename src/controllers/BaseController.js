@@ -22,7 +22,7 @@ export class BaseController {
 
     const errorBody = {
       error: {
-        code: error.code || 'internal_server_error',
+        code: error.code || 'internalServerError',
         message: error.message || String(error),
         httpStatus: finalStatus,
         provider: error.provider,
@@ -59,7 +59,7 @@ export class BaseController {
 
       // Resolve and transform
       const resolved = resolveModel(body.model, providersConfig);
-      const { unifiedReq, cleanRawReq } = transformRequest(baseReq, req, resolved);
+      const unifiedReq = transformRequest(baseReq, resolved);
 
       this.logger.debug(`${protocolName} completion request received`, {
         model: body.model,
@@ -68,8 +68,7 @@ export class BaseController {
         resolvedModel: unifiedReq.actualModelId,
       });
 
-      // Execute via orchestrator
-      const response = await this.orchestrator.executeCompletion(unifiedReq, cleanRawReq, reqLog);
+      const response = await this.orchestrator.executeCompletion(unifiedReq, req, reqLog);
 
       // Handle orchestrator-level errors
       if (response?.error) {
@@ -107,5 +106,3 @@ export class BaseController {
     }
   }
 }
-
-export default BaseController;

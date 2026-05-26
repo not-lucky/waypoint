@@ -1,26 +1,12 @@
 /* eslint-disable no-restricted-syntax, no-continue, no-nested-ternary, max-len */
 import { BaseProvider } from './BaseProvider.js';
-import { parseSSEStream } from '../utils/sseParser.js';
+import { parseSSEStream, parseSSEEventData } from '../utils/sseParser.js';
 import { StreamAccumulator } from '../utils/StreamAccumulator.js';
-
-/**
- * Extracts and categorizes reasoning/thinking effort from the incoming request.
- */
-const getReasoningEffort = (req) => {
-  let effort = req.thinkingLevel || req.reasoningEffort;
-  if (effort) {
-    effort = effort.toLowerCase();
-    if (effort === 'minimal') return 'low';
-    if (['xhigh', 'max'].includes(effort)) return 'high';
-    return effort;
-  }
-  const thinkingEnabled = req.thinkingEnabled || req.thinking_supported || false;
-
-  if (thinkingEnabled) {
-    return 'medium';
-  }
-  return effort;
-};
+import {
+  resolveReasoningEffort,
+  mapOpenAICompletionResponse,
+  mapOpenAIStreamChunk,
+} from './openaiResponse.js';
 
 /**
  * Adapter for natively OpenAI-compatible APIs.
@@ -43,7 +29,7 @@ export class OpenAICompatibleAdapter extends BaseProvider {
     if (req.temperature !== undefined) payload.temperature = req.temperature;
     if (req.maxTokens !== undefined) payload.max_tokens = req.maxTokens;
 
-    const effort = getReasoningEffort(req);
+    const effort = resolveReasoningEffort(req);
     if (effort) payload.reasoning_effort = effort;
 
     const url = `${this.baseUrl.replace(/\/$/, '')}/chat/completions`;
@@ -63,26 +49,7 @@ export class OpenAICompatibleAdapter extends BaseProvider {
 
     try {
       const resultJson = await response.json();
-      return {
-        id: resultJson.id ? (resultJson.id.startsWith('waypoint-') ? resultJson.id : `waypoint-${resultJson.id}`) : `waypoint-${Date.now()}`,
-        object: 'chat.completion',
-        created: resultJson.created || Math.floor(Date.now() / 1000),
-        model: req.model || resultJson.model,
-        choices: (resultJson.choices || []).map((c) => ({
-          index: c.index ?? 0,
-          message: {
-            role: c.message?.role || 'assistant',
-            content: c.message?.content || '',
-            reasoning_content: c.message?.reasoning_content || null,
-          },
-          finish_reason: c.finish_reason ?? c.finishReason ?? 'stop',
-        })),
-        usage: {
-          prompt_tokens: resultJson.usage?.prompt_tokens ?? resultJson.usage?.promptTokens ?? 0,
-          completion_tokens: resultJson.usage?.completion_tokens ?? resultJson.usage?.completionTokens ?? 0,
-          total_tokens: resultJson.usage?.total_tokens ?? resultJson.usage?.totalTokens ?? 0,
-        },
-      };
+      return mapOpenAICompletionResponse(req, resultJson);
     } finally {
       cleanup();
     }
@@ -99,7 +66,7 @@ export class OpenAICompatibleAdapter extends BaseProvider {
     if (req.temperature !== undefined) payload.temperature = req.temperature;
     if (req.maxTokens !== undefined) payload.max_tokens = req.maxTokens;
 
-    const effort = getReasoningEffort(req);
+    const effort = resolveReasoningEffort(req);
     if (effort) payload.reasoning_effort = effort;
 
     const url = `${this.baseUrl.replace(/\/$/, '')}/chat/completions`;
@@ -127,37 +94,15 @@ export class OpenAICompatibleAdapter extends BaseProvider {
         if (fetchSignal?.aborted) throw new Error('Stream aborted');
         eventCount += 1;
 
-        if (sseEvent.data === '[DONE]') continue;
+        const parsedData = parseSSEEventData(sseEvent.data);
+        if (!parsedData) continue;
 
-        let parsedData;
-        try {
-          parsedData = JSON.parse(sseEvent.data);
-          if (requestLog && typeof requestLog.appendStreamEvent === 'function') {
-            requestLog.appendStreamEvent('provider', parsedData);
-          }
-        } catch (err) {
-          continue;
+        if (requestLog && typeof requestLog.appendStreamEvent === 'function') {
+          requestLog.appendStreamEvent('provider', parsedData);
         }
 
         accumulator.processChunk(parsedData);
-
-        yield {
-          id: chunkId,
-          object: 'chat.completion.chunk',
-          choices: (parsedData.choices || []).map((c) => ({
-            index: c.index ?? 0,
-            delta: {
-              content: c.delta?.content ?? null,
-              reasoning_content: c.delta?.reasoning_content ?? null,
-            },
-            finish_reason: c.finish_reason ?? c.finishReason ?? null,
-          })),
-          usage: parsedData.usage ? {
-            prompt_tokens: parsedData.usage.prompt_tokens ?? parsedData.usage.promptTokens ?? 0,
-            completion_tokens: parsedData.usage.completion_tokens ?? parsedData.usage.completionTokens ?? 0,
-            total_tokens: parsedData.usage.total_tokens ?? parsedData.usage.totalTokens ?? 0,
-          } : undefined,
-        };
+        yield mapOpenAIStreamChunk(parsedData, chunkId);
       }
     } finally {
       cleanup();
@@ -175,5 +120,3 @@ export class OpenAICompatibleAdapter extends BaseProvider {
     return BaseProvider.normalizeProviderError(error, this.providerName);
   }
 }
-
-export default OpenAICompatibleAdapter;

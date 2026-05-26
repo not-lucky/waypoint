@@ -71,7 +71,7 @@ export class UnifiedOrchestrator {
     }
 
     // Fetch the global retry limit from gateway configuration
-    const retryLimit = this.config.gateway?.global_retry_limit ?? 3;
+    const retryLimit = this.config.gateway?.globalRetryLimit ?? 3;
     const abortController = new AbortController();
     activeControllers.add(abortController);
 
@@ -79,7 +79,7 @@ export class UnifiedOrchestrator {
       model: req.model,
       provider: req.provider,
       stream: req.stream,
-      thinkingEnabled: req.thinkingEnabled,
+      reasoningSupported: req.reasoningSupported,
     });
 
     const target = rawReq?.res || rawReq;

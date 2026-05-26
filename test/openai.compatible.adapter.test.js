@@ -89,59 +89,55 @@ describe('OpenAICompatibleAdapter Tests', () => {
     );
   });
 
-  it("assert: normalizeError({response:{status:429}}) -> {code:'upstream_rate_limited', httpStatus:503}", () => {
+  it("assert: normalizeError({response:{status:429}}) -> {code:'upstreamRateLimited', httpStatus:503}", () => {
     const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
     const err = { response: { status: 429 }, message: 'Too Many Requests' };
     const normalized = adapter.normalizeError(err);
 
     expect(normalized).toEqual({
-      code: 'upstream_rate_limited',
+      code: 'upstreamRateLimited',
       message: 'Too Many Requests',
       httpStatus: 503,
       provider: 'openai',
-      providerName: 'openai',
     });
   });
 
-  it("assert: normalizeError({response:{status:402}}) -> {code:'quota_exhausted', httpStatus:503}", () => {
+  it("assert: normalizeError({response:{status:402}}) -> {code:'quotaExhausted', httpStatus:503}", () => {
     const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
     const err = { response: { status: 402 }, message: 'Payment Required' };
     const normalized = adapter.normalizeError(err);
 
     expect(normalized).toEqual({
-      code: 'quota_exhausted',
+      code: 'quotaExhausted',
       message: 'Payment Required',
       httpStatus: 503,
       provider: 'openai',
-      providerName: 'openai',
     });
   });
 
-  it("assert: normalizeError({response:{status:403}}) -> {code:'quota_exhausted', httpStatus:503}", () => {
+  it("assert: normalizeError({response:{status:403}}) -> {code:'quotaExhausted', httpStatus:503}", () => {
     const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
     const err = { response: { status: 403 }, message: 'Forbidden' };
     const normalized = adapter.normalizeError(err);
 
     expect(normalized).toEqual({
-      code: 'quota_exhausted',
+      code: 'quotaExhausted',
       message: 'Forbidden',
       httpStatus: 503,
       provider: 'openai',
-      providerName: 'openai',
     });
   });
 
-  it("assert: normalizeError(other 4xx/5xx) -> {code:'upstream_error', httpStatus:502}", () => {
+  it("assert: normalizeError(other 4xx/5xx) -> {code:'upstreamError', httpStatus:502}", () => {
     const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
     const err = { response: { status: 500 }, message: 'Internal Server Error' };
     const normalized = adapter.normalizeError(err);
 
     expect(normalized).toEqual({
-      code: 'upstream_error',
+      code: 'upstreamError',
       message: 'Internal Server Error',
       httpStatus: 502,
       provider: 'openai',
-      providerName: 'openai',
     });
   });
 
@@ -305,7 +301,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
     ]);
   });
 
-  it('assert: generateCompletion maps thinkingLevel correctly to reasoningEffort', async () => {
+  it('assert: generateCompletion maps reasoningEffort to upstream reasoning_effort', async () => {
     const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
 
     mockFetch.mockResolvedValue({
@@ -315,11 +311,10 @@ describe('OpenAICompatibleAdapter Tests', () => {
       }),
     });
 
-    // Case 1: thinkingLevel is set directly
     await adapter.generateCompletion({
       actualModelId: 'gpt-4o',
       messages: [],
-      thinkingLevel: 'high',
+      reasoningEffort: 'high',
     }, 'test-api-key');
 
     expect(mockFetch).toHaveBeenLastCalledWith(
@@ -384,7 +379,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
     await adapter.generateCompletion({
       actualModelId: 'gpt-4o',
       messages: [],
-      thinkingEnabled: true,
+      reasoningSupported: true,
     }, 'test-key');
 
     const lastCallBody = JSON.parse(mockFetch.mock.calls[mockFetch.mock.calls.length - 1][1].body);
@@ -574,7 +569,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
     );
   });
 
-  it('asserts: generateStream sends reasoning_effort when thinking is enabled', async () => {
+  it('asserts: generateStream sends reasoningEffort when thinking is enabled', async () => {
     const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
     const mockBody = {
       async* [Symbol.asyncIterator]() {
@@ -589,8 +584,8 @@ describe('OpenAICompatibleAdapter Tests', () => {
 
     const req = {
       messages: [],
-      thinkingEnabled: true,
-      thinkingLevel: 'low',
+      reasoningSupported: true,
+      reasoningEffort: 'low',
     };
 
     const chunks = [];
@@ -733,14 +728,14 @@ describe('OpenAICompatibleAdapter Tests', () => {
     );
   });
 
-  it('assert: generateStream maps promptTokens and completionTokens camelCase keys correctly', async () => {
+  it('assert: generateStream maps usage token fields from upstream SSE chunks', async () => {
     const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
 
     const mockBody = {
       async* [Symbol.asyncIterator]() {
         const encoder = new TextEncoder();
         yield encoder.encode('data: {"choices":[{"delta":{"content":"part 1"}}]}\n\n');
-        yield encoder.encode('data: {"usage":{"promptTokens":6,"completionTokens":16,"totalTokens":22}}\n\n');
+        yield encoder.encode('data: {"usage":{"prompt_tokens":6,"completion_tokens":16,"total_tokens":22}}\n\n');
       },
     };
 
@@ -776,7 +771,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
         const encoder = new TextEncoder();
         yield encoder.encode('data: {"choices":[{"delta":{"content":"part 1","reasoning_content":"t1"}}]}\n\n');
         yield encoder.encode('data: {"choices":[{"delta":{"reasoning_content":"t2"}}]}\n\n');
-        yield encoder.encode('data: {"choices":[{"finishReason":"length"}]}\n\n');
+        yield encoder.encode('data: {"choices":[{"finish_reason":"length"}]}\n\n');
         yield encoder.encode('data: {"usage":{}}\n\n');
       },
     };

@@ -50,7 +50,7 @@ export function resetLifecycleState() {
  * Initiates a structured, idempotent graceful teardown sequence.
  *
  * WHY: A rigid teardown sequence is essential in distributed systems to prevent dropped
- * client connections, orphaned event loop resources (like watchers), and corrupted or lost
+ * client connections, orphaned event loop resources, and corrupted or lost
  * logs when the process receives termination signals (e.g., from Kubernetes scaling down).
  * The order of operations ensures that inbound traffic stops before we sever active streams,
  * and we flush telemetry only after all logic halts.
@@ -60,14 +60,12 @@ export function resetLifecycleState() {
  *
  * @param {Object} params - The teardown parameters.
  * @param {import('http').Server} params.server - Node HTTP Server instance.
- * @param {Object} params.configLoader - Configuration loader instance.
  * @param {Object} params.keyRegistry - Key registry instance.
  * @param {Object|null} params.logger - Logger instance.
  * @returns {Promise<void>} Resolves when teardown is complete (or exits process).
  */
 export async function teardown({
   server,
-  configLoader,
   keyRegistry,
   logger,
 }) {
@@ -131,18 +129,7 @@ export async function teardown({
     // rate limiter intervals, etc.) by delegating to the registry.
     await teardownRegistry.execute(logger);
 
-    // 3. watcher.close() (fs.watch configuration watcher)
-    // WHY: Release the configuration file watcher handle to avoid file system locks and
-    // clear the native OS watcher resources.
-    // WHAT: Stops the configLoader's fs.watch instance.
-    if (logger && typeof logger.debug === 'function') {
-      logger.debug('Graceful shutdown: stopping configuration file watcher');
-    }
-    if (configLoader && typeof configLoader.stopWatcher === 'function') {
-      configLoader.stopWatcher();
-    }
-
-    // 4. clearTimeout all cooldown timer handles
+    // 3. clearTimeout all cooldown timer handles
     // WHY: Cancel any active key cooldown restoration timers. Without this, pending timeouts
     // would keep the event loop active, delaying process exit.
     // WHAT: Cleans up registry timeouts.
@@ -162,7 +149,7 @@ export async function teardown({
     // Clear the safety timeout since shutdown succeeded
     clearTimeout(safetyTimeout);
 
-    // 6. flushLogs() - write buffered logs to disk using LogTape
+    // 4. flushLogs() - write buffered logs to disk using LogTape
     // WHY: Log flushing must happen last to ensure all teardown steps (success or failure)
     // are successfully recorded to persistent storage. If we flushed earlier, subsequent
     // teardown events would be lost in an in-memory buffer.
@@ -175,7 +162,7 @@ export async function teardown({
     }
     await flushLogs();
 
-    // 7. process.exit(0)
+    // 5. process.exit(0)
     // WHY: Explicitly exit with 0 to signal a successful graceful termination to the host OS.
     process.exit(0);
   } catch (err) {
@@ -213,14 +200,12 @@ export async function teardown({
  *
  * @param {Object} params - Registration options.
  * @param {import('http').Server} params.server - Node HTTP Server instance.
- * @param {Object} params.configLoader - Configuration loader instance.
  * @param {Object} params.keyRegistry - Key registry instance.
  * @param {Object|null} params.logger - Logger instance.
  * @returns {void}
  */
 export function registerLifecycle({
   server,
-  configLoader,
   keyRegistry,
   logger,
 }) {
@@ -238,7 +223,6 @@ export function registerLifecycle({
     }
     teardown({
       server,
-      configLoader,
       keyRegistry,
       logger,
     });

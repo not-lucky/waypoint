@@ -11,19 +11,6 @@ import { GatewayValidator } from './GatewayValidator.js';
 import { ClientValidator } from './ClientValidator.js';
 import { LoggingValidator } from './LoggingValidator.js';
 import { ProviderValidator } from './ProviderValidator.js';
-import {
-  isPositiveInteger,
-  isNonEmptyString,
-  matchesModelId,
-  validateFallbackModel,
-} from './validationHelpers.js';
-
-export {
-  isPositiveInteger,
-  isNonEmptyString,
-  matchesModelId,
-  validateFallbackModel,
-};
 
 /**
  * Validates the entire application configuration object.

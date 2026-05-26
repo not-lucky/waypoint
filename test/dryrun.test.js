@@ -59,7 +59,8 @@ describe('Dry Run Endpoints Integration Tests', () => {
     expect(response.body.dryRun).toBe(true);
     expect(response.body.message).toContain('Dry run completed successfully');
     expect(response.body.request.url).toBe('https://api.openai.com/v1/chat/completions');
-    const authHeader = response.body.request.headers.Authorization || response.body.request.headers.authorization;
+    const authHeader = response.body.request.headers.Authorization
+      || response.body.request.headers.authorization;
     expect(authHeader).toBe('[REDACTED]');
     expect(response.body.request.body).toEqual({
       model: 'gpt-4o',

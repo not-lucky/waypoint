@@ -1,7 +1,8 @@
 import {
   describe, it, expect, beforeEach, afterEach, vi,
 } from 'vitest';
-import { validateConfig, ConfigLoader } from '../src/config/loader.js';
+import { ConfigLoader } from '../src/config/loader.js';
+import { validateConfig } from '../src/config/validator.js';
 
 describe('Configuration Validation Tests', () => {
   let consoleErrorSpy;
@@ -28,15 +29,15 @@ describe('Configuration Validation Tests', () => {
         routing: { strategy: 'round-robin' },
       },
       logging: {
-        enable_console: true,
-        enable_file: false,
+        enableConsole: true,
+        enableFile: false,
         format: 'json',
       },
       clients: [
         {
           name: 'open-webui',
           token: 'some-token',
-          rate_limit: { window_ms: 60000, max: 100 },
+          rateLimit: { windowMs: 60000, max: 100 },
         },
       ],
       providers: {
@@ -198,9 +199,9 @@ describe('Configuration Validation Tests', () => {
     );
   });
 
-  it('should call process.exit(1) when client rate_limit window_ms is missing or invalid', () => {
+  it('should call process.exit(1) when client rateLimit windowMs is missing or invalid', () => {
     const invalidConfig = getBaseValidConfig();
-    invalidConfig.clients[0].rate_limit.window_ms = -100;
+    invalidConfig.clients[0].rateLimit.windowMs = -100;
 
     expect(() => {
       validateConfig(invalidConfig);
@@ -208,13 +209,13 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("FATAL ERROR: Invalid or missing 'rate_limit.window_ms'"),
+      expect.stringContaining("FATAL ERROR: Invalid or missing 'rateLimit.windowMs'"),
     );
   });
 
-  it('should call process.exit(1) when client rate_limit max is missing or invalid', () => {
+  it('should call process.exit(1) when client rateLimit max is missing or invalid', () => {
     const invalidConfig = getBaseValidConfig();
-    delete invalidConfig.clients[0].rate_limit.max;
+    delete invalidConfig.clients[0].rateLimit.max;
 
     expect(() => {
       validateConfig(invalidConfig);
@@ -222,7 +223,7 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("FATAL ERROR: Invalid or missing 'rate_limit.max'"),
+      expect.stringContaining("FATAL ERROR: Invalid or missing 'rateLimit.max'"),
     );
   });
 
@@ -254,9 +255,9 @@ describe('Configuration Validation Tests', () => {
     );
   });
 
-  it('should call process.exit(1) when fallback_model format is invalid', () => {
+  it('should call process.exit(1) when fallbackModel format is invalid', () => {
     const invalidConfig = getBaseValidConfig();
-    invalidConfig.providers.gemini.models[0].fallback_model = 'openai-gpt-4o';
+    invalidConfig.providers.gemini.models[0].fallbackModel = 'openai-gpt-4o';
 
     expect(() => {
       validateConfig(invalidConfig);
@@ -264,13 +265,13 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("FATAL ERROR: Invalid 'fallback_model' format 'openai-gpt-4o'"),
+      expect.stringContaining("FATAL ERROR: Invalid 'fallbackModel' format 'openai-gpt-4o'"),
     );
   });
 
-  it('should call process.exit(1) when fallback_model references non-existent provider', () => {
+  it('should call process.exit(1) when fallbackModel references non-existent provider', () => {
     const invalidConfig = getBaseValidConfig();
-    invalidConfig.providers.gemini.models[0].fallback_model = 'nonexistent/model';
+    invalidConfig.providers.gemini.models[0].fallbackModel = 'nonexistent/model';
 
     expect(() => {
       validateConfig(invalidConfig);
@@ -278,17 +279,17 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("FATAL ERROR: Invalid 'fallback_model' reference 'nonexistent/model'"),
+      expect.stringContaining("FATAL ERROR: Invalid 'fallbackModel' reference 'nonexistent/model'"),
     );
   });
 
-  it('should call process.exit(1) when fallback_model references non-existent model in valid provider', () => {
+  it('should call process.exit(1) when fallbackModel references non-existent model in valid provider', () => {
     const invalidConfig = getBaseValidConfig();
     invalidConfig.providers.openai = {
       keys: ['openai-key'],
       models: [{ id: 'gpt-3.5' }],
     };
-    invalidConfig.providers.gemini.models[0].fallback_model = 'openai/gpt-4o';
+    invalidConfig.providers.gemini.models[0].fallbackModel = 'openai/gpt-4o';
 
     expect(() => {
       validateConfig(invalidConfig);
@@ -300,21 +301,21 @@ describe('Configuration Validation Tests', () => {
     );
   });
 
-  it('should pass when fallback_model references valid model or alias', () => {
+  it('should pass when fallbackModel references valid model or alias', () => {
     const validConfig = getBaseValidConfig();
     validConfig.providers.openai = {
       keys: ['openai-key'],
       models: [{ id: 'gpt-4o', aliases: ['gpt4'] }],
     };
-    validConfig.providers.gemini.models[0].fallback_model = 'openai/gpt4';
+    validConfig.providers.gemini.models[0].fallbackModel = 'openai/gpt4';
     expect(() => {
       validateConfig(validConfig);
     }).not.toThrow();
   });
 
-  it('should call process.exit(1) when global_retry_limit is not a positive integer', () => {
+  it('should call process.exit(1) when globalRetryLimit is not a positive integer', () => {
     const invalidConfig = getBaseValidConfig();
-    invalidConfig.gateway.global_retry_limit = -5;
+    invalidConfig.gateway.globalRetryLimit = -5;
 
     expect(() => {
       validateConfig(invalidConfig);
@@ -322,13 +323,13 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("FATAL ERROR: Invalid 'gateway.global_retry_limit'. Must be a positive integer."),
+      expect.stringContaining("FATAL ERROR: Invalid 'gateway.globalRetryLimit'. Must be a positive integer."),
     );
   });
 
-  it('should call process.exit(1) when base_seconds is not a positive integer', () => {
+  it('should call process.exit(1) when baseSeconds is not a positive integer', () => {
     const invalidConfig = getBaseValidConfig();
-    invalidConfig.gateway.cooldown = { base_seconds: 0 };
+    invalidConfig.gateway.cooldown = { baseSeconds: 0 };
 
     expect(() => {
       validateConfig(invalidConfig);
@@ -336,13 +337,13 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("FATAL ERROR: Invalid 'gateway.cooldown.base_seconds'. Must be a positive integer."),
+      expect.stringContaining("FATAL ERROR: Invalid 'gateway.cooldown.baseSeconds'. Must be a positive integer."),
     );
   });
 
-  it('should call process.exit(1) when max_seconds is not a positive integer', () => {
+  it('should call process.exit(1) when maxSeconds is not a positive integer', () => {
     const invalidConfig = getBaseValidConfig();
-    invalidConfig.gateway.cooldown = { max_seconds: -10 };
+    invalidConfig.gateway.cooldown = { maxSeconds: -10 };
 
     expect(() => {
       validateConfig(invalidConfig);
@@ -350,13 +351,13 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("FATAL ERROR: Invalid 'gateway.cooldown.max_seconds'. Must be a positive integer."),
+      expect.stringContaining("FATAL ERROR: Invalid 'gateway.cooldown.maxSeconds'. Must be a positive integer."),
     );
   });
 
-  it('should call process.exit(1) when fallback_model is self-referential', () => {
+  it('should call process.exit(1) when fallbackModel is self-referential', () => {
     const invalidConfig = getBaseValidConfig();
-    invalidConfig.providers.gemini.models[0].fallback_model = 'gemini/gemini-2.5-pro';
+    invalidConfig.providers.gemini.models[0].fallbackModel = 'gemini/gemini-2.5-pro';
 
     expect(() => {
       validateConfig(invalidConfig);
@@ -364,14 +365,14 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("FATAL ERROR: Invalid 'fallback_model' reference 'gemini/gemini-2.5-pro' at index 0 for provider 'gemini': model cannot fall back to itself."),
+      expect.stringContaining("FATAL ERROR: Invalid 'fallbackModel' reference 'gemini/gemini-2.5-pro' at index 0 for provider 'gemini': model cannot fall back to itself."),
     );
   });
 
-  it('should call process.exit(1) when fallback_model references self via an alias', () => {
+  it('should call process.exit(1) when fallbackModel references self via an alias', () => {
     const invalidConfig = getBaseValidConfig();
     invalidConfig.providers.gemini.models[0].aliases = ['pro-alias'];
-    invalidConfig.providers.gemini.models[0].fallback_model = 'gemini/pro-alias';
+    invalidConfig.providers.gemini.models[0].fallbackModel = 'gemini/pro-alias';
 
     expect(() => {
       validateConfig(invalidConfig);
@@ -379,11 +380,11 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("FATAL ERROR: Invalid 'fallback_model' reference 'gemini/pro-alias' at index 0 for provider 'gemini': model cannot fall back to itself."),
+      expect.stringContaining("FATAL ERROR: Invalid 'fallbackModel' reference 'gemini/pro-alias' at index 0 for provider 'gemini': model cannot fall back to itself."),
     );
   });
 
-  it('should call process.exit(1) when a custom provider is missing base_url', () => {
+  it('should call process.exit(1) when a custom provider is missing baseUrl', () => {
     const config = getBaseValidConfig();
     config.providers['custom-provider'] = {
       keys: ['custom-key'],
@@ -396,11 +397,11 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('custom provider requires base_url'),
+      expect.stringContaining('custom provider requires baseUrl'),
     );
   });
 
-  it('should call process.exit(1) when custom provider has type: "anthropic-compatible" but is missing base_url', () => {
+  it('should call process.exit(1) when custom provider has type: "anthropic-compatible" but is missing baseUrl', () => {
     const config = getBaseValidConfig();
     config.providers['custom-anthropic'] = {
       type: 'anthropic-compatible',
@@ -414,7 +415,7 @@ describe('Configuration Validation Tests', () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('custom provider requires base_url'),
+      expect.stringContaining('custom provider requires baseUrl'),
     );
   });
 
@@ -422,7 +423,7 @@ describe('Configuration Validation Tests', () => {
     const config = getBaseValidConfig();
     config.providers['custom-provider'] = {
       type: 'llm-compatible',
-      base_url: 'http://localhost:8080',
+      baseUrl: 'http://localhost:8080',
       keys: ['custom-key'],
       models: [{ id: 'custom-model' }],
     };
@@ -453,9 +454,9 @@ describe('Configuration Validation Tests', () => {
     config.clients = [null];
     expect(() => validateConfig(config)).toThrow('process.exit called');
 
-    // 4. missing client rate_limit
+    // 4. missing client rateLimit
     config = getBaseValidConfig();
-    delete config.clients[0].rate_limit;
+    delete config.clients[0].rateLimit;
     expect(() => validateConfig(config)).toThrow('process.exit called');
 
     // 5. missing logging block
@@ -463,20 +464,20 @@ describe('Configuration Validation Tests', () => {
     delete config.logging;
     expect(() => validateConfig(config)).toThrow('process.exit called');
 
-    // 6. logging.enable_console not boolean
+    // 6. logging.enableConsole not boolean
     config = getBaseValidConfig();
-    config.logging.enable_console = 'not-a-bool';
+    config.logging.enableConsole = 'not-a-bool';
     expect(() => validateConfig(config)).toThrow('process.exit called');
 
-    // 7. logging.enable_file not boolean
+    // 7. logging.enableFile not boolean
     config = getBaseValidConfig();
-    config.logging.enable_file = 'not-a-bool';
+    config.logging.enableFile = 'not-a-bool';
     expect(() => validateConfig(config)).toThrow('process.exit called');
 
-    // 8. logging.file_path empty when enable_file is true
+    // 8. logging.filePath empty when enableFile is true
     config = getBaseValidConfig();
-    config.logging.enable_file = true;
-    config.logging.file_path = '';
+    config.logging.enableFile = true;
+    config.logging.filePath = '';
     expect(() => validateConfig(config)).toThrow('process.exit called');
 
     // 9. logging.level invalid
@@ -504,9 +505,9 @@ describe('Configuration Validation Tests', () => {
     config.providers.gemini.models[0].aliases = 'not-an-array';
     expect(() => validateConfig(config)).toThrow('process.exit called');
 
-    // 14. invalid model thinking_supported not boolean
+    // 14. invalid model reasoningSupported not boolean
     config = getBaseValidConfig();
-    config.providers.gemini.models[0].thinking_supported = 'not-a-bool';
+    config.providers.gemini.models[0].reasoningSupported = 'not-a-bool';
     expect(() => validateConfig(config)).toThrow('process.exit called');
   });
 
@@ -524,17 +525,6 @@ describe('Configuration Validation Tests', () => {
       const loader = new ConfigLoader();
       const res = loader.interpolateAndValidate(config);
       expect(res.providers.gemini.keys).toEqual(['12345']);
-    });
-
-    it('should return early from startWatcher if already watching', () => {
-      const loader = new ConfigLoader();
-      loader.isWatching = true;
-      expect(loader.startWatcher('some-path')).toBeUndefined();
-    });
-
-    it('should return early from handleConfigChange if file does not exist', () => {
-      const loader = new ConfigLoader();
-      expect(loader.handleConfigChange('non-existent-path')).toBeUndefined();
     });
   });
 });

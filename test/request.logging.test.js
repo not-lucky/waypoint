@@ -8,8 +8,11 @@ import { GeminiAdapter } from '../src/adapters/GeminiAdapter.js';
 import { AnthropicAdapter } from '../src/adapters/AnthropicAdapter.js';
 import { OpenAICompatibleAdapter } from '../src/adapters/OpenAICompatibleAdapter.js';
 import {
-  RequestLog, sanitizeUrl, serializeHeaders, redactHeaders,
+  RequestLog,
 } from '../src/utils/requestLogger.js';
+import {
+  sanitizeUrl, serializeHeaders, redactHeaders,
+} from '../src/utils/requestLoggerUtils.js';
 import { OpenAIController } from '../src/controllers/OpenAIController.js';
 import { AnthropicController } from '../src/controllers/AnthropicController.js';
 
@@ -69,7 +72,7 @@ describe('Request Logging Format and Sanitization Tests', () => {
     });
 
     try {
-      const requestLog = createRequestLog({ logging: { enable_request_log: true, request_log_path: './temp' } });
+      const requestLog = createRequestLog({ logging: { enable_request_log: true, requestLogPath: './temp' } });
 
       // Test NOOP_LOG methods
       expect(() => requestLog.logProviderRequest()).not.toThrow();
@@ -377,8 +380,8 @@ describe('Request Logging Format and Sanitization Tests', () => {
     const mockOrchestrator = {
       config: {
         logging: {
-          log_requests: true,
-          request_log_path: `./logs/requests-test-openai-${Date.now()}`,
+          logRequests: true,
+          requestLogPath: `./logs/requests-test-openai-${Date.now()}`,
         },
       },
       executeCompletion: vi.fn().mockResolvedValue({
@@ -417,7 +420,7 @@ describe('Request Logging Format and Sanitization Tests', () => {
     expect(loggedData.summary.usage.completion_tokens).toBe(2);
 
     spy.mockRestore();
-    await import('node:fs/promises').then((fsp) => fsp.rm(mockOrchestrator.config.logging.request_log_path, { recursive: true, force: true }));
+    await import('node:fs/promises').then((fsp) => fsp.rm(mockOrchestrator.config.logging.requestLogPath, { recursive: true, force: true }));
   });
 
   it('assert: AnthropicController handleCompletion aggregates stream and calls logClientStreamSummary', async () => {
@@ -439,8 +442,8 @@ describe('Request Logging Format and Sanitization Tests', () => {
     const mockOrchestrator = {
       config: {
         logging: {
-          log_requests: true,
-          request_log_path: `./logs/requests-test-anthropic-${Date.now()}`,
+          logRequests: true,
+          requestLogPath: `./logs/requests-test-anthropic-${Date.now()}`,
         },
       },
       executeCompletion: vi.fn().mockResolvedValue({
@@ -479,7 +482,7 @@ describe('Request Logging Format and Sanitization Tests', () => {
     expect(loggedData.summary.usage.output_tokens).toBe(2);
 
     spy.mockRestore();
-    await import('node:fs/promises').then((fsp) => fsp.rm(mockOrchestrator.config.logging.request_log_path, { recursive: true, force: true }));
+    await import('node:fs/promises').then((fsp) => fsp.rm(mockOrchestrator.config.logging.requestLogPath, { recursive: true, force: true }));
   });
 
   it('assert: RequestLog groups provider and client events and writes them with headers to 05_event_stream.jsonl', async () => {
@@ -642,7 +645,7 @@ describe('Request Logging Format and Sanitization Tests', () => {
       });
 
       try {
-        const res = createRequestLog({}, { logging: { log_requests: true, request_log_path: '/invalid/path' } });
+        const res = createRequestLog({}, { logging: { logRequests: true, requestLogPath: '/invalid/path' } });
         expect(res.id).toBeNull();
       } finally {
         mkdirSpy.mockRestore();
@@ -655,7 +658,7 @@ describe('Request Logging Format and Sanitization Tests', () => {
       const tempDir = './test/temp-req-log-extra';
       if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
 
-      const reqLog = createRequestLog({ headers: {} }, { logging: { log_requests: true, request_log_path: tempDir } });
+      const reqLog = createRequestLog({ headers: {} }, { logging: { logRequests: true, requestLogPath: tempDir } });
       expect(reqLog.id).not.toBeNull();
 
       // Cover logProviderResponse with a stream
@@ -692,7 +695,7 @@ describe('Request Logging Format and Sanitization Tests', () => {
       reqLog.logClientResponse(400, {});
 
       // Cover default request log path
-      const reqLogNoPath = createRequestLog({ headers: {} }, { logging: { log_requests: true } });
+      const reqLogNoPath = createRequestLog({ headers: {} }, { logging: { logRequests: true } });
       await reqLogNoPath.finalize();
 
       // Cleanup

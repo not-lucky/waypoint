@@ -2,7 +2,7 @@
   "name": "waypoint",
   "version": "1.0.0",
   "description": "A lightweight, opinionated local proxy and gateway for developer-first LLM workflows.",
-  "main": "index.js",
+  "main": "src/index.js",
   "scripts": {
     "test": "vitest run",
     "lint": "eslint .",

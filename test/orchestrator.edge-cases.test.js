@@ -36,16 +36,15 @@ class MockAdapter {
       message: error.message,
       httpStatus: error.statusCode || 500,
       provider: 'mock-provider',
-      providerName: 'mock-provider',
     };
   }
 }
 
 describe('UnifiedOrchestrator Edge Cases Tests', () => {
-  it('assert: retry loop stops after global_retry_limit is reached and flags failures', async () => {
+  it('assert: retry loop stops after globalRetryLimit is reached and flags failures', async () => {
     const config = {
       gateway: {
-        global_retry_limit: 2,
+        globalRetryLimit: 2,
       },
       providers: {
         'mock-provider': {
@@ -81,7 +80,7 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
 
     // Check final error normalized
     expect(res.error).toEqual({
-      code: 'all_keys_exhausted',
+      code: 'allKeysExhausted',
       message: expect.stringContaining("All keys for provider 'mock-provider' are currently in cooldown."),
       retryAfterSeconds: expect.any(Number),
       provider: 'mock-provider',
@@ -92,7 +91,7 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
   it('assert: exits early if keys are exhausted mid-loop and returns standard exhaustion error', async () => {
     const config = {
       gateway: {
-        global_retry_limit: 3,
+        globalRetryLimit: 3,
       },
       providers: {
         'mock-provider': {
@@ -117,7 +116,7 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
     // Should call adapter exactly once and then stop because no keys are left
     expect(mockAdapter.callCount).toBe(1);
     expect(res.error).toEqual({
-      code: 'all_keys_exhausted',
+      code: 'allKeysExhausted',
       message: expect.stringContaining("All keys for provider 'mock-provider' are currently in cooldown."),
       retryAfterSeconds: expect.any(Number),
       provider: 'mock-provider',
@@ -171,7 +170,7 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
     // Returns exhaustion error of the fallback provider
     // (since fallback provider loop also exhausted)
     expect(res.error).toEqual({
-      code: 'all_keys_exhausted',
+      code: 'allKeysExhausted',
       message: expect.stringContaining("All keys for provider 'fallback-provider' are currently in cooldown."),
       retryAfterSeconds: expect.any(Number),
       provider: 'fallback-provider',
@@ -191,7 +190,7 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
     const res = await orchestrator.executeCompletion(req, {});
 
     expect(res.error).toEqual({
-      code: 'unsupported_provider',
+      code: 'unsupportedProvider',
       message: "Provider 'unknown-provider' is not supported or configured.",
       provider: 'unknown-provider',
       httpStatus: 400,
@@ -227,7 +226,7 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
 
     expect(primaryMock.callCount).toBe(1);
     expect(res.error).toEqual({
-      code: 'unsupported_provider',
+      code: 'unsupportedProvider',
       message: "Provider 'unsupported-fallback' is not supported or configured.",
       provider: 'unsupported-fallback',
       httpStatus: 400,
@@ -237,7 +236,7 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
   it('assert: abort controller cancels loop mid-retry', async () => {
     const config = {
       gateway: {
-        global_retry_limit: 3,
+        globalRetryLimit: 3,
       },
       providers: {
         'mock-provider': {
@@ -290,7 +289,7 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
     // Should abort after attempt 1 starts and triggers abort; attempt 2 should not be dispatched
     expect(mockAdapter.callCount).toBe(1);
     expect(result.error).toBeDefined();
-    expect(result.error.code).toBe('request_cancelled');
+    expect(result.error.code).toBe('requestCancelled');
     expect(result.error.httpStatus).toBe(499);
   });
 
@@ -345,7 +344,7 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
     await new Promise((resolve) => { setTimeout(resolve, 2); });
     if (closeListener) closeListener();
     const result = await resPromise;
-    expect(result.error.code).toBe('request_cancelled');
+    expect(result.error.code).toBe('requestCancelled');
   });
 
   it('assert: response close does not abort if res.writableEnded is true', async () => {
@@ -422,7 +421,7 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
 
     if (resCloseListener) resCloseListener();
     const result = await resPromise;
-    expect(result.error.code).toBe('request_cancelled');
+    expect(result.error.code).toBe('requestCancelled');
   });
 
   it('assert: retryExecutor buildAllKeysExhaustedError handles missing provider keys gracefully', async () => {
@@ -438,7 +437,7 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
     const req = { provider: 'mock-provider', actualModelId: 'test-model' };
     const res = await orchestrator.executeCompletion(req, {});
 
-    expect(res.error.code).toBe('all_keys_exhausted');
+    expect(res.error.code).toBe('allKeysExhausted');
     expect(res.error.retryAfterSeconds).toBe(0);
   });
 

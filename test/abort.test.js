@@ -438,7 +438,7 @@ describe('Abort and Request Cancellation Tests', () => {
     }, mockReq);
 
     expect(result.error).toBeDefined();
-    expect(result.error.code).toBe('request_cancelled');
+    expect(result.error.code).toBe('requestCancelled');
     expect(result.error.httpStatus).toBe(499);
     expect(activeControllers.size).toBe(0);
   });
@@ -450,7 +450,7 @@ describe('Abort and Request Cancellation Tests', () => {
         'primary-provider': {
           keys: ['primary-key'],
           models: [
-            { id: 'model-a', fallback_model: 'fallback-provider/model-b' },
+            { id: 'model-a', fallbackModel: 'fallback-provider/model-b' },
           ],
         },
         'fallback-provider': {
@@ -470,7 +470,7 @@ describe('Abort and Request Cancellation Tests', () => {
         throw new Error('Primary key rate limit');
       },
       normalizeError(error) {
-        return { code: 'rate_limited', httpStatus: 503, provider: 'primary-provider' };
+        return { code: 'rateLimited', httpStatus: 503, provider: 'primary-provider' };
       },
     };
 
@@ -544,7 +544,7 @@ describe('Abort and Request Cancellation Tests', () => {
     expect(() => closeCallback()).not.toThrow();
 
     const result = await promise;
-    expect(result.error.code).toBe('request_cancelled');
+    expect(result.error.code).toBe('requestCancelled');
   });
 
   // Edge Case: Verify adapter exceptions clean up the activeControllers Set
@@ -606,7 +606,7 @@ describe('Abort and Request Cancellation Tests', () => {
 
     const result = await promise;
     expect(result.error).toBeDefined();
-    expect(result.error.code).toBe('request_cancelled');
+    expect(result.error.code).toBe('requestCancelled');
     expect(result.error.httpStatus).toBe(499);
     expect(activeControllers.size).toBe(0);
   });
@@ -662,7 +662,7 @@ describe('Abort and Request Cancellation Tests', () => {
 
     // Check that we returned a 499 request_cancelled error
     expect(result.error).toBeDefined();
-    expect(result.error.code).toBe('request_cancelled');
+    expect(result.error.code).toBe('requestCancelled');
     expect(result.error.httpStatus).toBe(499);
 
     // Verify that we only attempted once and never executed the second attempt/key

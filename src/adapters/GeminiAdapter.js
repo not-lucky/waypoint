@@ -29,5 +29,3 @@ export class GeminiAdapter extends BaseProvider {
     return BaseProvider.normalizeProviderError(error, 'gemini');
   }
 }
-
-export default GeminiAdapter;

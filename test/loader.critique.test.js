@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { deepFreeze, isDeepEqual, ConfigLoader } from '../src/config/loader.js';
+import { ConfigLoader } from '../src/config/loader.js';
+import { deepFreeze, isDeepEqual } from '../src/utils/objectUtils.js';
 
 describe('Critique Fixes Verification', () => {
   describe('deepFreeze with Map, Set, and Date', () => {
@@ -91,17 +92,6 @@ describe('Critique Fixes Verification', () => {
 
       expect(loader1.currentConfig.val).toBe(1);
       expect(loader2.currentConfig.val).toBe(2);
-
-      const cb1 = () => {};
-      const cb2 = () => {};
-
-      loader1.onConfigChange(cb1);
-      loader2.onConfigChange(cb2);
-
-      expect(loader1.listeners).toContain(cb1);
-      expect(loader1.listeners).not.toContain(cb2);
-      expect(loader2.listeners).toContain(cb2);
-      expect(loader2.listeners).not.toContain(cb1);
     });
   });
 });

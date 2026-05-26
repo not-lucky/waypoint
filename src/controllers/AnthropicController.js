@@ -191,5 +191,3 @@ export class AnthropicController extends BaseController {
     return res;
   }
 }
-
-export default AnthropicController;

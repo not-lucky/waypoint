@@ -1,21 +1,4 @@
-/**
- * WHAT: Normalizes provider token usage metrics into standard snake_case formats.
- * WHY: Downstream orchestrators and logging structures expect a consistent metadata format.
- *
- * @param {Object} usage - Raw usage metrics from Gemini or OpenAI-compatible endpoint.
- * @returns {Object|undefined} Mapped usage object.
- */
-export function translateUsage(usage) {
-  if (!usage) return undefined;
-  // Handle differences in SDK properties (camelCase vs snake_case) and provide fallbacks to 0
-  return {
-    prompt_tokens: usage.prompt_tokens ?? usage.promptTokens ?? 0,
-    completion_tokens: usage.completion_tokens ?? usage.completionTokens ?? 0,
-    total_tokens: usage.total_tokens ?? usage.totalTokens ?? 0,
-  };
-}
-
-export const getGeminiThinkingLevel = (effort, modelId = '') => {
+const getGeminiThinkingLevel = (effort, modelId = '') => {
   const cleanEffort = String(effort || '').toLowerCase();
   const isPro = modelId.includes('pro');
 
@@ -38,14 +21,13 @@ export const getGeminiThinkingLevel = (effort, modelId = '') => {
 };
 
 /**
- * WHAT: Resolves the internal thinking level mapping to upstream specific levels.
- * WHY: Maps numeric thinking budget to Gemini's categorical low/medium/high scale.
+ * Resolves unified reasoning effort to Gemini's categorical thinking levels.
  *
  * @param {Object} req - The unified request.
  * @returns {string} Gemini thinking level.
  */
 export const getThinkingLevel = (req) => {
-  const effort = req.thinkingLevel || req.reasoningEffort;
+  const effort = req.reasoningEffort;
   if (effort) {
     return getGeminiThinkingLevel(effort, req.actualModelId || req.model || '');
   }

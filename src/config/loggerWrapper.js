@@ -23,14 +23,6 @@ export function logWarning(customLogger, msg, meta) {
   else logtapeLogger.warning(msg);
 }
 
-export function logError(customLogger, msg, meta) {
-  if (customLogger && typeof customLogger.error === 'function') {
-    if (meta !== undefined) customLogger.error(msg, meta);
-    else customLogger.error(msg);
-  } else if (meta !== undefined) logtapeLogger.error(msg, meta);
-  else logtapeLogger.error(msg);
-}
-
 export function logFatal(customLogger, msg, meta) {
   if (customLogger && typeof customLogger.fatal === 'function') {
     if (meta !== undefined) customLogger.fatal(msg, meta);

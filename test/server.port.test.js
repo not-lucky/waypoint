@@ -33,8 +33,8 @@ describe('Server Port Resolution', () => {
       },
       clients: [],
       logging: {
-        enable_console: true,
-        enable_file: false,
+        enableConsole: true,
+        enableFile: false,
         format: 'text',
       },
       providers: {

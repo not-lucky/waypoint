@@ -75,7 +75,7 @@ describe('Zod Request Validation Middleware - Edge Case Tests', () => {
       })
       .expect(400);
 
-    expect(res.body.error.code).toBe('validation_error');
+    expect(res.body.error.code).toBe('validationError');
     expect(res.body.error.details.some((d) => d.field === 'model')).toBe(true);
   });
 
@@ -88,7 +88,7 @@ describe('Zod Request Validation Middleware - Edge Case Tests', () => {
       })
       .expect(400);
 
-    expect(res.body.error.code).toBe('validation_error');
+    expect(res.body.error.code).toBe('validationError');
     expect(res.body.error.details.some((d) => d.field === 'model')).toBe(true);
   });
 
@@ -104,7 +104,7 @@ describe('Zod Request Validation Middleware - Edge Case Tests', () => {
       })
       .expect(400);
 
-    expect(res.body.error.code).toBe('validation_error');
+    expect(res.body.error.code).toBe('validationError');
     expect(res.body.error.details.some((d) => d.field === 'messages')).toBe(true);
   });
 
@@ -117,7 +117,7 @@ describe('Zod Request Validation Middleware - Edge Case Tests', () => {
       })
       .expect(400);
 
-    expect(res.body.error.code).toBe('validation_error');
+    expect(res.body.error.code).toBe('validationError');
     expect(res.body.error.details.some((d) => d.field === 'messages')).toBe(true);
   });
 
@@ -130,7 +130,7 @@ describe('Zod Request Validation Middleware - Edge Case Tests', () => {
       })
       .expect(400);
 
-    expect(res.body.error.code).toBe('validation_error');
+    expect(res.body.error.code).toBe('validationError');
     expect(res.body.error.details.some((d) => d.field === 'messages')).toBe(true);
   });
 
@@ -143,7 +143,7 @@ describe('Zod Request Validation Middleware - Edge Case Tests', () => {
       })
       .expect(400);
 
-    expect(res.body.error.code).toBe('validation_error');
+    expect(res.body.error.code).toBe('validationError');
     expect(res.body.error.details.some((d) => d.field.startsWith('messages.0'))).toBe(true);
   });
 
@@ -156,7 +156,7 @@ describe('Zod Request Validation Middleware - Edge Case Tests', () => {
       })
       .expect(400);
 
-    expect(res.body.error.code).toBe('validation_error');
+    expect(res.body.error.code).toBe('validationError');
     expect(res.body.error.details.some((d) => d.field === 'messages.0.role')).toBe(true);
     expect(res.body.error.details.find((d) => d.field === 'messages.0.role').message).toBe("Role must be 'system', 'user', or 'assistant'");
   });
@@ -170,7 +170,7 @@ describe('Zod Request Validation Middleware - Edge Case Tests', () => {
       })
       .expect(400);
 
-    expect(res.body.error.code).toBe('validation_error');
+    expect(res.body.error.code).toBe('validationError');
     expect(res.body.error.details.some((d) => d.field === 'messages.0.role')).toBe(true);
     expect(res.body.error.details.find((d) => d.field === 'messages.0.role').message).toBe("Role must be 'system', 'user', or 'assistant'");
   });
@@ -184,7 +184,7 @@ describe('Zod Request Validation Middleware - Edge Case Tests', () => {
       })
       .expect(400);
 
-    expect(res.body.error.code).toBe('validation_error');
+    expect(res.body.error.code).toBe('validationError');
     expect(res.body.error.details.some((d) => d.field === 'messages.0.content')).toBe(true);
   });
 
@@ -197,7 +197,7 @@ describe('Zod Request Validation Middleware - Edge Case Tests', () => {
       })
       .expect(400);
 
-    expect(res.body.error.code).toBe('validation_error');
+    expect(res.body.error.code).toBe('validationError');
     expect(res.body.error.details.some((d) => d.field === 'messages.0.content')).toBe(true);
   });
 
@@ -215,7 +215,7 @@ describe('Zod Request Validation Middleware - Edge Case Tests', () => {
       })
       .expect(400);
 
-    expect(res.body.error.code).toBe('validation_error');
+    expect(res.body.error.code).toBe('validationError');
     expect(res.body.error.details.some((d) => d.field === 'temperature')).toBe(true);
   });
 
@@ -229,7 +229,7 @@ describe('Zod Request Validation Middleware - Edge Case Tests', () => {
       })
       .expect(400);
 
-    expect(res.body.error.code).toBe('validation_error');
+    expect(res.body.error.code).toBe('validationError');
     expect(res.body.error.details.some((d) => d.field === 'temperature')).toBe(true);
   });
 
@@ -243,7 +243,7 @@ describe('Zod Request Validation Middleware - Edge Case Tests', () => {
       })
       .expect(400);
 
-    expect(res.body.error.code).toBe('validation_error');
+    expect(res.body.error.code).toBe('validationError');
     expect(res.body.error.details.some((d) => d.field === 'temperature')).toBe(true);
   });
 
@@ -288,7 +288,7 @@ describe('Zod Request Validation Middleware - Edge Case Tests', () => {
       })
       .expect(400);
 
-    expect(res.body.error.code).toBe('validation_error');
+    expect(res.body.error.code).toBe('validationError');
     expect(res.body.error.details.some((d) => d.field === 'max_tokens')).toBe(true);
   });
 
@@ -302,7 +302,7 @@ describe('Zod Request Validation Middleware - Edge Case Tests', () => {
       })
       .expect(400);
 
-    expect(res.body.error.code).toBe('validation_error');
+    expect(res.body.error.code).toBe('validationError');
     expect(res.body.error.details.some((d) => d.field === 'max_tokens')).toBe(true);
   });
 
@@ -316,7 +316,7 @@ describe('Zod Request Validation Middleware - Edge Case Tests', () => {
       })
       .expect(400);
 
-    expect(res.body.error.code).toBe('validation_error');
+    expect(res.body.error.code).toBe('validationError');
     expect(res.body.error.details.some((d) => d.field === 'max_tokens')).toBe(true);
   });
 
@@ -330,7 +330,7 @@ describe('Zod Request Validation Middleware - Edge Case Tests', () => {
       })
       .expect(400);
 
-    expect(res.body.error.code).toBe('validation_error');
+    expect(res.body.error.code).toBe('validationError');
     expect(res.body.error.details.some((d) => d.field === 'max_tokens')).toBe(true);
   });
 
@@ -348,7 +348,7 @@ describe('Zod Request Validation Middleware - Edge Case Tests', () => {
       })
       .expect(400);
 
-    expect(res.body.error.code).toBe('validation_error');
+    expect(res.body.error.code).toBe('validationError');
     expect(res.body.error.details.some((d) => d.field === 'stream')).toBe(true);
   });
 
@@ -403,7 +403,7 @@ describe('Zod Request Validation Middleware - Edge Case Tests', () => {
       })
       .expect(400);
 
-    expect(res.body.error.code).toBe('validation_error');
+    expect(res.body.error.code).toBe('validationError');
     expect(res.body.error.details.some((d) => d.field === 'model')).toBe(true);
   });
 
@@ -426,7 +426,7 @@ describe('Zod Request Validation Middleware - Edge Case Tests', () => {
         })
         .expect(400);
 
-      expect(res.body.error.code).toBe('validation_error');
+      expect(res.body.error.code).toBe('validationError');
       expect(res.body.error.details).toEqual([]);
     } finally {
       freshSchema.safeParse = originalSafeParse;

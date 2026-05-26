@@ -31,24 +31,24 @@ function writeTempConfig(allowedOrigins, maxPayloadSize) {
   const content = `
 gateway:
   port: ${currentPort}
-  global_retry_limit: 3
+  globalRetryLimit: 3
   cooldown:
-    base_seconds: 30
-    max_seconds: 3600
-  ${maxPayloadSize !== undefined ? `max_payload_size: "${maxPayloadSize}"` : ''}
+    baseSeconds: 30
+    maxSeconds: 3600
+  ${maxPayloadSize !== undefined ? `maxPayloadSize: "${maxPayloadSize}"` : ''}
   routing:
     strategy: "round-robin"
   cors:
-    ${allowedOrigins !== undefined ? `allowed_origins: ${JSON.stringify(allowedOrigins)}` : ''}
+    ${allowedOrigins !== undefined ? `allowedOrigins: ${JSON.stringify(allowedOrigins)}` : ''}
 logging:
-  enable_console: false
-  enable_file: false
+  enableConsole: false
+  enableFile: false
   format: "json"
 clients:
   - name: "test-client"
     token: "test-token"
-    rate_limit:
-      window_ms: 60000
+    rateLimit:
+      windowMs: 60000
       max: 100
 providers:
   openai:
@@ -56,7 +56,7 @@ providers:
       - "openai-key-1"
     models:
       - id: "gpt-4o"
-        thinking_supported: false
+        reasoningSupported: false
 `;
   fs.writeFileSync(tempConfigPath, content, 'utf8');
 }
@@ -120,7 +120,7 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
   });
 
   describe('CORS Edge Cases', () => {
-    it('should set Access-Control-Allow-Origin to * when allowed_origins contains wildcard', async () => {
+    it('should set Access-Control-Allow-Origin to * when allowedOrigins contains wildcard', async () => {
       await loadServerWithConfig(['*'], '10mb');
       const res = await request(app)
         .get('/health')
@@ -233,7 +233,7 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
       expect(res.headers['access-control-allow-origin']).toBe('*');
     });
 
-    it('should reject all cross-origin requests when allowed_origins is empty', async () => {
+    it('should reject all cross-origin requests when allowedOrigins is empty', async () => {
       // Empty array should match nothing, omitting the header
       await loadServerWithConfig([], '10mb');
       const res = await request(app)
@@ -340,7 +340,7 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
         .expect(413);
     });
 
-    it('should fall back to 10mb default limit if max_payload_size is omitted', async () => {
+    it('should fall back to 10mb default limit if maxPayloadSize is omitted', async () => {
       // Pass undefined for maxPayloadSize to omit it from YAML config
       await loadServerWithConfig(['*'], undefined);
 

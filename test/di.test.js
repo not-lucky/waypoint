@@ -20,10 +20,7 @@ function WebApplicationExpressSetup(openAIController, config) {
   const app = express();
   app.use(express.json());
 
-  const mockConfigLoader = {
-    loadConfig: () => config,
-  };
-  const auth = authMiddleware(mockConfigLoader);
+  const auth = authMiddleware(config);
 
   const openaiRouter = express.Router();
   openaiRouter.use(auth);
@@ -157,15 +154,15 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
     const config = {
       gateway: {
         port: 0,
-        global_retry_limit: 1,
-        cooldown: { base_seconds: 30, max_seconds: 3600 },
+        globalRetryLimit: 1,
+        cooldown: { baseSeconds: 30, maxSeconds: 3600 },
         routing: { strategy: 'round-robin' },
       },
       clients: [
         {
           name: 'test-client',
           token: 'test-client-token',
-          rate_limit: { window_ms: 60000, max: 100 },
+          rateLimit: { windowMs: 60000, max: 100 },
         },
       ],
       providers: {
@@ -193,10 +190,7 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
     const app = express();
     app.use(express.json());
 
-    const mockConfigLoader = {
-      loadConfig: () => config,
-    };
-    const auth = authMiddleware(mockConfigLoader);
+    const auth = authMiddleware(config);
 
     const openaiRouter = express.Router();
     openaiRouter.use(auth);
@@ -231,15 +225,15 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
     const config = {
       gateway: {
         port: 0,
-        global_retry_limit: 1,
-        cooldown: { base_seconds: 30, max_seconds: 3600 },
+        globalRetryLimit: 1,
+        cooldown: { baseSeconds: 30, maxSeconds: 3600 },
         routing: { strategy: 'round-robin' },
       },
       clients: [
         {
           name: 'test-client',
           token: 'test-client-token',
-          rate_limit: { window_ms: 60000, max: 100 },
+          rateLimit: { windowMs: 60000, max: 100 },
         },
       ],
       providers: {
@@ -266,10 +260,7 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
     const app = express();
     app.use(express.json());
 
-    const mockConfigLoader = {
-      loadConfig: () => config,
-    };
-    const auth = authMiddleware(mockConfigLoader);
+    const auth = authMiddleware(config);
 
     const anthropicRouter = express.Router();
     anthropicRouter.use(auth);
@@ -307,15 +298,15 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
     const config = {
       gateway: {
         port: 0,
-        global_retry_limit: 1,
-        cooldown: { base_seconds: 30, max_seconds: 3600 },
+        globalRetryLimit: 1,
+        cooldown: { baseSeconds: 30, maxSeconds: 3600 },
         routing: { strategy: 'round-robin' },
       },
       clients: [
         {
           name: 'test-client',
           token: 'test-client-token',
-          rate_limit: { window_ms: 60000, max: 100 },
+          rateLimit: { windowMs: 60000, max: 100 },
         },
       ],
       providers: {
@@ -367,15 +358,15 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
     const config = {
       gateway: {
         port: 0,
-        global_retry_limit: 1,
-        cooldown: { base_seconds: 30, max_seconds: 3600 },
+        globalRetryLimit: 1,
+        cooldown: { baseSeconds: 30, maxSeconds: 3600 },
         routing: { strategy: 'round-robin' },
       },
       clients: [
         {
           name: 'test-client',
           token: 'test-client-token',
-          rate_limit: { window_ms: 60000, max: 100 },
+          rateLimit: { windowMs: 60000, max: 100 },
         },
       ],
       providers: {
@@ -401,10 +392,7 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
     const app = express();
     app.use(express.json());
 
-    const mockConfigLoader = {
-      loadConfig: () => config,
-    };
-    const auth = authMiddleware(mockConfigLoader);
+    const auth = authMiddleware(config);
 
     const anthropicRouter = express.Router();
     anthropicRouter.use(auth);
@@ -444,15 +432,15 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
     const config = {
       gateway: {
         port: 0,
-        global_retry_limit: 2,
-        cooldown: { base_seconds: 30, max_seconds: 3600 },
+        globalRetryLimit: 2,
+        cooldown: { baseSeconds: 30, maxSeconds: 3600 },
         routing: { strategy: 'round-robin' },
       },
       clients: [
         {
           name: 'test-client',
           token: 'test-client-token',
-          rate_limit: { window_ms: 60000, max: 100 },
+          rateLimit: { windowMs: 60000, max: 100 },
         },
       ],
       providers: {
@@ -461,7 +449,7 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
           models: [
             {
               id: 'gemini-pro',
-              fallback_model: 'openai/gpt-4o',
+              fallbackModel: 'openai/gpt-4o',
             },
           ],
         },
@@ -518,15 +506,15 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
     const config = {
       gateway: {
         port: 0,
-        global_retry_limit: 1,
-        cooldown: { base_seconds: 30, max_seconds: 3600 },
+        globalRetryLimit: 1,
+        cooldown: { baseSeconds: 30, maxSeconds: 3600 },
         routing: { strategy: 'round-robin' },
       },
       clients: [
         {
           name: 'test-client',
           token: 'test-client-token',
-          rate_limit: { window_ms: 60000, max: 100 },
+          rateLimit: { windowMs: 60000, max: 100 },
         },
       ],
       providers: {
@@ -568,7 +556,7 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
 
     // 5. Assertions
     expect(mockAdapter.callCount).toBe(1);
-    expect(res.body.error.code).toBe('all_keys_exhausted');
+    expect(res.body.error.code).toBe('allKeysExhausted');
     expect(res.body.error.message).toContain("All keys for provider 'gemini' are currently in cooldown");
     expect(res.body.error.httpStatus).toBe(503);
   });

@@ -43,16 +43,16 @@ export class StreamAccumulator {
             choice.message.reasoning_content += c.delta.reasoning_content;
           }
         }
-        if (c.finish_reason || c.finishReason) {
-          choice.finish_reason = c.finish_reason || c.finishReason;
+        if (c.finish_reason) {
+          choice.finish_reason = c.finish_reason;
         }
       }
     }
 
     if (chunk.usage) {
-      this.promptTokens = chunk.usage.prompt_tokens ?? chunk.usage.promptTokens ?? this.promptTokens;
-      this.completionTokens = chunk.usage.completion_tokens ?? chunk.usage.completionTokens ?? this.completionTokens;
-      this.totalTokens = chunk.usage.total_tokens ?? chunk.usage.totalTokens ?? this.totalTokens;
+      this.promptTokens = chunk.usage.prompt_tokens ?? this.promptTokens;
+      this.completionTokens = chunk.usage.completion_tokens ?? this.completionTokens;
+      this.totalTokens = chunk.usage.total_tokens ?? this.totalTokens;
     }
   }
 

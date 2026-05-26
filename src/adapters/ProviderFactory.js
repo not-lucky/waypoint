@@ -41,7 +41,7 @@ export class ProviderFactory {
    */
   constructor(config = {}) {
     const providers = config.providers || {};
-    const timeoutMs = config.gateway?.http_timeout_ms;
+    const timeoutMs = config.gateway?.httpTimeoutMs;
 
     // Pre-initialize all adapters during server boot.
     /**
@@ -98,14 +98,14 @@ ProviderFactory.registerStrategy({
 // Anthropic Strategy
 ProviderFactory.registerStrategy({
   match: (name, provider) => name === 'anthropic' || provider?.type === 'anthropic-compatible',
-  create: (name, provider, timeoutMs) => new AnthropicAdapter(name === 'anthropic' ? null : provider?.base_url, timeoutMs),
+  create: (name, provider, timeoutMs) => new AnthropicAdapter(name === 'anthropic' ? null : provider?.baseUrl, timeoutMs),
 });
 
 // Default OpenAI & Custom Strategy
 ProviderFactory.registerStrategy({
   match: () => true,
   create: (name, provider, timeoutMs) => new OpenAICompatibleAdapter(
-    name === 'openai' ? 'https://api.openai.com/v1' : provider?.base_url,
+    name === 'openai' ? 'https://api.openai.com/v1' : provider?.baseUrl,
     name,
     timeoutMs,
   ),

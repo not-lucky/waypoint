@@ -24,17 +24,24 @@ export class LoggingValidator {
     if (!logging || typeof logging !== 'object') {
       logErrorAndExitOrThrow("Missing structural field 'logging'.", shouldExit, customLogger);
     }
-    if (typeof logging.enable_console !== 'boolean') {
-      logErrorAndExitOrThrow("Invalid or missing 'logging.enable_console'. Must be a boolean.", shouldExit, customLogger);
+    if (typeof logging.enableConsole !== 'boolean') {
+      logErrorAndExitOrThrow("Invalid or missing 'logging.enableConsole'. Must be a boolean.", shouldExit, customLogger);
     }
-    if (typeof logging.enable_file !== 'boolean') {
-      logErrorAndExitOrThrow("Invalid or missing 'logging.enable_file'. Must be a boolean.", shouldExit, customLogger);
+    if (typeof logging.enableFile !== 'boolean') {
+      logErrorAndExitOrThrow("Invalid or missing 'logging.enableFile'. Must be a boolean.", shouldExit, customLogger);
     }
-    if (logging.enable_file && !isNonEmptyString(logging.file_path)) {
-      logErrorAndExitOrThrow("Invalid or missing 'logging.file_path'. Must be a non-empty string.", shouldExit, customLogger);
+    if (logging.enableFile && !isNonEmptyString(logging.filePath)) {
+      logErrorAndExitOrThrow("Invalid or missing 'logging.filePath'. Must be a non-empty string.", shouldExit, customLogger);
     }
     if (logging.format !== 'json' && logging.format !== 'text') {
       logErrorAndExitOrThrow("Invalid or missing 'logging.format'. Must be 'json' or 'text'.", shouldExit, customLogger);
+    }
+
+    if (logging.logRequests !== undefined && typeof logging.logRequests !== 'boolean') {
+      logErrorAndExitOrThrow("Invalid 'logging.logRequests'. Must be a boolean.", shouldExit, customLogger);
+    }
+    if (logging.logRequests && !isNonEmptyString(logging.requestLogPath)) {
+      logErrorAndExitOrThrow("Invalid 'logging.requestLogPath'. Must be a non-empty string.", shouldExit, customLogger);
     }
 
     const validLevels = ['debug', 'info', 'warning', 'error', 'fatal'];

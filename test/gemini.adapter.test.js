@@ -46,8 +46,8 @@ describe('GeminiAdapter Tests', () => {
       model: 'gemini/gemini-2.5-pro',
       actualModelId: 'gemini-2.5-pro',
       messages: [{ role: 'user', content: 'hello' }],
-      thinkingEnabled: true,
-      thinkingLevel: 'low',
+      reasoningSupported: true,
+      reasoningEffort: 'low',
     };
 
     const response = await adapter.generateCompletion(req, 'gemini-key');
@@ -121,38 +121,34 @@ describe('GeminiAdapter Tests', () => {
 
     // 429
     expect(adapter.normalizeError({ statusCode: 429 })).toEqual({
-      code: 'upstream_rate_limited',
+      code: 'upstreamRateLimited',
       message: expect.any(String),
       httpStatus: 503,
       provider: 'gemini',
-      providerName: 'gemini',
     });
 
     // 402
     expect(adapter.normalizeError({ response: { status: 402 } })).toEqual({
-      code: 'quota_exhausted',
+      code: 'quotaExhausted',
       message: expect.any(String),
       httpStatus: 503,
       provider: 'gemini',
-      providerName: 'gemini',
     });
 
     // 403
     expect(adapter.normalizeError({ response: { status: 403 } })).toEqual({
-      code: 'quota_exhausted',
+      code: 'quotaExhausted',
       message: expect.any(String),
       httpStatus: 503,
       provider: 'gemini',
-      providerName: 'gemini',
     });
 
     // Other error
     expect(adapter.normalizeError({ message: 'Internal Server Error', statusCode: 500 })).toEqual({
-      code: 'upstream_error',
+      code: 'upstreamError',
       message: 'Internal Server Error',
       httpStatus: 502,
       provider: 'gemini',
-      providerName: 'gemini',
     });
   });
 
@@ -192,7 +188,7 @@ describe('GeminiAdapter Tests', () => {
     expect(chunks[1].choices[0].finish_reason).toBe('stop');
   });
 
-  it('assert: thinkingEnabled true without thinkingLevel uses default thinkingLevel medium', async () => {
+  it('assert: reasoningSupported true without reasoningEffort uses default thinking level medium', async () => {
     const adapter = new GeminiAdapter();
 
     mockFetch.mockResolvedValue({
@@ -206,7 +202,7 @@ describe('GeminiAdapter Tests', () => {
       model: 'gemini/gemini-2.5-pro',
       actualModelId: 'gemini-2.5-pro',
       messages: [],
-      thinkingEnabled: true,
+      reasoningSupported: true,
     };
 
     await adapter.generateCompletion(req, 'gemini-key');
@@ -219,7 +215,7 @@ describe('GeminiAdapter Tests', () => {
     );
   });
 
-  it('assert: thinking_supported true enables thinking option with default or configured effort', async () => {
+  it('assert: reasoningSupported true enables thinking option with default or configured effort', async () => {
     const adapter = new GeminiAdapter();
 
     mockFetch.mockResolvedValue({
@@ -233,8 +229,8 @@ describe('GeminiAdapter Tests', () => {
       model: 'gemini/gemini-2.5-pro',
       actualModelId: 'gemini-2.5-pro',
       messages: [],
-      thinking_supported: true,
-      thinkingLevel: 'high',
+      reasoningSupported: true,
+      reasoningEffort: 'high',
     };
 
     await adapter.generateCompletion(req, 'gemini-key');
@@ -267,8 +263,8 @@ describe('GeminiAdapter Tests', () => {
       model: 'gemini/gemini-2.5-pro',
       actualModelId: 'gemini-2.5-pro',
       messages: [],
-      thinkingEnabled: true,
-      thinkingLevel: 'high',
+      reasoningSupported: true,
+      reasoningEffort: 'high',
       temperature: 0.5,
       maxTokens: 500,
     };
@@ -355,7 +351,7 @@ describe('GeminiAdapter Tests', () => {
       model: 'gemini/gemini-flash-lite-latest',
       actualModelId: 'gemini-flash-lite-latest',
       messages: [],
-      thinkingEnabled: true,
+      reasoningSupported: true,
     };
 
     const response = await adapter.generateCompletion(req, 'gemini-key');
@@ -384,7 +380,7 @@ describe('GeminiAdapter Tests', () => {
       model: 'gemini/gemini-flash-lite-latest',
       actualModelId: 'gemini-flash-lite-latest',
       messages: [],
-      thinkingEnabled: true,
+      reasoningSupported: true,
     };
 
     const chunks = [];
@@ -432,7 +428,7 @@ describe('GeminiAdapter Tests', () => {
         model: 'gemini/gemini-2.5-pro',
         actualModelId: 'gemini-2.5-pro',
         messages: [],
-        thinkingEnabled: true,
+        reasoningSupported: true,
       };
 
       // 1. result ID starts with waypoint-
@@ -461,7 +457,7 @@ describe('GeminiAdapter Tests', () => {
     it('assert: generateStream handles fetch/stream error and empty choices', async () => {
       const adapter = new GeminiAdapter();
       const req = {
-        model: 'gemini/gemini-2.5-pro', actualModelId: 'gemini-2.5-pro', messages: [], thinkingEnabled: true,
+        model: 'gemini/gemini-2.5-pro', actualModelId: 'gemini-2.5-pro', messages: [], reasoningSupported: true,
       };
 
       // 1. Fetch error
@@ -519,8 +515,8 @@ describe('GeminiAdapter Tests', () => {
       expect(helper('abc', '<thought>')).toBe('');
     });
 
-    it('assert: translateUsage handles null, undefined, or missing values', async () => {
-      const { translateUsage: formatter } = await import('../src/adapters/geminiFormatter.js');
+    it('assert: mapUsage handles null, undefined, or missing values', async () => {
+      const { mapUsage: formatter } = await import('../src/adapters/openaiResponse.js');
       expect(formatter(null)).toBeUndefined();
       expect(formatter({})).toEqual({
         prompt_tokens: 0,
@@ -546,7 +542,7 @@ describe('GeminiAdapter Tests', () => {
         model: 'gemini/gemini-2.5-pro',
         actualModelId: 'gemini-2.5-pro',
         messages: [],
-        thinkingEnabled: true,
+        reasoningSupported: true,
         temperature: 0.7,
         maxTokens: 100,
       };
@@ -563,7 +559,7 @@ describe('GeminiAdapter Tests', () => {
         model: 'gemini/gemini-pro',
         actualModelId: 'gemini-pro',
         messages: [],
-        thinkingEnabled: false,
+        reasoningSupported: false,
       };
       await adapter.generateCompletion(req2, 'key');
       expect(mockFetch).toHaveBeenLastCalledWith(
@@ -584,7 +580,7 @@ describe('GeminiAdapter Tests', () => {
         model: 'gemini/gemini-2.5-pro',
         actualModelId: 'gemini-2.5-pro',
         messages: [],
-        thinkingEnabled: true,
+        reasoningSupported: true,
       };
 
       await expect(adapter.generateCompletion(req, 'key', null, requestLog)).rejects.toThrow('Fetch failed');
@@ -605,7 +601,7 @@ describe('GeminiAdapter Tests', () => {
         model: 'gemini/gemini-2.5-pro',
         actualModelId: 'gemini-2.5-pro',
         messages: [],
-        thinkingEnabled: true,
+        reasoningSupported: true,
       };
 
       await expect(adapter.generateCompletion(req, 'key')).rejects.toThrow('HTML Error Page');
@@ -638,7 +634,7 @@ describe('GeminiAdapter Tests', () => {
         model: 'gemini/gemini-2.5-pro',
         actualModelId: 'gemini-2.5-pro',
         messages: [],
-        thinkingEnabled: true,
+        reasoningSupported: true,
       };
 
       const res = await adapter.generateCompletion(req, 'key');
@@ -675,7 +671,7 @@ describe('GeminiAdapter Tests', () => {
         model: 'gemini/gemini-2.5-pro',
         actualModelId: 'gemini-2.5-pro',
         messages: [],
-        thinkingEnabled: true,
+        reasoningSupported: true,
       };
 
       const chunks = [];
@@ -714,7 +710,7 @@ describe('GeminiAdapter Tests', () => {
         model: 'gemini/gemini-2.5-pro',
         actualModelId: 'gemini-2.5-pro',
         messages: [],
-        thinkingEnabled: true,
+        reasoningSupported: true,
       };
 
       for await (const chunk of adapter.generateStream(req1, 'key', null, requestLog)) {}
@@ -744,7 +740,7 @@ describe('GeminiAdapter Tests', () => {
         model: 'gemini/gemini-pro',
         actualModelId: 'gemini-pro',
         messages: [],
-        thinkingEnabled: false,
+        reasoningSupported: false,
       };
 
       for await (const chunk of adapter.generateStream(req2, 'key', null, requestLog)) {}
@@ -783,7 +779,7 @@ describe('GeminiAdapter Tests', () => {
         },
       };
       const req = {
-        model: 'gemini/gemini-pro', actualModelId: 'gemini-pro', messages: [], thinkingEnabled: true,
+        model: 'gemini/gemini-pro', actualModelId: 'gemini-pro', messages: [], reasoningSupported: true,
       };
       const stream = adapter.generateStream(req, 'key', fakeSignal);
       await expect(async () => {
@@ -791,7 +787,7 @@ describe('GeminiAdapter Tests', () => {
       }).rejects.toThrow('Stream aborted');
     });
 
-    it('assert: executeStream handles thinkingEnabled missing properties and valid fields', async () => {
+    it('assert: executeStream handles reasoningSupported missing properties and valid fields', async () => {
       const adapter = new GeminiAdapter();
       const mockBody = {
         async* [Symbol.asyncIterator]() {
@@ -805,7 +801,7 @@ describe('GeminiAdapter Tests', () => {
         body: mockBody,
       });
       const req = {
-        model: 'gemini/gemini-pro', actualModelId: 'gemini-pro', messages: [], thinkingEnabled: true,
+        model: 'gemini/gemini-pro', actualModelId: 'gemini-pro', messages: [], reasoningSupported: true,
       };
       const chunks = [];
       for await (const chunk of adapter.generateStream(req, 'key')) {
@@ -814,7 +810,7 @@ describe('GeminiAdapter Tests', () => {
       expect(chunks[0].choices[0].delta.reasoning_content).toBe('hmm');
     });
 
-    it('assert: executeStream handles parsing errors when thinkingEnabled is false', async () => {
+    it('assert: executeStream handles parsing errors when reasoningSupported is false', async () => {
       const adapter = new GeminiAdapter();
       const mockBody = {
         async* [Symbol.asyncIterator]() {
@@ -828,7 +824,7 @@ describe('GeminiAdapter Tests', () => {
         body: mockBody,
       });
       const req = {
-        model: 'gemini/gemini-pro', actualModelId: 'gemini-pro', messages: [], thinkingEnabled: false,
+        model: 'gemini/gemini-pro', actualModelId: 'gemini-pro', messages: [], reasoningSupported: false,
       };
       const chunks = [];
       for await (const chunk of adapter.generateStream(req, 'key')) {
@@ -850,7 +846,7 @@ describe('GeminiAdapter Tests', () => {
         body: mockBody,
       });
       const req = {
-        model: 'gemini/gemini-pro', actualModelId: 'gemini-pro', messages: [], thinkingEnabled: true,
+        model: 'gemini/gemini-pro', actualModelId: 'gemini-pro', messages: [], reasoningSupported: true,
       };
       const chunks = [];
       for await (const chunk of adapter.generateStream(req, 'key')) {
@@ -872,7 +868,7 @@ describe('GeminiAdapter Tests', () => {
         body: mockBody,
       });
       const req = {
-        model: 'gemini/gemini-pro', actualModelId: 'gemini-pro', messages: [], thinkingEnabled: true,
+        model: 'gemini/gemini-pro', actualModelId: 'gemini-pro', messages: [], reasoningSupported: true,
       };
       const chunks = [];
       for await (const chunk of adapter.generateStream(req, 'key')) {
@@ -897,7 +893,7 @@ describe('GeminiAdapter Tests', () => {
         body: mockBody,
       });
       const req = {
-        model: 'gemini/gemini-pro', actualModelId: 'gemini-pro', messages: [], thinkingEnabled: true,
+        model: 'gemini/gemini-pro', actualModelId: 'gemini-pro', messages: [], reasoningSupported: true,
       };
       const chunks = [];
       for await (const chunk of adapter.generateStream(req, 'key')) {
@@ -913,7 +909,7 @@ describe('GeminiAdapter Tests', () => {
 
       // Without requestLog
       const req = {
-        model: 'gemini-pro', actualModelId: 'gemini-pro', messages: [], thinkingEnabled: false,
+        model: 'gemini-pro', actualModelId: 'gemini-pro', messages: [], reasoningSupported: false,
       };
       await expect(adapter.generateCompletion(req, 'key', null, null)).rejects.toThrow('Network failure');
 
@@ -935,7 +931,7 @@ describe('GeminiAdapter Tests', () => {
         text: async () => JSON.stringify({ error: { message: 'upstream error msg' } }),
       });
       const req = {
-        model: 'gemini-pro', actualModelId: 'gemini-pro', messages: [], thinkingEnabled: false,
+        model: 'gemini-pro', actualModelId: 'gemini-pro', messages: [], reasoningSupported: false,
       };
       await expect(adapter.generateCompletion(req, 'key')).rejects.toThrow('upstream error msg');
 
@@ -956,7 +952,7 @@ describe('GeminiAdapter Tests', () => {
       await expect(adapter.generateCompletion(req, 'key')).rejects.toThrow('Internal server error text');
     });
 
-    it('assert: generateCompletion handles thinkingEnabled with fallbacks', async () => {
+    it('assert: generateCompletion handles reasoningSupported with fallbacks', async () => {
       const adapter = new GeminiAdapter();
       mockFetch.mockResolvedValue({
         ok: true,
@@ -978,7 +974,7 @@ describe('GeminiAdapter Tests', () => {
         model: undefined, // test fallback to resultJson.model
         actualModelId: undefined, // test fallback to req.model on line 30
         messages: [],
-        thinkingEnabled: true,
+        reasoningSupported: true,
       };
 
       const mockReqLog = {
@@ -1009,7 +1005,7 @@ describe('GeminiAdapter Tests', () => {
         model: 'gemini-pro',
         actualModelId: 'gemini-pro',
         messages: [],
-        thinkingEnabled: false,
+        reasoningSupported: false,
       };
 
       const mockReqLog = {
@@ -1050,7 +1046,7 @@ describe('GeminiAdapter Tests', () => {
         model: 'gemini-pro',
         actualModelId: 'gemini-pro',
         messages: [],
-        thinkingEnabled: true,
+        reasoningSupported: true,
       };
 
       await expect(adapter.generateCompletion(req, 'key')).rejects.toThrow('Upstream error');
@@ -1070,20 +1066,20 @@ describe('GeminiAdapter Tests', () => {
         model: 'gemini-pro',
         actualModelId: 'gemini-pro',
         messages: [],
-        thinkingEnabled: true,
+        reasoningSupported: true,
       };
 
       const res = await adapter.generateCompletion(req, 'key');
       expect(res.choices).toEqual([]);
     });
 
-    it('assert: executeStream handles custom baseUrl and missing usage/model fields fallback when thinkingEnabled is true', async () => {
+    it('assert: executeStream handles custom baseUrl and missing usage/model fields fallback when reasoningSupported is true', async () => {
       const adapter = new GeminiAdapter('https://custom-gemini.api/v1/');
       const mockBody = {
         async* [Symbol.asyncIterator]() {
           const encoder = new TextEncoder();
           yield encoder.encode('data: {"choices":[{"delta":{"content":"ok"}}]}\n\n');
-          yield encoder.encode('data: {"usage":{"promptTokens":11,"completionTokens":22,"totalTokens":33}}\n\n');
+          yield encoder.encode('data: {"usage":{"prompt_tokens":11,"completion_tokens":22,"total_tokens":33}}\n\n');
         },
       };
 
@@ -1096,7 +1092,7 @@ describe('GeminiAdapter Tests', () => {
         model: 'gemini-pro',
         actualModelId: 'gemini-pro',
         messages: [],
-        thinkingEnabled: true,
+        reasoningSupported: true,
       };
 
       const mockReqLog = {
@@ -1126,7 +1122,7 @@ describe('GeminiAdapter Tests', () => {
       );
     });
 
-    it('assert: executeStream handles missing modelVersion, serviceTier and missing usageMetadata fields when thinkingEnabled is false', async () => {
+    it('assert: executeStream handles missing modelVersion, serviceTier and missing usageMetadata fields when reasoningSupported is false', async () => {
       const adapter = new GeminiAdapter();
       const mockBody = {
         async* [Symbol.asyncIterator]() {
@@ -1144,7 +1140,7 @@ describe('GeminiAdapter Tests', () => {
         model: 'gemini-pro',
         actualModelId: 'gemini-pro',
         messages: [],
-        thinkingEnabled: false,
+        reasoningSupported: false,
       };
 
       const mockReqLog = {
@@ -1187,7 +1183,7 @@ describe('GeminiAdapter Tests', () => {
         model: 'gemini-pro',
         actualModelId: 'gemini-pro',
         messages: [],
-        thinkingEnabled: false,
+        reasoningSupported: false,
       };
 
       const mockReqLog = {
@@ -1218,12 +1214,12 @@ describe('GeminiAdapter Tests', () => {
         appendStreamEvent: vi.fn(),
       };
 
-      // Case 1: thinkingEnabled: true, empty finalUsage, camelCase finishReason, empty thinking flush
+      // Case 1: reasoningSupported: true, empty finalUsage, empty thinking flush
       const mockBody1 = {
         async* [Symbol.asyncIterator]() {
           const encoder = new TextEncoder();
           yield encoder.encode('data: {"choices": [{"index": 0, "delta": {"content": "hello <thought>"}}]}\n\n');
-          yield encoder.encode('data: {"choices": [{"index": 0, "finishReason": "stop"}]}\n\n');
+          yield encoder.encode('data: {"choices": [{"index": 0, "finish_reason": "stop"}]}\n\n');
           yield encoder.encode('data: {"usage": {}}\n\n');
         },
       };
@@ -1238,7 +1234,7 @@ describe('GeminiAdapter Tests', () => {
         model: 'gemini-pro',
         actualModelId: 'gemini-pro',
         messages: [],
-        thinkingEnabled: true,
+        reasoningSupported: true,
       };
 
       for await (const chunk of adapter.generateStream(req1, 'key', null, mockReqLog)) {}
@@ -1255,7 +1251,7 @@ describe('GeminiAdapter Tests', () => {
         }),
       );
 
-      // Case 2: thinkingEnabled: false, null/absent usageMetadata, empty parts (no text)
+      // Case 2: reasoningSupported: false, null/absent usageMetadata, empty parts (no text)
       const mockBody2 = {
         async* [Symbol.asyncIterator]() {
           const encoder = new TextEncoder();
@@ -1273,7 +1269,7 @@ describe('GeminiAdapter Tests', () => {
         model: 'gemini-pro',
         actualModelId: 'gemini-pro',
         messages: [],
-        thinkingEnabled: false,
+        reasoningSupported: false,
       };
 
       for await (const chunk of adapter.generateStream(req2, 'key', null, mockReqLog)) {}
@@ -1301,7 +1297,7 @@ describe('GeminiAdapter Tests', () => {
         model: 'gemini-pro',
         actualModelId: 'gemini-pro',
         messages: [],
-        thinkingEnabled: false,
+        reasoningSupported: false,
       };
 
       await expect(async () => {
@@ -1368,7 +1364,7 @@ describe('GeminiAdapter Tests', () => {
       const req3 = {
         model: 'gemini-pro',
         messages: [],
-        thinkingEnabled: true,
+        reasoningSupported: true,
       };
       const stream = adapter.generateStream(req3, 'key');
       const chunks = [];

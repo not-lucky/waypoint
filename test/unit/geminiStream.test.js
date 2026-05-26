@@ -1,9 +1,24 @@
 import { describe, it, expect } from 'vitest';
 import { getLongestPrefixSuffix } from '../../src/utils/stringUtils.js';
-import {
-  processThinkingBuffer,
-  parseSSEEventData,
-} from '../../src/adapters/geminiStream.js';
+import { ThinkingBuffer } from '../../src/utils/ThinkingBuffer.js';
+
+const processBufferedContent = (buffer, state, flush) => {
+  const tb = new ThinkingBuffer({ initialState: state });
+  tb.buffer = buffer;
+  const deltas = tb.process('', flush);
+  const sendThinking = [];
+  const sendText = [];
+  for (const d of deltas) {
+    if (d.type === 'thinking') sendThinking.push(d.content);
+    else sendText.push(d.content);
+  }
+  return {
+    buffer: tb.buffer,
+    state: tb.state,
+    sendThinking,
+    sendText,
+  };
+};
 
 describe('geminiStream Unit Tests', () => {
   describe('getLongestPrefixSuffix', () => {
@@ -14,161 +29,77 @@ describe('geminiStream Unit Tests', () => {
     });
   });
 
-  describe('processThinkingBuffer', () => {
+  describe('ThinkingBuffer stream parsing', () => {
     it('handles full <thought> tag', () => {
-      const sendThinking = [];
-      const sendText = [];
-      const result = processThinkingBuffer(
-        'hello <thought> thinking...',
-        'text',
-        false,
-        (text) => sendThinking.push(text),
-        (text) => sendText.push(text),
-      );
+      const result = processBufferedContent('hello <thought> thinking...', 'text', false);
       expect(result.state).toBe('thinking');
       expect(result.buffer).toBe('');
-      expect(sendText).toEqual(['hello ']);
-      expect(sendThinking).toEqual([' thinking...']);
+      expect(result.sendText).toEqual(['hello ']);
+      expect(result.sendThinking).toEqual([' thinking...']);
     });
 
     it('handles no partial <thought> tag overlap', () => {
-      const sendThinking = [];
-      const sendText = [];
-      const result = processThinkingBuffer(
-        'hello world',
-        'text',
-        false,
-        (text) => sendThinking.push(text),
-        (text) => sendText.push(text),
-      );
+      const result = processBufferedContent('hello world', 'text', false);
       expect(result.state).toBe('text');
       expect(result.buffer).toBe('');
-      expect(sendText).toEqual(['hello world']);
-      expect(sendThinking).toEqual([]);
+      expect(result.sendText).toEqual(['hello world']);
+      expect(result.sendThinking).toEqual([]);
     });
 
     it('handles flush in text mode', () => {
-      const sendThinking = [];
-      const sendText = [];
-      const result = processThinkingBuffer(
-        'hello <th',
-        'text',
-        true,
-        (text) => sendThinking.push(text),
-        (text) => sendText.push(text),
-      );
+      const result = processBufferedContent('hello <th', 'text', true);
       expect(result.state).toBe('text');
       expect(result.buffer).toBe('');
-      expect(sendText).toEqual(['hello <th']);
-      expect(sendThinking).toEqual([]);
+      expect(result.sendText).toEqual(['hello <th']);
+      expect(result.sendThinking).toEqual([]);
     });
 
     it('handles full </thought> tag', () => {
-      const sendThinking = [];
-      const sendText = [];
-      const result = processThinkingBuffer(
-        'thinking process </thought> done',
-        'thinking',
-        false,
-        (text) => sendThinking.push(text),
-        (text) => sendText.push(text),
-      );
+      const result = processBufferedContent('thinking process </thought> done', 'thinking', false);
       expect(result.state).toBe('text');
       expect(result.buffer).toBe('');
-      expect(sendThinking).toEqual(['thinking process ']);
-      expect(sendText).toEqual([' done']);
+      expect(result.sendThinking).toEqual(['thinking process ']);
+      expect(result.sendText).toEqual([' done']);
     });
 
     it('handles no partial </thought> tag overlap', () => {
-      const sendThinking = [];
-      const sendText = [];
-      const result = processThinkingBuffer(
-        'still thinking',
-        'thinking',
-        false,
-        (text) => sendThinking.push(text),
-        (text) => sendText.push(text),
-      );
+      const result = processBufferedContent('still thinking', 'thinking', false);
       expect(result.state).toBe('thinking');
       expect(result.buffer).toBe('');
-      expect(sendThinking).toEqual(['still thinking']);
-      expect(sendText).toEqual([]);
+      expect(result.sendThinking).toEqual(['still thinking']);
+      expect(result.sendText).toEqual([]);
     });
 
     it('handles flush in thinking mode', () => {
-      const sendThinking = [];
-      const sendText = [];
-      const result = processThinkingBuffer(
-        'thinking </thou',
-        'thinking',
-        true,
-        (text) => sendThinking.push(text),
-        (text) => sendText.push(text),
-      );
+      const result = processBufferedContent('thinking </thou', 'thinking', true);
       expect(result.state).toBe('thinking');
       expect(result.buffer).toBe('');
-      expect(sendThinking).toEqual(['thinking </thou']);
-      expect(sendText).toEqual([]);
+      expect(result.sendThinking).toEqual(['thinking </thou']);
+      expect(result.sendText).toEqual([]);
     });
 
     it('handles partial <thought> tag at the end', () => {
-      const sendThinking = [];
-      const sendText = [];
-      const flush = false;
-      const result = processThinkingBuffer(
-        'hello <th',
-        'text',
-        flush,
-        (text) => sendThinking.push(text),
-        (text) => sendText.push(text),
-      );
+      const result = processBufferedContent('hello <th', 'text', false);
       expect(result.state).toBe('text');
       expect(result.buffer).toBe('<th');
-      expect(sendText).toEqual(['hello ']);
-      expect(sendThinking).toEqual([]);
+      expect(result.sendText).toEqual(['hello ']);
+      expect(result.sendThinking).toEqual([]);
     });
 
     it('handles partial </thought> tag at the end', () => {
-      const sendThinking = [];
-      const sendText = [];
-      const flush = false;
-      const result = processThinkingBuffer(
-        'thinking process </thou',
-        'thinking',
-        flush,
-        (text) => sendThinking.push(text),
-        (text) => sendText.push(text),
-      );
+      const result = processBufferedContent('thinking process </thou', 'thinking', false);
       expect(result.state).toBe('thinking');
       expect(result.buffer).toBe('</thou');
-      expect(sendThinking).toEqual(['thinking process ']);
-      expect(sendText).toEqual([]);
+      expect(result.sendThinking).toEqual(['thinking process ']);
+      expect(result.sendText).toEqual([]);
     });
 
     it('handles invalid state by doing nothing and returning the original buffer/state', () => {
-      const sendThinking = [];
-      const sendText = [];
-      const result = processThinkingBuffer(
-        'some buffer',
-        'invalid-state',
-        false,
-        (text) => sendThinking.push(text),
-        (text) => sendText.push(text),
-      );
+      const result = processBufferedContent('some buffer', 'invalid-state', false);
       expect(result.state).toBe('invalid-state');
       expect(result.buffer).toBe('some buffer');
-      expect(sendThinking).toEqual([]);
-      expect(sendText).toEqual([]);
-    });
-  });
-
-  describe('parseSSEEventData', () => {
-    it('returns null on [DONE]', () => {
-      expect(parseSSEEventData('[DONE]')).toBeNull();
-    });
-
-    it('returns null on invalid JSON', () => {
-      expect(parseSSEEventData('invalid json')).toBeNull();
+      expect(result.sendThinking).toEqual([]);
+      expect(result.sendText).toEqual([]);
     });
   });
 });

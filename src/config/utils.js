@@ -1,5 +1,3 @@
-import { isDeepEqual } from '../utils/objectUtils.js';
-
 export const RESERVED_PROVIDERS = new Set(['gemini', 'anthropic', 'openai']);
 
 const VAR_REGEX = /\$\{([A-Za-z0-9_]+)\}/g;
@@ -30,17 +28,4 @@ export const coerceToInt = (obj, key) => {
     return { ...obj, [key]: parseInt(obj[key], 10) };
   }
   return obj;
-};
-
-/**
- * Compares critical structural gateway and logging configuration values.
- */
-export const checkStructuralChanges = (oldConf, newConf) => {
-  if (!oldConf || !newConf) return false;
-  return (
-    oldConf.gateway?.port !== newConf.gateway?.port
-    || oldConf.gateway?.max_payload_size !== newConf.gateway?.max_payload_size
-    || !isDeepEqual(oldConf.gateway?.cors, newConf.gateway?.cors)
-    || !isDeepEqual(oldConf.logging, newConf.logging)
-  );
 };

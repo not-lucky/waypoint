@@ -8,7 +8,7 @@
 /**
  * Class representing a registry of teardown hooks.
  */
-export class TeardownRegistry {
+class TeardownRegistry {
   /**
    * Creates an instance of TeardownRegistry.
    */

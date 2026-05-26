@@ -3,25 +3,22 @@
  * Prevents redundant recalculations on every request.
  */
 export class ModelCache {
-  constructor(configLoader) {
-    this.configLoader = configLoader;
+  constructor(config) {
+    this.config = config;
     this.cachedUniqueModels = null;
-    this.lastConfig = null;
   }
 
   /**
-   * Extracts a deduplicated list of all model IDs and aliases from the current configuration.
-   * Caches the list keyed on the configuration object reference.
+   * Extracts a deduplicated list of all model IDs and aliases from the configuration.
    *
    * @returns {Array<string>} List of prefixed model identifiers.
    */
   getUniqueModels() {
-    const currentConfig = this.configLoader.loadConfig();
-    if (this.cachedUniqueModels && this.lastConfig === currentConfig) {
+    if (this.cachedUniqueModels) {
       return this.cachedUniqueModels;
     }
 
-    const providers = currentConfig.providers || {};
+    const providers = this.config?.providers || {};
     const models = Object.entries(providers).flatMap(([providerName, providerConfig]) => {
       const providerModels = providerConfig.models || [];
       return providerModels.flatMap((modelConfig) => {
@@ -34,7 +31,6 @@ export class ModelCache {
       });
     });
 
-    this.lastConfig = currentConfig;
     this.cachedUniqueModels = [...new Set(models)];
     return this.cachedUniqueModels;
   }

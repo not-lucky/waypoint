@@ -31,8 +31,8 @@ describe('Graceful Teardown Sequence', () => {
 
   /**
    * Happy Path: Verify that all cleanups execute in the exact spec-mandated order:
-   * server.close() -> abort active controllers -> watcher.close() ->
-   * clearTimeout -> clearInterval -> logger.flush() -> process.exit(0)
+   * server.close() -> abort active controllers -> clearTimeout -> clearInterval ->
+   * logger.flush() -> process.exit(0)
    */
   it('asserts that teardown invokes all cleanups in the spec-mandated order', async () => {
     // 1. Setup mock process.exit
@@ -57,13 +57,6 @@ describe('Graceful Teardown Sequence', () => {
       }),
     };
     activeControllers.add(mockAbortController);
-
-    // 4. Setup mock configLoader
-    const configLoaderMock = {
-      stopWatcher: vi.fn().mockImplementation(() => {
-        callOrder.push('watcher.close');
-      }),
-    };
 
     // 5. Setup mock keyRegistry
     const keyRegistryMock = {
@@ -92,7 +85,6 @@ describe('Graceful Teardown Sequence', () => {
     // Run teardown
     await teardown({
       server: serverMock,
-      configLoader: configLoaderMock,
       keyRegistry: keyRegistryMock,
       logger: loggerMock,
     });
@@ -102,7 +94,6 @@ describe('Graceful Teardown Sequence', () => {
       'server.close',
       'abort',
       'clearInterval:999',
-      'watcher.close',
       'clearTimeout',
       'logger.flush',
       'process.exit:0',
@@ -110,7 +101,6 @@ describe('Graceful Teardown Sequence', () => {
 
     expect(serverMock.close).toHaveBeenCalledTimes(1);
     expect(mockAbortController.abort).toHaveBeenCalledTimes(1);
-    expect(configLoaderMock.stopWatcher).toHaveBeenCalledTimes(1);
     expect(keyRegistryMock.cleanup).toHaveBeenCalledTimes(1);
     expect(clearIntervalSpy).toHaveBeenCalledWith(999);
     expect(loggerMock.flush).toHaveBeenCalledTimes(1);
@@ -125,7 +115,6 @@ describe('Graceful Teardown Sequence', () => {
 
     registerLifecycle({
       server: {},
-      configLoader: {},
       keyRegistry: {},
       logger: { info: vi.fn(), debug: vi.fn() },
     });
@@ -152,7 +141,6 @@ describe('Graceful Teardown Sequence', () => {
 
     registerLifecycle({
       server: serverMock,
-      configLoader: {},
       keyRegistry: {},
       logger: { info: vi.fn(), debug: vi.fn() },
     });
@@ -208,7 +196,6 @@ describe('Graceful Teardown Sequence', () => {
     // Run teardown (will hang waiting for serverClosePromise)
     const teardownPromise = teardown({
       server: serverMock,
-      configLoader: {},
       keyRegistry: {},
       logger: loggerMock,
     });
@@ -257,7 +244,6 @@ describe('Graceful Teardown Sequence', () => {
 
     await teardown({
       server: serverMock,
-      configLoader: {},
       keyRegistry: {},
       logger: loggerMock,
     });
@@ -277,7 +263,6 @@ describe('Graceful Teardown Sequence', () => {
 
     await expect(teardown({
       server: null,
-      configLoader: null,
       keyRegistry: null,
       logger: null,
     })).resolves.not.toThrow();
@@ -296,7 +281,6 @@ describe('Graceful Teardown Sequence', () => {
 
     await expect(teardown({
       server: null,
-      configLoader: null,
       keyRegistry: null,
       logger: {},
     })).resolves.not.toThrow();
@@ -322,7 +306,6 @@ describe('Graceful Teardown Sequence', () => {
     // First invocation
     await teardown({
       server: serverMock,
-      configLoader: {},
       keyRegistry: {},
       logger: null,
     });
@@ -332,7 +315,6 @@ describe('Graceful Teardown Sequence', () => {
     // Second invocation
     await teardown({
       server: serverMock,
-      configLoader: {},
       keyRegistry: {},
       logger: null,
     });
@@ -343,7 +325,7 @@ describe('Graceful Teardown Sequence', () => {
 
   /**
    * Edge Case: Exception propagation from cleanup routines.
-   * If watcher.stopWatcher() or keyRegistry.cleanup() throws, the teardown
+   * If keyRegistry.cleanup() throws, the teardown
    * should catch the exception,
    * print a fatal log, and exit with code 1.
    */
@@ -367,7 +349,6 @@ describe('Graceful Teardown Sequence', () => {
 
     await teardown({
       server: {},
-      configLoader: {},
       keyRegistry: keyRegistryMock,
       logger: loggerMock,
     });
@@ -417,7 +398,6 @@ describe('Graceful Teardown Sequence', () => {
 
     await teardown({
       server: {},
-      configLoader: {},
       keyRegistry: {},
       logger: loggerMock,
     });
@@ -462,7 +442,6 @@ describe('Graceful Teardown Sequence', () => {
 
     await teardown({
       server: {},
-      configLoader: {},
       keyRegistry: {},
       logger: null,
     });
@@ -509,7 +488,6 @@ describe('Graceful Teardown Sequence', () => {
 
     const teardownPromise = teardown({
       server: serverMock,
-      configLoader: {},
       keyRegistry: {},
       logger: loggerMock,
     });
@@ -549,7 +527,6 @@ describe('Graceful Teardown Sequence', () => {
 
     await teardown({
       server: {},
-      configLoader: {},
       keyRegistry: {},
       logger: loggerMock,
     });
@@ -578,7 +555,6 @@ describe('Graceful Teardown Sequence', () => {
 
     registerLifecycle({
       server: serverMock,
-      configLoader: {},
       keyRegistry: {},
       logger: null,
     });
@@ -625,7 +601,6 @@ describe('Graceful Teardown Sequence', () => {
 
     await expect(teardown({
       server: serverMock,
-      configLoader: null,
       keyRegistry: null,
       logger: null,
     })).resolves.not.toThrow();
@@ -665,7 +640,6 @@ describe('Graceful Teardown Sequence', () => {
     // 1. Without logger
     await expect(teardown({
       server: null,
-      configLoader: null,
       keyRegistry: keyRegistryMock,
       logger: null,
     })).resolves.not.toThrow();
@@ -680,7 +654,6 @@ describe('Graceful Teardown Sequence', () => {
     };
     await expect(teardown({
       server: null,
-      configLoader: null,
       keyRegistry: keyRegistryMock,
       logger: loggerMock,
     })).resolves.not.toThrow();
@@ -701,7 +674,6 @@ describe('Graceful Teardown Sequence', () => {
 
     registerLifecycle({
       server: {},
-      configLoader: {},
       keyRegistry: {},
       logger: null,
     });
@@ -734,7 +706,6 @@ describe('Graceful Teardown Sequence', () => {
 
     await teardown({
       server: serverMock,
-      configLoader: {},
       keyRegistry: {},
       logger: loggerMock,
     });
@@ -759,7 +730,6 @@ describe('Graceful Teardown Sequence', () => {
 
     const teardownPromise = teardown({
       server: serverMock,
-      configLoader: {},
       keyRegistry: {},
       logger: null,
     });
@@ -802,7 +772,6 @@ describe('Graceful Teardown Sequence', () => {
 
     const teardownPromise = teardown({
       server: serverMock,
-      configLoader: {},
       keyRegistry: {},
       logger: loggerMock,
     });

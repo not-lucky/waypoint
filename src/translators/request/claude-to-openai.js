@@ -31,12 +31,7 @@ export const translateClaudeToOpenAIRequest = (body) => {
     model: body.model,
     messages,
     temperature: body.temperature,
-    // Anthropic recently migrated from max_tokens_to_sample to max_tokens,
-    // we support both along with our own internal maxTokens for maximum compatibility.
-    maxTokens: body.max_tokens ?? body.max_tokens_to_sample ?? body.maxTokens,
+    maxTokens: body.max_tokens,
     stream: body.stream || false,
-    isFallback: false,
   };
 };
-
-export default translateClaudeToOpenAIRequest;

@@ -29,14 +29,14 @@ export class GatewayValidator {
       logErrorAndExitOrThrow("Missing or invalid 'gateway.port'. Must be a positive integer.", shouldExit, customLogger);
     }
 
-    if (gateway.global_retry_limit !== undefined
-      && !isPositiveInteger(gateway.global_retry_limit)) {
-      logErrorAndExitOrThrow("Invalid 'gateway.global_retry_limit'. Must be a positive integer.", shouldExit, customLogger);
+    if (gateway.globalRetryLimit !== undefined
+      && !isPositiveInteger(gateway.globalRetryLimit)) {
+      logErrorAndExitOrThrow("Invalid 'gateway.globalRetryLimit'. Must be a positive integer.", shouldExit, customLogger);
     }
 
-    if (gateway.http_timeout_ms !== undefined
-      && !isPositiveInteger(gateway.http_timeout_ms)) {
-      logErrorAndExitOrThrow("Invalid 'gateway.http_timeout_ms'. Must be a positive integer.", shouldExit, customLogger);
+    if (gateway.httpTimeoutMs !== undefined
+      && !isPositiveInteger(gateway.httpTimeoutMs)) {
+      logErrorAndExitOrThrow("Invalid 'gateway.httpTimeoutMs'. Must be a positive integer.", shouldExit, customLogger);
     }
 
     if (gateway.cooldown !== undefined) {
@@ -44,12 +44,12 @@ export class GatewayValidator {
         logErrorAndExitOrThrow("Invalid 'gateway.cooldown'. Must be an object.", shouldExit, customLogger);
       }
 
-      const { base_seconds: baseSeconds, max_seconds: maxSeconds } = gateway.cooldown;
+      const { baseSeconds, maxSeconds } = gateway.cooldown;
       if (baseSeconds !== undefined && !isPositiveInteger(baseSeconds)) {
-        logErrorAndExitOrThrow("Invalid 'gateway.cooldown.base_seconds'. Must be a positive integer.", shouldExit, customLogger);
+        logErrorAndExitOrThrow("Invalid 'gateway.cooldown.baseSeconds'. Must be a positive integer.", shouldExit, customLogger);
       }
       if (maxSeconds !== undefined && !isPositiveInteger(maxSeconds)) {
-        logErrorAndExitOrThrow("Invalid 'gateway.cooldown.max_seconds'. Must be a positive integer.", shouldExit, customLogger);
+        logErrorAndExitOrThrow("Invalid 'gateway.cooldown.maxSeconds'. Must be a positive integer.", shouldExit, customLogger);
       }
     }
 

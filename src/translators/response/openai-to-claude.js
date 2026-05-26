@@ -61,5 +61,3 @@ export const translateOpenAIToClaudeResponse = (normalized) => {
     },
   };
 };
-
-export default translateOpenAIToClaudeResponse;

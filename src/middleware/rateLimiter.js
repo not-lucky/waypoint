@@ -45,8 +45,8 @@ teardownRegistry.add((loggerInstance) => {
  * Expects `req.client` to be populated by authMiddleware.
  *
  * How it works:
- * 1. Read `window_ms` and `max` limits from the authenticated client's profile.
- * 2. Prune request timestamps older than the sliding window boundary (`Date.now() - window_ms`).
+ * 1. Read `windowMs` and `max` limits from the authenticated client's profile.
+ * 2. Prune request timestamps older than the sliding window boundary (`Date.now() - windowMs`).
  * 3. If the count of remaining timestamps is greater than or equal to `max`, return 429.
  * 4. Otherwise, record the current request's timestamp and proceed.
  *
@@ -58,7 +58,7 @@ teardownRegistry.add((loggerInstance) => {
  * - If `req.client` or the rate limiting config is missing/invalid (e.g., non-numeric),
  *   the rate limiter is bypassed and allows the request (calls next()).
  * - If `max <= 0`, all requests will be blocked (0 >= 0 is true).
- * - If `window_ms <= 0`, the sliding window is empty or non-existent, meaning
+ * - If `windowMs <= 0`, the sliding window is empty or non-existent, meaning
  *   every request is allowed (since timestamps are immediately pruned).
  *
  * @param {import('express').Request} req - Express request object.
@@ -70,12 +70,12 @@ export const rateLimiter = (req, res, next) => {
   const { client } = req;
   logger.debug('Rate limiter check initiated', { clientName: client?.name });
   // Bypass rate limiting if the client profile or limits are not present.
-  if (!client || !client.name || !client.rate_limit) {
+  if (!client || !client.name || !client.rateLimit) {
     logger.debug('Rate limiter bypassed: missing client name or rate limit config');
     return next();
   }
 
-  const { window_ms: windowMs, max } = client.rate_limit;
+  const { windowMs, max } = client.rateLimit;
   // Ensure that both rate limit parameters are numeric before proceeding.
   if (typeof windowMs !== 'number' || typeof max !== 'number') {
     logger.debug('Rate limiter bypassed: invalid non-numeric rate limit params');
@@ -112,7 +112,7 @@ export const rateLimiter = (req, res, next) => {
     logger.debug('Rate limit exceeded: blocking request', { clientName, max, currentCount: timestamps.length });
     return res.status(429).json({
       error: {
-        code: 'rate_limit_exceeded',
+        code: 'rateLimitExceeded',
         message: 'Rate limit exceeded.',
         httpStatus: 429,
       },
@@ -134,5 +134,3 @@ export const rateLimiter = (req, res, next) => {
 export const resetRateLimiter = () => {
   clientWindows.clear();
 };
-
-export default rateLimiter;

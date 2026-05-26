@@ -36,16 +36,15 @@ class MockAdapter {
       message: error.message,
       httpStatus: error.statusCode || 500,
       provider: this.providerName,
-      providerName: this.providerName,
     };
   }
 }
 
 describe('UnifiedOrchestrator Fallback Integration Tests', () => {
-  it('assert: all gemini keys exhausted + fallback_model:\'openai/gpt-4o\' -> openai adapter called with isFallback:true', async () => {
+  it('assert: all gemini keys exhausted + fallbackModel:\'openai/gpt-4o\' -> openai adapter called with isFallback:true', async () => {
     const config = {
       gateway: {
-        global_retry_limit: 3,
+        globalRetryLimit: 3,
       },
       providers: {
         gemini: {
@@ -54,7 +53,7 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
             {
               id: 'gemini-1.5-flash-actual',
               aliases: ['gemini-1.5-flash'],
-              fallback_model: 'openai/gpt-4o',
+              fallbackModel: 'openai/gpt-4o',
             },
           ],
         },
@@ -103,7 +102,7 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
   it('assert: fallback adapter also fails -> 503 returned, openai adapter called exactly once (no loop)', async () => {
     const config = {
       gateway: {
-        global_retry_limit: 3,
+        globalRetryLimit: 3,
       },
       providers: {
         gemini: {
@@ -112,7 +111,7 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
             {
               id: 'gemini-1.5-flash-actual',
               aliases: ['gemini-1.5-flash'],
-              fallback_model: 'openai/gpt-4o',
+              fallbackModel: 'openai/gpt-4o',
             },
           ],
         },
@@ -155,7 +154,7 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
     expect(geminiAdapter.callCount).toBe(0);
     expect(openaiAdapter.callCount).toBe(1);
     expect(res.error).toBeDefined();
-    expect(res.error.code).toBe('all_keys_exhausted');
+    expect(res.error.code).toBe('allKeysExhausted');
     expect(res.error.provider).toBe('openai');
     expect(res.error.httpStatus).toBe(503);
   });
@@ -163,7 +162,7 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
   it('assert: request arrives with isFallback:true -> fallback logic is entirely skipped', async () => {
     const config = {
       gateway: {
-        global_retry_limit: 3,
+        globalRetryLimit: 3,
       },
       providers: {
         gemini: {
@@ -172,7 +171,7 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
             {
               id: 'gemini-1.5-flash-actual',
               aliases: ['gemini-1.5-flash'],
-              fallback_model: 'openai/gpt-4o',
+              fallbackModel: 'openai/gpt-4o',
             },
           ],
         },
@@ -212,21 +211,21 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
     expect(geminiAdapter.callCount).toBe(0);
     expect(openaiAdapter.callCount).toBe(0);
     expect(res.error).toBeDefined();
-    expect(res.error.code).toBe('all_keys_exhausted');
+    expect(res.error.code).toBe('allKeysExhausted');
     expect(res.error.provider).toBe('gemini');
     expect(res.error.httpStatus).toBe(503);
   });
 
   it('assert: fallback config mapping matches by alias and id', async () => {
     const config = {
-      gateway: { global_retry_limit: 3 },
+      gateway: { globalRetryLimit: 3 },
       providers: {
         gemini: {
           keys: ['key-gemini'],
           models: [
             {
               id: 'gemini-flash',
-              fallback_model: 'openai/model-alias',
+              fallbackModel: 'openai/model-alias',
             },
           ],
         },
@@ -266,14 +265,14 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
 
   it('assert: fallback model containing multiple slashes is correctly parsed', async () => {
     const config = {
-      gateway: { global_retry_limit: 3 },
+      gateway: { globalRetryLimit: 3 },
       providers: {
         gemini: {
           keys: ['key-gemini'],
           models: [
             {
               id: 'gemini-flash',
-              fallback_model: 'openai/user/custom/model',
+              fallbackModel: 'openai/user/custom/model',
             },
           ],
         },
@@ -314,14 +313,14 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
 
   it('assert: unsupported fallback provider returns 400 when transition occurs', async () => {
     const config = {
-      gateway: { global_retry_limit: 3 },
+      gateway: { globalRetryLimit: 3 },
       providers: {
         gemini: {
           keys: ['key-gemini'],
           models: [
             {
               id: 'gemini-flash',
-              fallback_model: 'unconfigured-provider/some-model',
+              fallbackModel: 'unconfigured-provider/some-model',
             },
           ],
         },
@@ -342,7 +341,7 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
     }, {});
 
     expect(res.error).toEqual({
-      code: 'unsupported_provider',
+      code: 'unsupportedProvider',
       message: "Provider 'unconfigured-provider' is not supported or configured.",
       provider: 'unconfigured-provider',
       httpStatus: 400,
@@ -351,14 +350,14 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
 
   it('assert: mid-retry key exhaustion triggers fallback transition', async () => {
     const config = {
-      gateway: { global_retry_limit: 3 },
+      gateway: { globalRetryLimit: 3 },
       providers: {
         gemini: {
           keys: ['key-gemini-1', 'key-gemini-2'],
           models: [
             {
               id: 'gemini-flash',
-              fallback_model: 'openai/gpt-4o',
+              fallbackModel: 'openai/gpt-4o',
             },
           ],
         },
@@ -408,14 +407,14 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
 
   it('assert: mid-retry key exhaustion when isFallback:true returns 503 immediately', async () => {
     const config = {
-      gateway: { global_retry_limit: 3 },
+      gateway: { globalRetryLimit: 3 },
       providers: {
         gemini: {
           keys: ['key-gemini-1', 'key-gemini-2'],
           models: [
             {
               id: 'gemini-flash',
-              fallback_model: 'openai/gpt-4o',
+              fallbackModel: 'openai/gpt-4o',
             },
           ],
         },
@@ -444,7 +443,7 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
 
     expect(geminiAdapter.callCount).toBe(1);
     expect(res.error).toBeDefined();
-    expect(res.error.code).toBe('all_keys_exhausted');
+    expect(res.error.code).toBe('allKeysExhausted');
     expect(res.error.provider).toBe('gemini');
     expect(res.error.httpStatus).toBe(503);
   });

@@ -7,7 +7,7 @@
 
 /* eslint-disable class-methods-use-this, no-unused-vars */
 /* eslint-disable no-restricted-syntax, generator-star-spacing, camelcase */
-import { sanitizeUrl, serializeHeaders, redactHeaders } from '../utils/requestLogger.js';
+import { sanitizeUrl, serializeHeaders, redactHeaders } from '../utils/requestLoggerUtils.js';
 import { NotImplementedError } from '../utils/errors.js';
 
 /**
@@ -26,8 +26,7 @@ import { NotImplementedError } from '../utils/errors.js';
  * @property {number} [temperature] - Generation temperature
  * @property {number} [maxTokens] - Max tokens to generate
  * @property {boolean} [stream] - Whether to stream the response
- * @property {boolean} [thinkingEnabled] - Whether thinking is enabled
- * @property {string} [thinkingLevel] - The thinking level ('low', 'medium', 'high')
+ * @property {boolean} [reasoningSupported] - Whether thinking is enabled
  * @property {string} [reasoningEffort] - OpenAI-specific reasoning effort ('low', 'medium', 'high')
  * @property {string} [fallbackModel] - Fallback model identifier
  * @property {boolean} [isFallback] - Flag to prevent fallback loops
@@ -87,7 +86,7 @@ import { NotImplementedError } from '../utils/errors.js';
 /**
  * @typedef {Object} NormalizedError
  * @property {string} code - The mapped error code
- *    (e.g., 'upstream_rate_limited', 'quota_exhausted', 'upstream_error')
+ *    (e.g., 'upstreamRateLimited', 'quotaExhausted', 'upstreamError')
  * @property {string} message - Descriptive error message
  * @property {number} httpStatus - Target HTTP status to return to client (e.g., 502, 503)
  * @property {string} provider - The name of the provider where the error occurred
@@ -105,9 +104,9 @@ export class BaseProvider {
    */
   static get ERROR_MAP() {
     return {
-      429: { code: 'upstream_rate_limited', httpStatus: 503 },
-      402: { code: 'quota_exhausted', httpStatus: 503 },
-      403: { code: 'quota_exhausted', httpStatus: 503 },
+      429: { code: 'upstreamRateLimited', httpStatus: 503 },
+      402: { code: 'quotaExhausted', httpStatus: 503 },
+      403: { code: 'quotaExhausted', httpStatus: 503 },
     };
   }
 
@@ -120,14 +119,13 @@ export class BaseProvider {
    */
   static normalizeProviderError(error, providerName) {
     const status = error?.statusCode ?? error?.response?.status;
-    const { code, httpStatus } = BaseProvider.ERROR_MAP[status] ?? { code: 'upstream_error', httpStatus: 502 };
+    const { code, httpStatus } = BaseProvider.ERROR_MAP[status] ?? { code: 'upstreamError', httpStatus: 502 };
 
     return {
       code,
       message: error?.message || String(error),
       httpStatus,
       provider: providerName,
-      providerName,
     };
   }
 
@@ -297,5 +295,3 @@ export class BaseProvider {
     throw new NotImplementedError();
   }
 }
-
-export default BaseProvider;

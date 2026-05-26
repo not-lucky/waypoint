@@ -45,7 +45,7 @@ const openAIController = new OpenAIController(orchestrator);
 const anthropicController = new AnthropicController(orchestrator);
 
 // ModelCache handles configuration-aware caching for exposed model lists.
-const modelCache = new ModelCache(configLoader);
+const modelCache = new ModelCache(config);
 
 const app = express();
 const { port } = config.gateway;
@@ -55,7 +55,7 @@ const { port } = config.gateway;
  * We extract allowed origins from the configuration to support both public
  * APIs (wildcard '*') and restricted enterprise deployments (specific arrays).
  */
-const allowedOrigins = config.gateway.cors?.allowed_origins || ['*'];
+const allowedOrigins = config.gateway.cors?.allowedOrigins || ['*'];
 const corsOrigin = allowedOrigins.includes('*') ? '*' : allowedOrigins;
 logger.debug('CORS configuration applied', { corsOrigin });
 
@@ -70,13 +70,13 @@ app.use(cors({ origin: corsOrigin }));
  * clients sending massive payloads.
  * Large payloads are rejected at the edge before hitting any expensive schema validation logic.
  */
-const maxPayloadSize = config.gateway.max_payload_size || '10mb';
+const maxPayloadSize = config.gateway.maxPayloadSize || '10mb';
 logger.debug(`Body parsing middleware configured with limit: ${maxPayloadSize}`);
 app.use(express.json({ limit: maxPayloadSize }));
 
 // Auth middleware verifies client tokens. By abstracting it here, we ensure
 // consistent security constraints across all exposed endpoints.
-const auth = authMiddleware(configLoader);
+const auth = authMiddleware(config);
 
 /**
  * Health Check Endpoint (Section 6E specification)
@@ -88,7 +88,7 @@ app.get('/health', auth, (req, res) => {
   const { status, providers, routing } = keyRegistry.getHealthStats();
   res.json({
     status,
-    uptime_seconds: Math.floor(process.uptime()),
+    uptimeSeconds: Math.floor(process.uptime()),
     providers,
     routing,
   });
@@ -137,11 +137,11 @@ app.use(
 app.use((err, req, res, next) => {
   logger.error('Unhandled express exception:', err);
   const status = err.status || err.statusCode || 500;
-  let code = 'internal_server_error';
+  let code = 'internalServerError';
   if (status === 413) {
-    code = 'payload_too_large';
+    code = 'payloadTooLarge';
   } else if (status === 400) {
-    code = 'bad_request';
+    code = 'badRequest';
   }
   res.status(status).json({
     error: {
@@ -160,7 +160,6 @@ const server = app.listen(port, () => {
 // Register graceful shutdown to cleanly drain connections and free resources during scaling events.
 registerLifecycle({
   server,
-  configLoader,
   keyRegistry,
   logger,
 });

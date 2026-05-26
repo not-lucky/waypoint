@@ -41,7 +41,7 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
   it('assert: MockAdapter throws twice then succeeds -> callCount===3, final result is the success response', async () => {
     const config = {
       gateway: {
-        global_retry_limit: 3,
+        globalRetryLimit: 3,
       },
       providers: {
         'mock-provider': {
@@ -92,7 +92,7 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
   it('assert: MockAdapter throws 3 times -> 503 NormalizedError returned to caller', async () => {
     const config = {
       gateway: {
-        global_retry_limit: 3,
+        globalRetryLimit: 3,
       },
       providers: {
         'mock-provider': {
@@ -125,7 +125,7 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     // Assert 503 NormalizedError
     expect(res).toEqual({
       error: {
-        code: 'all_keys_exhausted',
+        code: 'allKeysExhausted',
         message: expect.stringContaining("All keys for provider 'mock-provider' are currently in cooldown."),
         retryAfterSeconds: expect.any(Number),
         provider: 'mock-provider',
@@ -142,9 +142,9 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     expect(flagFailureSpy).toHaveBeenNthCalledWith(3, 'mock-provider', 'key-3', 402);
   });
 
-  it('assert: global_retry_limit of 0 does not call adapter and returns all_keys_exhausted error', async () => {
+  it('assert: globalRetryLimit of 0 does not call adapter and returns all_keys_exhausted error', async () => {
     const config = {
-      gateway: { global_retry_limit: 0 },
+      gateway: { globalRetryLimit: 0 },
       providers: { 'mock-provider': { keys: ['key-1'] } },
     };
     const keyRegistry = new KeyRegistry(config);
@@ -157,13 +157,13 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     const res = await orchestrator.executeCompletion(req, {});
 
     expect(mockAdapter.callCount).toBe(0);
-    expect(res.error.code).toBe('all_keys_exhausted');
+    expect(res.error.code).toBe('allKeysExhausted');
     expect(res.error.httpStatus).toBe(503);
   });
 
-  it('assert: global_retry_limit of 1 allows exactly 1 attempt', async () => {
+  it('assert: globalRetryLimit of 1 allows exactly 1 attempt', async () => {
     const config = {
-      gateway: { global_retry_limit: 1 },
+      gateway: { globalRetryLimit: 1 },
       providers: { 'mock-provider': { keys: ['key-1', 'key-2'] } },
     };
     const keyRegistry = new KeyRegistry(config);
@@ -180,13 +180,13 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     const res = await orchestrator.executeCompletion(req, {});
 
     expect(mockAdapter.callCount).toBe(1);
-    expect(res.error.code).toBe('all_keys_exhausted');
+    expect(res.error.code).toBe('allKeysExhausted');
     expect(res.error.httpStatus).toBe(503);
   });
 
   it('assert: cooldown calculation ignores permanently exhausted keys and selects earliest active cooldown', async () => {
     const config = {
-      gateway: { global_retry_limit: 2 },
+      gateway: { globalRetryLimit: 2 },
       providers: {
         'mock-provider': {
           keys: ['key-1', 'key-2', 'key-3'],
@@ -212,7 +212,7 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     const req = { provider: 'mock-provider', actualModelId: 'test-model' };
     const res = await orchestrator.executeCompletion(req, {});
 
-    expect(res.error.code).toBe('all_keys_exhausted');
+    expect(res.error.code).toBe('allKeysExhausted');
     expect(res.error.provider).toBe('mock-provider');
     // It should pick 10 seconds (key-3) over 60 seconds (key-2) and ignore key-1
     expect(res.error.retryAfterSeconds).toBeLessThanOrEqual(10);
@@ -221,7 +221,7 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
 
   it('assert: cooldown calculation yields 0 if all keys are permanently exhausted or cooldown is in the past', async () => {
     const config = {
-      gateway: { global_retry_limit: 2 },
+      gateway: { globalRetryLimit: 2 },
       providers: {
         'mock-provider': {
           keys: ['key-1', 'key-2'],
@@ -245,13 +245,13 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     const req = { provider: 'mock-provider', actualModelId: 'test-model' };
     const res = await orchestrator.executeCompletion(req, {});
 
-    expect(res.error.code).toBe('all_keys_exhausted');
+    expect(res.error.code).toBe('allKeysExhausted');
     expect(res.error.retryAfterSeconds).toBe(0);
   });
 
   it('assert: status code is resolved correctly from error properties (status, statusCode, response.status, fallback)', async () => {
     const config = {
-      gateway: { global_retry_limit: 4 },
+      gateway: { globalRetryLimit: 4 },
       providers: { 'mock-provider': { keys: ['key-1', 'key-2', 'key-3', 'key-4'] } },
     };
     const keyRegistry = new KeyRegistry(config);
@@ -289,7 +289,7 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
 
   it('assert: fallback model exhaustion yields all_keys_exhausted for the fallback provider', async () => {
     const config = {
-      gateway: { global_retry_limit: 2 },
+      gateway: { globalRetryLimit: 2 },
       providers: {
         'primary-provider': { keys: ['key-p1', 'key-p2'] },
         'fallback-provider': { keys: ['key-f1', 'key-f2'] },
@@ -330,7 +330,7 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     expect(primaryAdapter.callCount).toBe(2);
     expect(fallbackAdapter.callCount).toBe(2);
     expect(res.error).toEqual({
-      code: 'all_keys_exhausted',
+      code: 'allKeysExhausted',
       message: expect.stringContaining("All keys for provider 'fallback-provider' are currently in cooldown."),
       retryAfterSeconds: expect.any(Number),
       provider: 'fallback-provider',

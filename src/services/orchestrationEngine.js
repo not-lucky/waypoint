@@ -26,10 +26,7 @@ const updateRequestWithModelConfig = (currentReq, config) => {
 
   const { modelConfig } = resolved;
 
-  // Rebuild the request from the client's original parameters if available
-  // to avoid state bleed from previous models
-  // eslint-disable-next-line no-underscore-dangle
-  const base = currentReq._clientReq ? { ...currentReq._clientReq } : { ...currentReq };
+  const base = currentReq.clientParams ? { ...currentReq.clientParams } : { ...currentReq };
 
   base.model = currentReq.model;
   base.isFallback = currentReq.isFallback;
@@ -37,14 +34,11 @@ const updateRequestWithModelConfig = (currentReq, config) => {
   let req = {
     ...base,
     provider: resolved.provider,
-    actualModelId: modelConfig.actual_model_id || modelConfig.id,
+    actualModelId: modelConfig.actualModelId || modelConfig.id,
   };
 
   req = applyModelConfigToRequest(req, modelConfig);
-
-  // Preserve the client request property for future fallbacks
-  // eslint-disable-next-line no-underscore-dangle
-  req._clientReq = base;
+  req.clientParams = base;
 
   return req;
 };
@@ -91,7 +85,7 @@ export const runOrchestrationLoop = async ({
     if (!adapter) {
       return {
         error: {
-          code: 'unsupported_provider',
+          code: 'unsupportedProvider',
           message: `Provider '${provider}' is not supported or configured.`,
           provider,
           httpStatus: 400,

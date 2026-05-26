@@ -27,7 +27,7 @@ const createKeyPool = (keys = []) => ({
 /**
  * Central registry for managing API key lifecycle, rotation, and health status.
  */
-export default class KeyRegistry {
+export class KeyRegistry {
   /**
    * Creates an instance of KeyRegistry.
    *
@@ -147,8 +147,8 @@ export default class KeyRegistry {
         key.consecutiveFailures += 1;
 
         const cooldown = this.config.gateway?.cooldown;
-        const baseSeconds = cooldown?.base_seconds ?? 30;
-        const maxSeconds = cooldown?.max_seconds ?? 3600;
+        const baseSeconds = cooldown?.baseSeconds ?? 30;
+        const maxSeconds = cooldown?.maxSeconds ?? 3600;
         const exponent = key.consecutiveFailures - 1;
         const backoffSeconds = Math.min(baseSeconds * (2 ** exponent), maxSeconds);
 
@@ -212,18 +212,16 @@ export default class KeyRegistry {
 
     const isDegraded = exhaustedKeys > 0 || coolingKeys > 0;
 
-    /* eslint-disable camelcase */
     return {
       stats: {
-        total_keys: totalKeys,
-        active_keys: activeKeys,
-        exhausted_keys: exhaustedKeys,
-        cooling_keys: coolingKeys,
-        cooling_until: coolingUntil,
+        totalKeys,
+        activeKeys,
+        exhaustedKeys,
+        coolingKeys,
+        coolingUntil,
       },
       isDegraded,
     };
-    /* eslint-enable camelcase */
   }
 
   /**
@@ -246,7 +244,6 @@ export default class KeyRegistry {
       }
     });
 
-    /* eslint-disable camelcase */
     const currentPointer = Object.fromEntries(
       Object.entries(this.pools).map(([name, pool]) => [name, pool.roundRobinIndex]),
     );
@@ -256,10 +253,9 @@ export default class KeyRegistry {
       providers,
       routing: {
         strategy: this.strategy,
-        current_pointer: currentPointer,
+        currentPointer,
       },
     };
-    /* eslint-enable camelcase */
   }
 
   /**
@@ -270,5 +266,3 @@ export default class KeyRegistry {
     this.timers.clear();
   }
 }
-
-export { KeyRegistry };

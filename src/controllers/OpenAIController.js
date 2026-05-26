@@ -21,7 +21,6 @@ export class OpenAIController extends BaseController {
         temperature: body.temperature,
         maxTokens: body.max_tokens ?? body.max_completion_tokens,
         stream: body.stream || false,
-        isFallback: false,
       }),
       handleStream: (resp, response, unifiedReq, reqLog) => (
         this.handleStream(resp, response, reqLog)
@@ -83,5 +82,3 @@ export class OpenAIController extends BaseController {
     return res;
   }
 }
-
-export default OpenAIController;

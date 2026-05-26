@@ -137,7 +137,7 @@ export const validateCompletionBody = (req, res, next) => {
     // endpoints drastically reduces client integration friction and debugging time.
     return res.status(400).json({
       error: {
-        code: 'validation_error',
+        code: 'validationError',
         message: 'Payload validation failed',
         details,
       },

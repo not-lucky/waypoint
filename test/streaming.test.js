@@ -260,7 +260,7 @@ describe('Streaming End-to-End Tests', () => {
         yield { id: 'success-chunk', choices: [{ index: 0, delta: { content: 'hello' } }] };
       },
       normalizeError(error) {
-        return { code: 'rate_limited', httpStatus: 503, provider: 'mock-provider' };
+        return { code: 'rateLimited', httpStatus: 503, provider: 'mock-provider' };
       },
     };
 
@@ -292,7 +292,7 @@ describe('Streaming End-to-End Tests', () => {
         'primary-provider': {
           keys: ['primary-key'],
           models: [
-            { id: 'model-a', fallback_model: 'fallback-provider/model-b' },
+            { id: 'model-a', fallbackModel: 'fallback-provider/model-b' },
           ],
         },
         'fallback-provider': {
@@ -311,7 +311,7 @@ describe('Streaming End-to-End Tests', () => {
         throw new Error('Primary key rate limit');
       },
       normalizeError(error) {
-        return { code: 'rate_limited', httpStatus: 503, provider: 'primary-provider' };
+        return { code: 'rateLimited', httpStatus: 503, provider: 'primary-provider' };
       },
     };
 
@@ -392,7 +392,7 @@ describe('Streaming End-to-End Tests', () => {
       providers: {
         'primary-provider': {
           keys: ['key-primary'],
-          models: [{ id: 'model-a', fallback_model: 'bare-fallback-model' }],
+          models: [{ id: 'model-a', fallbackModel: 'bare-fallback-model' }],
         },
       },
     };
@@ -404,7 +404,7 @@ describe('Streaming End-to-End Tests', () => {
         throw new Error('Primary failed');
       },
       normalizeError(error) {
-        return { code: 'rate_limited', httpStatus: 503, provider: 'primary-provider' };
+        return { code: 'rateLimited', httpStatus: 503, provider: 'primary-provider' };
       },
     };
 
@@ -418,6 +418,6 @@ describe('Streaming End-to-End Tests', () => {
       stream: true,
     }, {});
 
-    expect(res.error.code).toBe('all_keys_exhausted');
+    expect(res.error.code).toBe('allKeysExhausted');
   });
 });

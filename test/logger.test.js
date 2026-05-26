@@ -69,7 +69,7 @@ describe('Structured Logger (LogTape)', () => {
   it('should format logs as JSON by default', async () => {
     await configureLogging({
       logging: {
-        enable_console: true,
+        enableConsole: true,
         format: 'json',
       },
     });
@@ -91,7 +91,7 @@ describe('Structured Logger (LogTape)', () => {
   it('should format logs as text if configured', async () => {
     await configureLogging({
       logging: {
-        enable_console: true,
+        enableConsole: true,
         format: 'text',
       },
     });
@@ -111,7 +111,7 @@ describe('Structured Logger (LogTape)', () => {
   it('should write to correct stream based on level', async () => {
     await configureLogging({
       logging: {
-        enable_console: true,
+        enableConsole: true,
         format: 'json',
       },
     });
@@ -138,9 +138,9 @@ describe('Structured Logger (LogTape)', () => {
   it('should write to file transport and auto-create parent directories', async () => {
     await configureLogging({
       logging: {
-        enable_console: false,
-        enable_file: true,
-        file_path: tempLogFile,
+        enableConsole: false,
+        enableFile: true,
+        filePath: tempLogFile,
         format: 'json',
       },
     });
@@ -169,7 +169,7 @@ describe('Structured Logger (LogTape)', () => {
   it('should handle Error objects and extract stack traces', async () => {
     await configureLogging({
       logging: {
-        enable_console: true,
+        enableConsole: true,
         format: 'json',
       },
     });
@@ -190,7 +190,7 @@ describe('Structured Logger (LogTape)', () => {
   it('should filter logs by level', async () => {
     await configureLogging({
       logging: {
-        enable_console: true,
+        enableConsole: true,
         format: 'json',
         level: 'warning',
       },
@@ -265,9 +265,9 @@ describe('Structured Logger (LogTape)', () => {
     expect(parsed.message).toBe('no logging key');
   });
 
-  it('should not throw when enable_file is true but file_path is empty', async () => {
+  it('should not throw when enableFile is true but filePath is empty', async () => {
     await configureLogging({
-      logging: { enable_file: true, file_path: '' },
+      logging: { enableFile: true, filePath: '' },
     });
     const logger = getAppLogger('test-edge');
     logger.info('no file path');
@@ -275,9 +275,9 @@ describe('Structured Logger (LogTape)', () => {
     expect(calls.length).toBeGreaterThan(0);
   });
 
-  it('should not create a file when enable_file is false even if file_path is set', async () => {
+  it('should not create a file when enableFile is false even if filePath is set', async () => {
     await configureLogging({
-      logging: { enable_file: false, file_path: tempLogFile },
+      logging: { enableFile: false, filePath: tempLogFile },
     });
     const logger = getAppLogger('test-edge');
     logger.info('file disabled');
@@ -286,7 +286,7 @@ describe('Structured Logger (LogTape)', () => {
   });
 
   it('should format message correctly with various types', async () => {
-    await configureLogging({ logging: { enable_console: true, format: 'json' } });
+    await configureLogging({ logging: { enableConsole: true, format: 'json' } });
     const logger = getAppLogger('test-edge');
 
     logger.info('number: {val}', { val: 42 });
@@ -305,7 +305,7 @@ describe('Structured Logger (LogTape)', () => {
   });
 
   it('should quote values containing newlines or quotes in text format', async () => {
-    await configureLogging({ logging: { enable_console: true, format: 'text' } });
+    await configureLogging({ logging: { enableConsole: true, format: 'text' } });
     const logger = getAppLogger('test-edge');
 
     logger.info('multiline', { text: 'line1\nline2', simple: 'ok' });
@@ -318,7 +318,7 @@ describe('Structured Logger (LogTape)', () => {
   });
 
   it('should format Error objects in properties correctly in text format', async () => {
-    await configureLogging({ logging: { enable_console: true, format: 'text' } });
+    await configureLogging({ logging: { enableConsole: true, format: 'text' } });
     const logger = getAppLogger('test-edge-error');
 
     logger.error('an error occurred', { myErr: new Error('text error message') });
@@ -331,7 +331,7 @@ describe('Structured Logger (LogTape)', () => {
   });
 
   it('should gracefully handle unserializable objects in text format', async () => {
-    await configureLogging({ logging: { enable_console: true, format: 'text' } });
+    await configureLogging({ logging: { enableConsole: true, format: 'text' } });
     const logger = getAppLogger('test-edge-unserializable');
 
     const circular = {};
@@ -348,7 +348,7 @@ describe('Structured Logger (LogTape)', () => {
   it('should append to existing file on second log configuration', async () => {
     await configureLogging({
       logging: {
-        enable_console: false, enable_file: true, file_path: tempLogFile, format: 'json',
+        enableConsole: false, enableFile: true, filePath: tempLogFile, format: 'json',
       },
     });
     let logger = getAppLogger('test-edge');
@@ -360,7 +360,7 @@ describe('Structured Logger (LogTape)', () => {
 
     await configureLogging({
       logging: {
-        enable_console: false, enable_file: true, file_path: tempLogFile, format: 'json',
+        enableConsole: false, enableFile: true, filePath: tempLogFile, format: 'json',
       },
     });
     logger = getAppLogger('test-edge');
@@ -376,7 +376,7 @@ describe('Structured Logger (LogTape)', () => {
   it('should write to both console and file simultaneously', async () => {
     await configureLogging({
       logging: {
-        enable_console: true, enable_file: true, file_path: tempLogFile, format: 'json',
+        enableConsole: true, enableFile: true, filePath: tempLogFile, format: 'json',
       },
     });
     const logger = getAppLogger('test-edge');
@@ -401,7 +401,7 @@ describe('Structured Logger (LogTape)', () => {
     const logger = getAppLogger('test');
 
     // 1. JSON formatting
-    await configureLogging({ logging: { format: 'json', enable_console: true, level: 'debug' } });
+    await configureLogging({ logging: { format: 'json', enableConsole: true, level: 'debug' } });
 
     infoSpy.mockClear();
     errorSpy.mockClear();
@@ -426,7 +426,7 @@ describe('Structured Logger (LogTape)', () => {
     expect(parsed3.err.message).toBe('nested error');
 
     // 2. Text formatting
-    await configureLogging({ logging: { format: 'text', enable_console: true, level: 'debug' } });
+    await configureLogging({ logging: { format: 'text', enableConsole: true, level: 'debug' } });
 
     infoSpy.mockClear();
     errorSpy.mockClear();

@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseSSEStream } from '../src/utils/sseParser.js';
-import { parseSSEEventData } from '../src/adapters/geminiStream.js';
+import { parseSSEStream, parseSSEEventData } from '../src/utils/sseParser.js';
 
 describe('SSE Parser Tests', () => {
   describe('parseSSEEventData', () => {

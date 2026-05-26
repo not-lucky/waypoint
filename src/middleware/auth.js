@@ -14,8 +14,8 @@ const logger = getAppLogger('auth');
 
 /**
  * WeakMap resolution cache to hold resolved token maps. Keyed by the clients configuration
- * array reference. WeakMap allows the cached maps to be garbage collected when config
- * reloads discard the old config reference, preventing long-term memory leaks.
+ * array reference. WeakMap allows the cached maps to be garbage collected when the
+ * config reference is discarded, preventing long-term memory leaks.
  *
  * @type {WeakMap<Array<Object>, Map<string, Object>>}
  */
@@ -80,10 +80,10 @@ const extractAuthToken = (headers) => {
  * Returns a middleware function that populates `req.client` with the client configuration
  * on successful token validation, or terminates the request with a 401 response on failure.
  *
- * @param {Object} configLoader - The configuration loader instance to fetch the current config.
+ * @param {Object} config - The application configuration object.
  * @returns {Function} Express middleware function: (req, res, next) => void.
  */
-export const authMiddleware = (configLoader) => (req, res, next) => {
+export const authMiddleware = (config) => (req, res, next) => {
   logger.debug('Auth attempt: checking credentials');
 
   // Extract token from request headers
@@ -94,9 +94,7 @@ export const authMiddleware = (configLoader) => (req, res, next) => {
     return;
   }
 
-  // Load client configuration with hot-reload support
-  const config = configLoader.loadConfig() || {};
-  const clients = Array.isArray(config.clients) ? config.clients : [];
+  const clients = Array.isArray(config?.clients) ? config.clients : [];
 
   // Build or retrieve cached token map for O(1) lookup
   let tokenMap = clientCache.get(clients);
@@ -127,5 +125,3 @@ export const authMiddleware = (configLoader) => (req, res, next) => {
   req.client = client;
   next();
 };
-
-export default authMiddleware;

@@ -101,28 +101,26 @@ describe('modelResolver & RequestTransformer Unit Tests', () => {
   });
 
   describe('transformRequest', () => {
-    it('should handle falsy resolved by copying baseReq and rawReq properties', () => {
+    it('should handle falsy resolved by copying baseReq properties', () => {
       const baseReq = { model: 'gpt-4o', temperature: 0.5 };
-      const rawReq = { headers: {} };
-      const { unifiedReq, cleanRawReq } = transformRequest(baseReq, rawReq, null);
+      const unifiedReq = transformRequest(baseReq, null);
 
       expect(unifiedReq.model).toBe('gpt-4o');
       expect(unifiedReq.temperature).toBe(0.5);
-      expect(cleanRawReq.headers).toEqual({});
+      expect(unifiedReq.clientParams).toEqual({ model: 'gpt-4o', temperature: 0.5 });
     });
 
     it('should set provider, actualModelId, and optional fallbackModel from resolved', () => {
       const baseReq = { model: 'test' };
-      const rawReq = { headers: {} };
       const resolved = {
         provider: 'openai',
         modelConfig: {
           id: 'gpt-4o-real',
-          fallback_model: 'anthropic/claude-3',
+          fallbackModel: 'anthropic/claude-3',
         },
       };
 
-      const { unifiedReq } = transformRequest(baseReq, rawReq, resolved);
+      const unifiedReq = transformRequest(baseReq, resolved);
       expect(unifiedReq.provider).toBe('openai');
       expect(unifiedReq.actualModelId).toBe('gpt-4o-real');
       expect(unifiedReq.fallbackModel).toBe('anthropic/claude-3');
@@ -130,19 +128,18 @@ describe('modelResolver & RequestTransformer Unit Tests', () => {
 
     it('should set thinking properties if supported in resolved modelConfig', () => {
       const baseReq = { model: 'test' };
-      const rawReq = { headers: {} };
       const resolved = {
         provider: 'anthropic',
         modelConfig: {
           id: 'claude-thinking',
-          thinking_supported: true,
-          reasoning_effort: 'medium',
+          reasoningSupported: true,
+          reasoningEffort: 'medium',
         },
       };
 
-      const { unifiedReq } = transformRequest(baseReq, rawReq, resolved);
-      expect(unifiedReq.thinking_supported).toBe(true);
-      expect(unifiedReq.thinkingEnabled).toBe(true);
+      const unifiedReq = transformRequest(baseReq, resolved);
+      expect(unifiedReq.reasoningSupported).toBe(true);
+      expect(unifiedReq.reasoningSupported).toBe(true);
       expect(unifiedReq.reasoningEffort).toBe('medium');
     });
   });

@@ -161,5 +161,3 @@ export class AnthropicAdapter extends BaseProvider {
     return BaseProvider.normalizeProviderError(error, 'anthropic');
   }
 }
-
-export default AnthropicAdapter;

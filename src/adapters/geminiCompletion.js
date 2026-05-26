@@ -1,19 +1,20 @@
 /* eslint-disable max-len */
 import { FORMATS, translateRequest, translateResponse } from '../translators/index.js';
-import { getThinkingLevel, extractThoughtTags } from './geminiFormatter.js';
+import { getThinkingLevel } from './geminiFormatter.js';
+import { mapOpenAICompletionResponse } from './openaiResponse.js';
 
 /**
  * WHAT: Executes standard unary text completion for Gemini.
  * WHY: Supports two different upstream endpoints based on whether reasoning (thinking) is active.
  */
 export const executeCompletion = async (req, apiKey, signal, requestLog, adapter) => {
-  const thinkingEnabled = req.thinkingEnabled || req.thinking_supported || false;
+  const reasoningSupported = req.reasoningSupported || false;
 
   let payload;
   let url;
   let headers;
 
-  if (thinkingEnabled) {
+  if (reasoningSupported) {
     url = adapter.baseUrl
       ? `${adapter.baseUrl.replace(/\/$/, '')}/chat/completions`
       : 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
@@ -65,42 +66,8 @@ export const executeCompletion = async (req, apiKey, signal, requestLog, adapter
   try {
     const resultJson = await response.json();
 
-    if (thinkingEnabled) {
-      let resultId = `waypoint-${Date.now()}`;
-      if (resultJson.id) {
-        resultId = resultJson.id.startsWith('waypoint-')
-          ? resultJson.id
-          : `waypoint-${resultJson.id}`;
-      }
-      return {
-        id: resultId,
-        object: 'chat.completion',
-        created: resultJson.created || Math.floor(Date.now() / 1000),
-        model: req.model || resultJson.model,
-        choices: (resultJson.choices || []).map((c) => {
-          const { content, reasoningContent } = extractThoughtTags(
-            c.message?.content || '',
-            c.message?.reasoning_content || null,
-          );
-          return {
-            index: c.index ?? 0,
-            message: {
-              role: c.message?.role || 'assistant',
-              content,
-              reasoning_content: reasoningContent,
-            },
-            finish_reason: c.finish_reason ?? c.finishReason ?? 'stop',
-          };
-        }),
-        usage: {
-          prompt_tokens:
-            resultJson.usage?.prompt_tokens ?? resultJson.usage?.promptTokens ?? 0,
-          completion_tokens:
-            resultJson.usage?.completion_tokens ?? resultJson.usage?.completionTokens ?? 0,
-          total_tokens:
-            resultJson.usage?.total_tokens ?? resultJson.usage?.totalTokens ?? 0,
-        },
-      };
+    if (reasoningSupported) {
+      return mapOpenAICompletionResponse(req, resultJson, { extractThoughts: true });
     }
 
     return translateResponse(FORMATS.OPENAI, FORMATS.GEMINI, resultJson, req);

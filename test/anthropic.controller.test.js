@@ -16,9 +16,9 @@ describe('AnthropicController Edge Case Tests', () => {
           {
             id: 'gemini-2.5-pro-preview-05-06',
             aliases: ['gemini-2.5-pro', 'gemini-pro', 'pro'],
-            reasoning_supported: true,
-            reasoning_effort: 'medium',
-            fallback_model: 'openai/gpt-4o',
+            reasoningSupported: true,
+            reasoningEffort: 'medium',
+            fallbackModel: 'openai/gpt-4o',
           },
         ],
       },
@@ -80,9 +80,7 @@ describe('AnthropicController Edge Case Tests', () => {
           provider: 'gemini',
           actualModelId: 'gemini-2.5-pro-preview-05-06',
           fallbackModel: 'openai/gpt-4o',
-          thinking_supported: true,
-          thinkingLevel: 'medium',
-          thinkingEnabled: true,
+          reasoningSupported: true,
           reasoningEffort: 'medium',
         }),
         expect.any(Object),
@@ -204,25 +202,6 @@ describe('AnthropicController Edge Case Tests', () => {
           messages: [
             { role: 'user', content: 'hi' },
           ],
-        }),
-        expect.any(Object),
-        expect.any(Object),
-      );
-    });
-
-    it('should map max_tokens_to_sample to maxTokens', async () => {
-      const controller = new AnthropicController(mockOrchestrator);
-      const req = {
-        body: { model: 'pro', max_tokens_to_sample: 100 },
-        headers: {},
-      };
-      const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
-
-      await controller.handleCompletion(req, res);
-
-      expect(mockOrchestrator.executeCompletion).toHaveBeenCalledWith(
-        expect.objectContaining({
-          maxTokens: 100,
         }),
         expect.any(Object),
         expect.any(Object),
@@ -356,7 +335,7 @@ describe('AnthropicController Edge Case Tests', () => {
     it('should forward normalized error status and response from orchestrator', async () => {
       mockOrchestrator.executeCompletion.mockResolvedValue({
         error: {
-          code: 'upstream_rate_limited',
+          code: 'upstreamRateLimited',
           message: 'Upstream rate limit reached',
           httpStatus: 503,
         },
@@ -371,7 +350,7 @@ describe('AnthropicController Edge Case Tests', () => {
       expect(res.status).toHaveBeenCalledWith(503);
       expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
         error: expect.objectContaining({
-          code: 'upstream_rate_limited',
+          code: 'upstreamRateLimited',
         }),
       }));
     });
@@ -388,7 +367,7 @@ describe('AnthropicController Edge Case Tests', () => {
       expect(res.status).toHaveBeenCalledWith(500);
       expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
         error: expect.objectContaining({
-          code: 'internal_server_error',
+          code: 'internalServerError',
           message: 'Server out of memory',
         }),
       }));

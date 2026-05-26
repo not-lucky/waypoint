@@ -16,9 +16,9 @@ describe('OpenAIController Edge Case Tests', () => {
           {
             id: 'gemini-2.5-pro-preview-05-06',
             aliases: ['gemini-2.5-pro', 'gemini-pro', 'pro'],
-            thinking_supported: true,
-            reasoning_effort: 'medium',
-            fallback_model: 'openai/gpt-4o',
+            reasoningSupported: true,
+            reasoningEffort: 'medium',
+            fallbackModel: 'openai/gpt-4o',
           },
         ],
       },
@@ -79,9 +79,7 @@ describe('OpenAIController Edge Case Tests', () => {
           provider: 'gemini',
           actualModelId: 'gemini-2.5-pro-preview-05-06',
           fallbackModel: 'openai/gpt-4o',
-          thinking_supported: true,
-          thinkingLevel: 'medium',
-          thinkingEnabled: true,
+          reasoningSupported: true,
           reasoningEffort: 'medium',
         }),
         expect.any(Object),
@@ -234,7 +232,7 @@ describe('OpenAIController Edge Case Tests', () => {
     it('should forward normalized error status and response from orchestrator', async () => {
       mockOrchestrator.executeCompletion.mockResolvedValue({
         error: {
-          code: 'all_keys_exhausted',
+          code: 'allKeysExhausted',
           message: 'All keys in cooldown',
           httpStatus: 503,
         },
@@ -249,7 +247,7 @@ describe('OpenAIController Edge Case Tests', () => {
       expect(res.status).toHaveBeenCalledWith(503);
       expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
         error: expect.objectContaining({
-          code: 'all_keys_exhausted',
+          code: 'allKeysExhausted',
         }),
       }));
     });
@@ -283,7 +281,7 @@ describe('OpenAIController Edge Case Tests', () => {
       expect(res.status).toHaveBeenCalledWith(500);
       expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
         error: expect.objectContaining({
-          code: 'internal_server_error',
+          code: 'internalServerError',
           message: 'Database crash',
         }),
       }));
@@ -301,7 +299,7 @@ describe('OpenAIController Edge Case Tests', () => {
       expect(res.status).toHaveBeenCalledWith(500);
       expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
         error: expect.objectContaining({
-          code: 'internal_server_error',
+          code: 'internalServerError',
           message: 'Error',
         }),
       }));

@@ -10,15 +10,15 @@ describe('Detailed Validator Tests', () => {
       routing: { strategy: 'round-robin' },
     },
     logging: {
-      enable_console: true,
-      enable_file: false,
+      enableConsole: true,
+      enableFile: false,
       format: 'json',
     },
     clients: [
       {
         name: 'test-client',
         token: 'test-token',
-        rate_limit: { window_ms: 60000, max: 100 },
+        rateLimit: { windowMs: 60000, max: 100 },
       },
     ],
     providers: {
@@ -31,23 +31,23 @@ describe('Detailed Validator Tests', () => {
 
   it('should validate optional gateway fields', () => {
     const config = getBaseValidConfig();
-    config.gateway.global_retry_limit = 5;
-    config.gateway.http_timeout_ms = 30000;
-    config.gateway.cooldown = { base_seconds: 2, max_seconds: 60 };
+    config.gateway.globalRetryLimit = 5;
+    config.gateway.httpTimeoutMs = 30000;
+    config.gateway.cooldown = { baseSeconds: 2, maxSeconds: 60 };
 
     expect(() => validateConfig(config, false)).not.toThrow();
   });
 
   it('should throw on invalid optional gateway fields', () => {
     const config = getBaseValidConfig();
-    config.gateway.global_retry_limit = -1;
-    expect(() => validateConfig(config, false)).toThrow("Invalid 'gateway.global_retry_limit'");
+    config.gateway.globalRetryLimit = -1;
+    expect(() => validateConfig(config, false)).toThrow("Invalid 'gateway.globalRetryLimit'");
 
-    config.gateway.global_retry_limit = 5;
-    config.gateway.http_timeout_ms = 0;
-    expect(() => validateConfig(config, false)).toThrow("Invalid 'gateway.http_timeout_ms'");
+    config.gateway.globalRetryLimit = 5;
+    config.gateway.httpTimeoutMs = 0;
+    expect(() => validateConfig(config, false)).toThrow("Invalid 'gateway.httpTimeoutMs'");
 
-    config.gateway.http_timeout_ms = 30000;
+    config.gateway.httpTimeoutMs = 30000;
     config.gateway.cooldown = 'invalid';
     expect(() => validateConfig(config, false)).toThrow("Invalid 'gateway.cooldown'");
   });
@@ -67,10 +67,10 @@ describe('Detailed Validator Tests', () => {
       keys: ['key'],
       models: [{ id: 'm1' }],
     };
-    // Should throw because missing base_url for custom provider
-    expect(() => validateConfig(config, false)).toThrow("must specify a non-empty 'base_url'");
+    // Should throw because missing baseUrl for custom provider
+    expect(() => validateConfig(config, false)).toThrow("must specify a non-empty 'baseUrl'");
 
-    config.providers.my_provider.base_url = 'https://api.example.com';
+    config.providers.my_provider.baseUrl = 'https://api.example.com';
     expect(() => validateConfig(config, false)).not.toThrow();
 
     config.providers.my_provider.type = 'invalid';
@@ -80,32 +80,32 @@ describe('Detailed Validator Tests', () => {
   it('should validate model details', () => {
     const config = getBaseValidConfig();
     config.providers.openai.models[0].aliases = ['gpt4'];
-    config.providers.openai.models[0].thinking_supported = true;
+    config.providers.openai.models[0].reasoningSupported = true;
     expect(() => validateConfig(config, false)).not.toThrow();
 
     config.providers.openai.models[0].aliases = 'not-an-array';
     expect(() => validateConfig(config, false)).toThrow("Invalid 'aliases'");
 
     config.providers.openai.models[0].aliases = [];
-    config.providers.openai.models[0].thinking_supported = 'not-a-boolean';
-    expect(() => validateConfig(config, false)).toThrow("Invalid 'thinking_supported'");
+    config.providers.openai.models[0].reasoningSupported = 'not-a-boolean';
+    expect(() => validateConfig(config, false)).toThrow('must be a boolean');
 
-    config.providers.openai.models[0].thinking_supported = true;
+    config.providers.openai.models[0].reasoningSupported = true;
   });
 
   describe('Fallback Model Validation', () => {
-    it('should validate fallback_model format', () => {
+    it('should validate fallbackModel format', () => {
       const config = getBaseValidConfig();
-      config.providers.openai.models[0].fallback_model = 'invalid-format';
+      config.providers.openai.models[0].fallbackModel = 'invalid-format';
       expect(() => validateConfig(config, false)).toThrow("Must be in 'provider/model-id' format");
 
-      config.providers.openai.models[0].fallback_model = 'provider/model/extra';
+      config.providers.openai.models[0].fallbackModel = 'provider/model/extra';
       expect(() => validateConfig(config, false)).toThrow("Must be in 'provider/model-id' format");
     });
 
     it('should throw if fallback provider does not exist', () => {
       const config = getBaseValidConfig();
-      config.providers.openai.models[0].fallback_model = 'nonexistent/model';
+      config.providers.openai.models[0].fallbackModel = 'nonexistent/model';
       expect(() => validateConfig(config, false)).toThrow("provider 'nonexistent' does not exist");
     });
 
@@ -115,7 +115,7 @@ describe('Detailed Validator Tests', () => {
         keys: ['k'],
         models: [{ id: 'gemini-pro' }],
       };
-      config.providers.openai.models[0].fallback_model = 'gemini/nonexistent-model';
+      config.providers.openai.models[0].fallbackModel = 'gemini/nonexistent-model';
       expect(() => validateConfig(config, false)).toThrow("model ID or alias 'nonexistent-model' does not exist in provider 'gemini'");
     });
 
@@ -125,17 +125,17 @@ describe('Detailed Validator Tests', () => {
         keys: ['k'],
         models: [{ id: 'gemini-pro', aliases: ['gp'] }],
       };
-      config.providers.openai.models[0].fallback_model = 'gemini/gp';
+      config.providers.openai.models[0].fallbackModel = 'gemini/gp';
       expect(() => validateConfig(config, false)).not.toThrow();
     });
 
     it('should throw if model falls back to itself', () => {
       const config = getBaseValidConfig();
-      config.providers.openai.models[0].fallback_model = 'openai/gpt-4';
+      config.providers.openai.models[0].fallbackModel = 'openai/gpt-4';
       expect(() => validateConfig(config, false)).toThrow('model cannot fall back to itself');
 
       config.providers.openai.models[0].aliases = ['gpt4'];
-      config.providers.openai.models[0].fallback_model = 'openai/gpt4';
+      config.providers.openai.models[0].fallbackModel = 'openai/gpt4';
       expect(() => validateConfig(config, false)).toThrow('model cannot fall back to itself');
     });
   });
@@ -147,15 +147,15 @@ describe('Detailed Validator Tests', () => {
     expect(() => validateConfig(config, false)).toThrow("Missing structural field 'logging'");
 
     config.logging = {};
-    expect(() => validateConfig(config, false)).toThrow("Invalid or missing 'logging.enable_console'");
+    expect(() => validateConfig(config, false)).toThrow("Invalid or missing 'logging.enableConsole'");
 
-    config.logging = { enable_console: true };
-    expect(() => validateConfig(config, false)).toThrow("Invalid or missing 'logging.enable_file'");
+    config.logging = { enableConsole: true };
+    expect(() => validateConfig(config, false)).toThrow("Invalid or missing 'logging.enableFile'");
 
-    config.logging = { enable_console: true, enable_file: true };
-    expect(() => validateConfig(config, false)).toThrow("Invalid or missing 'logging.file_path'");
+    config.logging = { enableConsole: true, enableFile: true };
+    expect(() => validateConfig(config, false)).toThrow("Invalid or missing 'logging.filePath'");
 
-    config.logging = { enable_console: true, enable_file: true, file_path: 'log.txt' };
+    config.logging = { enableConsole: true, enableFile: true, filePath: 'log.txt' };
     expect(() => validateConfig(config, false)).toThrow("Invalid or missing 'logging.format'");
   });
 
@@ -172,10 +172,10 @@ describe('Detailed Validator Tests', () => {
     expect(() => validateConfig(config, false)).toThrow("Missing or empty 'name' for client at index 0");
 
     config.clients = [{ name: 'n', token: 't' }];
-    expect(() => validateConfig(config, false)).toThrow("Missing structural field 'rate_limit' for client at index 0");
+    expect(() => validateConfig(config, false)).toThrow("Missing structural field 'rateLimit' for client at index 0");
 
-    config.clients = [{ name: 'n', token: 't', rate_limit: {} }];
-    expect(() => validateConfig(config, false)).toThrow("Invalid or missing 'rate_limit.window_ms' for client at index 0");
+    config.clients = [{ name: 'n', token: 't', rateLimit: {} }];
+    expect(() => validateConfig(config, false)).toThrow("Invalid or missing 'rateLimit.windowMs' for client at index 0");
   });
 
   it('should validate provider configuration', () => {

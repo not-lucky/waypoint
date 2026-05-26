@@ -4,10 +4,6 @@ import {
 import {
   BaseProvider,
 } from '../src/adapters/BaseProvider.js';
-import {
-  mapCompletionResult,
-  mapStreamResult,
-} from '../src/adapters/mappers.js';
 import { NotImplementedError } from '../src/utils/errors.js';
 
 describe('BaseProvider Tests', () => {
@@ -123,107 +119,16 @@ describe('BaseProvider Tests', () => {
     });
   });
 
-  describe('mapCompletionResult', () => {
-    it('should map result correctly with default usage fields', () => {
-      const req = { model: 'test-model' };
-      const result = {
-        text: 'hello world',
-        reasoning: 'thinking text',
-        finishReason: 'stop',
-      };
-      const res = mapCompletionResult(req, result);
-      expect(res.id).toMatch(/^waypoint-/);
-      expect(res.object).toBe('chat.completion');
-      expect(res.model).toBe('test-model');
-      expect(res.choices[0].message).toEqual({
-        role: 'assistant',
-        content: 'hello world',
-        reasoning_content: 'thinking text',
-      });
-      expect(res.choices[0].finish_reason).toBe('stop');
-      expect(res.usage).toEqual({
-        prompt_tokens: 0,
-        completion_tokens: 0,
-        total_tokens: 0,
-      });
-    });
-
-    it('should map usage parameters if provided', () => {
-      const req = { model: 'test-model' };
-      const result = {
-        text: 'hello',
-        usage: {
-          promptTokens: 10,
-          completionTokens: 20,
-          totalTokens: 30,
-        },
-      };
-      const res = mapCompletionResult(req, result);
-      expect(res.usage).toEqual({
-        prompt_tokens: 10,
-        completion_tokens: 20,
-        total_tokens: 30,
-      });
-    });
-
-    it('edge case: should fallback to empty string content if result.text is falsy', () => {
-      const req = { model: 'test-model' };
-      const res = mapCompletionResult(req, {});
-      expect(res.choices[0].message.content).toBe('');
-      expect(res.choices[0].message.reasoning_content).toBeNull();
-    });
-  });
-
-  describe('mapStreamResult', () => {
-    it('should yield mapped stream chunks', async () => {
-      const fullStream = [
-        { type: 'text-delta', text: 'hello' },
-        { type: 'reasoning-delta', text: 'thought' },
-        { type: 'finish', finishReason: 'length' },
-        { type: 'unknown-type' }, // should be ignored by mapper
-      ];
-
-      const result = { fullStream };
-      const chunks = [];
-      for await (const chunk of mapStreamResult(result)) {
-        chunks.push(chunk);
-      }
-
-      expect(chunks).toHaveLength(3);
-      expect(chunks[0].choices[0].delta).toEqual({ content: 'hello', reasoning_content: null });
-      expect(chunks[1].choices[0].delta).toEqual({ content: null, reasoning_content: 'thought' });
-      expect(chunks[2].choices[0].finish_reason).toBe('length');
-    });
-
-    it('edge case: should fallback to default values if chunk values are missing', async () => {
-      const fullStream = [
-        { type: 'text-delta' },
-        { type: 'reasoning-delta' },
-        { type: 'finish' },
-      ];
-      const result = { fullStream };
-      const chunks = [];
-      for await (const chunk of mapStreamResult(result)) {
-        chunks.push(chunk);
-      }
-      expect(chunks).toHaveLength(3);
-      expect(chunks[0].choices[0].delta).toEqual({ content: null, reasoning_content: null });
-      expect(chunks[1].choices[0].delta).toEqual({ content: null, reasoning_content: null });
-      expect(chunks[2].choices[0].finish_reason).toBe('stop');
-    });
-  });
-
   describe('normalizeProviderError', () => {
     it('should map fallback error when status code is not in list', () => {
       const err = new Error('Some other error');
       err.statusCode = 500;
       const res = BaseProvider.normalizeProviderError(err, 'gemini');
       expect(res).toEqual({
-        code: 'upstream_error',
+        code: 'upstreamError',
         message: 'Some other error',
         httpStatus: 502,
         provider: 'gemini',
-        providerName: 'gemini',
       });
     });
 
@@ -236,7 +141,7 @@ describe('BaseProvider Tests', () => {
       const err = new Error('Rate limit');
       err.response = { status: 429 };
       const res = BaseProvider.normalizeProviderError(err, 'openai');
-      expect(res.code).toBe('upstream_rate_limited');
+      expect(res.code).toBe('upstreamRateLimited');
       expect(res.httpStatus).toBe(503);
     });
 
@@ -244,7 +149,7 @@ describe('BaseProvider Tests', () => {
       const err = new Error('Forbidden');
       err.statusCode = 403;
       const res = BaseProvider.normalizeProviderError(err, 'anthropic');
-      expect(res.code).toBe('quota_exhausted');
+      expect(res.code).toBe('quotaExhausted');
       expect(res.httpStatus).toBe(503);
     });
   });

@@ -42,8 +42,8 @@ describe('rateLimiter middleware', () => {
     const req = {
       client: {
         name: 'client-1',
-        rate_limit: {
-          window_ms: 1000,
+        rateLimit: {
+          windowMs: 1000,
           max: 2,
         },
       },
@@ -69,19 +69,19 @@ describe('rateLimiter middleware', () => {
     expect(res.statusCode).toBe(429);
     expect(res.body).toEqual({
       error: {
-        code: 'rate_limit_exceeded',
+        code: 'rateLimitExceeded',
         message: 'Rate limit exceeded.',
         httpStatus: 429,
       },
     });
   });
 
-  it('assert: after window_ms elapses -> requests allowed again', () => {
+  it('assert: after windowMs elapses -> requests allowed again', () => {
     const req = {
       client: {
         name: 'client-1',
-        rate_limit: {
-          window_ms: 1000,
+        rateLimit: {
+          windowMs: 1000,
           max: 2,
         },
       },
@@ -103,7 +103,7 @@ describe('rateLimiter middleware', () => {
     expect(next3).not.toHaveBeenCalled();
     expect(res.statusCode).toBe(429);
 
-    // Elapse window_ms (1000ms)
+    // Elapse windowMs (1000ms)
     vi.advanceTimersByTime(1001);
 
     // Reset status code for the response
@@ -120,8 +120,8 @@ describe('rateLimiter middleware', () => {
     const reqClientA = {
       client: {
         name: 'client-a',
-        rate_limit: {
-          window_ms: 1000,
+        rateLimit: {
+          windowMs: 1000,
           max: 2,
         },
       },
@@ -129,8 +129,8 @@ describe('rateLimiter middleware', () => {
     const reqClientB = {
       client: {
         name: 'client-b',
-        rate_limit: {
-          window_ms: 1000,
+        rateLimit: {
+          windowMs: 1000,
           max: 1,
         },
       },
@@ -175,7 +175,7 @@ describe('rateLimiter middleware', () => {
     rateLimiter({}, res, next);
     expect(next).toHaveBeenCalledTimes(1);
 
-    // Client without rate_limit config
+    // Client without rateLimit config
     const reqNoLimit = {
       client: {
         name: 'no-limit-client',
@@ -191,8 +191,8 @@ describe('rateLimiter middleware', () => {
     const req = {
       client: {
         name: 'dynamic-client',
-        rate_limit: {
-          window_ms: 1000,
+        rateLimit: {
+          windowMs: 1000,
           max: 2,
         },
       },
@@ -217,7 +217,7 @@ describe('rateLimiter middleware', () => {
     expect(res.statusCode).toBe(429);
 
     // Dynamically increase max limit to 4
-    req.client.rate_limit.max = 4;
+    req.client.rateLimit.max = 4;
     res.statusCode = 200; // Reset response status
 
     // Fourth request - allowed under new limit
@@ -230,8 +230,8 @@ describe('rateLimiter middleware', () => {
     const reqZero = {
       client: {
         name: 'zero-limit-client',
-        rate_limit: {
-          window_ms: 1000,
+        rateLimit: {
+          windowMs: 1000,
           max: 0,
         },
       },
@@ -239,8 +239,8 @@ describe('rateLimiter middleware', () => {
     const reqNegative = {
       client: {
         name: 'negative-limit-client',
-        rate_limit: {
-          window_ms: 1000,
+        rateLimit: {
+          windowMs: 1000,
           max: -3,
         },
       },
@@ -264,8 +264,8 @@ describe('rateLimiter middleware', () => {
     const reqZeroWindow = {
       client: {
         name: 'zero-window-client',
-        rate_limit: {
-          window_ms: 0,
+        rateLimit: {
+          windowMs: 0,
           max: 1,
         },
       },
@@ -273,8 +273,8 @@ describe('rateLimiter middleware', () => {
     const reqNegativeWindow = {
       client: {
         name: 'negative-window-client',
-        rate_limit: {
-          window_ms: -100,
+        rateLimit: {
+          windowMs: -100,
           max: 1,
         },
       },
@@ -303,8 +303,8 @@ describe('rateLimiter middleware', () => {
     const req = {
       client: {
         name: 'boundary-client',
-        rate_limit: {
-          window_ms: 1000,
+        rateLimit: {
+          windowMs: 1000,
           max: 1,
         },
       },
@@ -324,8 +324,8 @@ describe('rateLimiter middleware', () => {
     expect(next2).not.toHaveBeenCalled();
     expect(res.statusCode).toBe(429);
 
-    // Advance time by another 1ms (t = 1000). Exactly window_ms.
-    // (now - timestamp < window_ms) => (1000 - 0 < 1000) => (1000 < 1000) => false.
+    // Advance time by another 1ms (t = 1000). Exactly windowMs.
+    // (now - timestamp < windowMs) => (1000 - 0 < 1000) => (1000 < 1000) => false.
     // Timestamp expires, request should be allowed.
     vi.advanceTimersByTime(1);
     res.statusCode = 200;
@@ -339,8 +339,8 @@ describe('rateLimiter middleware', () => {
     const req = {
       client: {
         name: clientName,
-        rate_limit: {
-          window_ms: 1000,
+        rateLimit: {
+          windowMs: 1000,
           max: 5,
         },
       },
@@ -375,8 +375,8 @@ describe('rateLimiter middleware', () => {
     const reqStringMax = {
       client: {
         name: 'string-max-client',
-        rate_limit: {
-          window_ms: 1000,
+        rateLimit: {
+          windowMs: 1000,
           max: 'invalid',
         },
       },
@@ -384,8 +384,8 @@ describe('rateLimiter middleware', () => {
     const reqStringWindow = {
       client: {
         name: 'string-window-client',
-        rate_limit: {
-          window_ms: 'invalid',
+        rateLimit: {
+          windowMs: 'invalid',
           max: 10,
         },
       },
@@ -405,8 +405,8 @@ describe('rateLimiter middleware', () => {
     const req = {
       client: {
         name: 'minimal-limit-client',
-        rate_limit: {
-          window_ms: 1000,
+        rateLimit: {
+          windowMs: 1000,
           max: 1,
         },
       },
@@ -429,8 +429,8 @@ describe('rateLimiter middleware', () => {
     const req = {
       client: {
         name: 'huge-limit-client',
-        rate_limit: {
-          window_ms: 1000,
+        rateLimit: {
+          windowMs: 1000,
           max: 100000,
         },
       },
@@ -449,8 +449,8 @@ describe('rateLimiter middleware', () => {
     const req = {
       client: {
         name: 'reset-test-client',
-        rate_limit: {
-          window_ms: 1000,
+        rateLimit: {
+          windowMs: 1000,
           max: 1,
         },
       },
@@ -484,8 +484,8 @@ describe('rateLimiter middleware', () => {
     const req = {
       client: {
         name: '',
-        rate_limit: {
-          window_ms: 1000,
+        rateLimit: {
+          windowMs: 1000,
           max: 2,
         },
       },
@@ -494,7 +494,7 @@ describe('rateLimiter middleware', () => {
     const next = vi.fn();
 
     // Since client.name is an empty string, rateLimiter is bypassed
-    // according to the check: if (!client || !client.name || !client.rate_limit)
+    // according to the check: if (!client || !client.name || !client.rateLimit)
     rateLimiter(req, res, next);
     expect(next).toHaveBeenCalled();
   });

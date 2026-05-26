@@ -106,8 +106,8 @@ describe('AnthropicAdapter Tests', () => {
       model: 'anthropic/claude-3-5-sonnet',
       actualModelId: 'claude-3-5-sonnet',
       messages: [{ role: 'user', content: 'solve' }],
-      thinkingEnabled: true,
-      thinkingLevel: 'high',
+      reasoningSupported: true,
+      reasoningEffort: 'high',
     };
 
     const response = await adapter.generateCompletion(req, 'anthropic-key');
@@ -140,38 +140,34 @@ describe('AnthropicAdapter Tests', () => {
 
     // 429
     expect(adapter.normalizeError({ statusCode: 429 })).toEqual({
-      code: 'upstream_rate_limited',
+      code: 'upstreamRateLimited',
       message: expect.any(String),
       httpStatus: 503,
       provider: 'anthropic',
-      providerName: 'anthropic',
     });
 
     // 402
     expect(adapter.normalizeError({ response: { status: 402 } })).toEqual({
-      code: 'quota_exhausted',
+      code: 'quotaExhausted',
       message: expect.any(String),
       httpStatus: 503,
       provider: 'anthropic',
-      providerName: 'anthropic',
     });
 
     // 403
     expect(adapter.normalizeError({ response: { status: 403 } })).toEqual({
-      code: 'quota_exhausted',
+      code: 'quotaExhausted',
       message: expect.any(String),
       httpStatus: 503,
       provider: 'anthropic',
-      providerName: 'anthropic',
     });
 
     // other
     expect(adapter.normalizeError({ message: 'Unknown Error' })).toEqual({
-      code: 'upstream_error',
+      code: 'upstreamError',
       message: 'Unknown Error',
       httpStatus: 502,
       provider: 'anthropic',
-      providerName: 'anthropic',
     });
   });
 
@@ -215,13 +211,13 @@ describe('AnthropicAdapter Tests', () => {
     expect(chunks[2].choices[0].finish_reason).toBe('stop');
   });
 
-  it('assert: thinkingEnabled true without thinkingLevel uses default budget 2048', async () => {
+  it('assert: reasoningSupported true without reasoningEffort uses default budget 2048', async () => {
     const adapter = new AnthropicAdapter();
     const req = {
       model: 'anthropic/claude-3-5-sonnet',
       actualModelId: 'claude-3-5-sonnet',
       messages: [],
-      thinkingEnabled: true,
+      reasoningSupported: true,
     };
 
     mockFetch.mockResolvedValue({
@@ -242,13 +238,13 @@ describe('AnthropicAdapter Tests', () => {
     );
   });
 
-  it('assert: thinking_supported: true enables thinking option with default budget', async () => {
+  it('assert: reasoningSupported: true enables thinking option with default budget', async () => {
     const adapter = new AnthropicAdapter();
     const req = {
       model: 'anthropic/claude-3-5-sonnet',
       actualModelId: 'claude-3-5-sonnet',
       messages: [],
-      thinking_supported: true,
+      reasoningSupported: true,
     };
 
     mockFetch.mockResolvedValue({
@@ -275,8 +271,8 @@ describe('AnthropicAdapter Tests', () => {
       model: 'anthropic/claude-3-5-sonnet',
       actualModelId: 'claude-3-5-sonnet',
       messages: [],
-      thinkingEnabled: true,
-      thinkingLevel: 'low',
+      reasoningSupported: true,
+      reasoningEffort: 'low',
       temperature: 0.8,
       maxTokens: 2000,
     };

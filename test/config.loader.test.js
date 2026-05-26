@@ -19,8 +19,8 @@ function writeTempConfig(content) {
   if (!content.includes('logging:')) {
     fullContent += `
 logging:
-  enable_console: true
-  enable_file: false
+  enableConsole: true
+  enableFile: false
   format: "json"
 `;
   }
@@ -29,8 +29,8 @@ logging:
 clients:
   - name: "test-client"
     token: "test-token"
-    rate_limit:
-      window_ms: 60000
+    rateLimit:
+      windowMs: 60000
       max: 100
 `;
   }
@@ -197,13 +197,13 @@ describe('Configuration Loader Tests', () => {
       consoleErrorSpy.mockRestore();
     });
 
-    it('should exit with error if a custom provider lacks a base_url', () => {
+    it('should exit with error if a custom provider lacks a baseUrl', () => {
       const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
         throw new Error('process.exit called');
       });
       const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
 
-      // Write a custom provider 'my-ollama' without the required base_url property.
+      // Write a custom provider 'my-ollama' without the required baseUrl property.
       writeTempConfig(`
 gateway:
   port: 20128
@@ -217,22 +217,22 @@ providers:
       - id: "llama3"
 `);
 
-      // Assertion: Custom provider without base_url is a fatal error.
+      // Assertion: Custom provider without baseUrl is a fatal error.
       expect(() => {
         configLoader.loadConfig(tempConfigPath);
       }).toThrow('process.exit called');
 
       expect(exitSpy).toHaveBeenCalledWith(1);
       expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Provider 'my-ollama' is a custom provider and must specify a non-empty 'base_url'"),
+        expect.stringContaining("Provider 'my-ollama' is a custom provider and must specify a non-empty 'baseUrl'"),
       );
 
       exitSpy.mockRestore();
       consoleErrorSpy.mockRestore();
     });
 
-    it('should load successfully if custom provider has base_url and keys', () => {
-      // Write custom provider with correct base_url config.
+    it('should load successfully if custom provider has baseUrl and keys', () => {
+      // Write custom provider with correct baseUrl config.
       writeTempConfig(`
 gateway:
   port: 20128
@@ -240,7 +240,7 @@ gateway:
     strategy: "round-robin"
 providers:
   my-ollama:
-    base_url: "http://localhost:11434/v1"
+    baseUrl: "http://localhost:11434/v1"
     keys:
       - "ollama-key"
     models:
@@ -250,12 +250,12 @@ providers:
       const config = configLoader.loadConfig(tempConfigPath);
 
       // Assertion: Validation passes.
-      expect(config.providers['my-ollama'].base_url).toBe('http://localhost:11434/v1');
+      expect(config.providers['my-ollama'].baseUrl).toBe('http://localhost:11434/v1');
       expect(config.providers['my-ollama'].keys).toContain('ollama-key');
     });
 
     it('should support custom injected reserved provider registry', () => {
-      // Write custom provider 'cohere' without base_url, but it will be in the custom reserved set.
+      // Write custom provider 'cohere' without baseUrl, but it will be in the custom reserved set.
       writeTempConfig(`
 gateway:
   port: 20128
@@ -272,7 +272,7 @@ providers:
       const customReserved = new Set(['cohere']);
       const config = configLoader.loadConfig(tempConfigPath, customReserved);
 
-      // Cohere must not crash validation (no base_url needed) because it was injected as reserved.
+      // Cohere must not crash validation (no baseUrl needed) because it was injected as reserved.
       expect(config.providers.cohere.keys).toContain('cohere-key');
     });
 
@@ -311,7 +311,7 @@ gateway:
     strategy: "round-robin"
 providers:
   my-ollama:
-    base_url: "http://localhost:11434/v1"
+    baseUrl: "http://localhost:11434/v1"
     keys:
       - "ollama-key"
     models:
@@ -333,7 +333,7 @@ gateway:
 providers:
   my-ollama:
     type: "openai-compatible"
-    base_url: "http://localhost:11434/v1"
+    baseUrl: "http://localhost:11434/v1"
     keys:
       - "ollama-key"
     models:
@@ -354,7 +354,7 @@ gateway:
 providers:
   my-proxy:
     type: "anthropic-compatible"
-    base_url: "https://my-proxy.example.com/v1"
+    baseUrl: "https://my-proxy.example.com/v1"
     keys:
       - "proxy-key"
     models:
@@ -410,7 +410,7 @@ gateway:
 providers:
   my-provider:
     type: "invalid-type"
-    base_url: "http://localhost:8080/v1"
+    baseUrl: "http://localhost:8080/v1"
     keys:
       - "some-key"
     models:
@@ -431,179 +431,6 @@ providers:
     });
   });
 
-  describe('Hot-Reload & Watcher', () => {
-    it('should watch the configuration file and update by returning a new frozen snapshot', () => new Promise((resolve, reject) => {
-      writeTempConfig(`
-gateway:
-  port: 20128
-  routing:
-    strategy: "round-robin"
-providers:
-  gemini:
-    keys:
-      - "key-1"
-    models:
-      - id: "gemini-2.5-pro"
-`);
-
-      const config = configLoader.loadConfig(tempConfigPath);
-      expect(config.providers.gemini.keys).toContain('key-1');
-      expect(Object.isFrozen(config)).toBe(true);
-
-      // Subscribe to configuration changes.
-      const unsubscribe = configLoader.onConfigChange((newConfig, oldConfig) => {
-        try {
-          // Verify that the new config contains the updated value and is frozen.
-          expect(newConfig.providers.gemini.keys).toContain('key-2');
-          expect(Object.isFrozen(newConfig)).toBe(true);
-
-          // Verify that the old config contains the old value, is frozen, and remains unchanged.
-          expect(oldConfig.providers.gemini.keys).toContain('key-1');
-          expect(Object.isFrozen(oldConfig)).toBe(true);
-
-          // References must differ (immutable snapshots); oldConfig matches the initial config.
-          expect(config).toBe(oldConfig);
-          // newConfig is a different frozen snapshot from oldConfig
-          expect(config).not.toBe(newConfig);
-
-          unsubscribe();
-          resolve();
-        } catch (err) {
-          unsubscribe();
-          reject(err);
-        }
-      });
-
-      // Trigger change by writing to file.
-      writeTempConfig(`
-gateway:
-  port: 20128
-  routing:
-    strategy: "round-robin"
-providers:
-  gemini:
-    keys:
-      - "key-2"
-    models:
-      - id: "gemini-2.5-pro"
-`);
-    }));
-
-    it('should warn when structural configuration changes during watch', () => new Promise((resolve, reject) => {
-      writeTempConfig(`
-gateway:
-  port: 20128
-  routing:
-    strategy: "round-robin"
-providers:
-  gemini:
-    keys:
-      - "key-1"
-    models:
-      - id: "gemini-2.5-pro"
-`);
-
-      configLoader.loadConfig(tempConfigPath);
-      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
-
-      // Subscribe to configuration changes.
-      const unsubscribe = configLoader.onConfigChange(() => {
-        try {
-          // Assertion: Warning emitted when structural config (e.g. gateway port) is modified.
-          expect(consoleWarnSpy).toHaveBeenCalledWith(
-            // eslint-disable-next-line max-len
-            expect.stringContaining('Structural configuration changed. A process restart is required'),
-          );
-          consoleWarnSpy.mockRestore();
-          unsubscribe();
-          resolve();
-        } catch (err) {
-          consoleWarnSpy.mockRestore();
-          unsubscribe();
-          reject(err);
-        }
-      });
-
-      // Trigger structural change (port changed from 20128 to 30000).
-      writeTempConfig(`
-gateway:
-  port: 30000
-  routing:
-    strategy: "round-robin"
-providers:
-  gemini:
-    keys:
-      - "key-1"
-    models:
-      - id: "gemini-2.5-pro"
-`);
-    }));
-
-    it('should not exit the process and log an error when configuration reload fails due to validation errors', () => new Promise((resolve, reject) => {
-      // Write standard valid temp config
-      writeTempConfig(`
-gateway:
-  port: 20128
-  routing:
-    strategy: "round-robin"
-providers:
-  gemini:
-    keys:
-      - "key-1"
-    models:
-      - id: "gemini-2.5-pro"
-`);
-
-      configLoader.loadConfig(tempConfigPath);
-
-      // Spy on process.exit and console.error
-      const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
-        throw new Error('process.exit called');
-      });
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
-
-      // Setup a listener that shouldn't fire because the reload is invalid
-      const unsubscribe = configLoader.onConfigChange(() => {
-        unsubscribe();
-        exitSpy.mockRestore();
-        consoleErrorSpy.mockRestore();
-        reject(new Error('onConfigChange listener should not have been called for invalid config'));
-      });
-
-      // Trigger change with an invalid config (invalid port)
-      writeTempConfig(`
-gateway:
-  port: -1
-  routing:
-    strategy: "round-robin"
-providers:
-  gemini:
-    keys: []
-    models:
-      - id: "gemini-2.5-pro"
-`);
-
-      // Wait a short time to verify process.exit is not called and the error is logged
-      setTimeout(() => {
-        try {
-          expect(exitSpy).not.toHaveBeenCalled();
-          expect(consoleErrorSpy).toHaveBeenCalledWith(
-            expect.stringContaining('Error reloading configuration file on change'),
-          );
-          unsubscribe();
-          exitSpy.mockRestore();
-          consoleErrorSpy.mockRestore();
-          resolve();
-        } catch (err) {
-          unsubscribe();
-          exitSpy.mockRestore();
-          consoleErrorSpy.mockRestore();
-          reject(err);
-        }
-      }, 200);
-    }));
-  });
-
   describe('Extended Loader Features', () => {
     it('should coerce stringified environment variables for numeric fields into actual numbers', () => {
       process.env.GATEWAY_PORT = '30001';
@@ -616,14 +443,14 @@ gateway:
   routing:
     strategy: "round-robin"
 logging:
-  enable_console: true
-  enable_file: false
+  enableConsole: true
+  enableFile: false
   format: "json"
 clients:
   - name: "test-client"
     token: "test-token"
-    rate_limit:
-      window_ms: "\${RATE_LIMIT_WINDOW}"
+    rateLimit:
+      windowMs: "\${RATE_LIMIT_WINDOW}"
       max: "\${RATE_LIMIT_MAX}"
 providers:
   gemini:
@@ -639,81 +466,12 @@ providers:
       expect(typeof config.gateway.port).toBe('number');
       expect(config.gateway.port).toBe(30001);
 
-      expect(typeof config.clients[0].rate_limit.max).toBe('number');
-      expect(config.clients[0].rate_limit.max).toBe(50);
+      expect(typeof config.clients[0].rateLimit.max).toBe('number');
+      expect(config.clients[0].rateLimit.max).toBe(50);
 
-      expect(typeof config.clients[0].rate_limit.window_ms).toBe('number');
-      expect(config.clients[0].rate_limit.window_ms).toBe(30000);
+      expect(typeof config.clients[0].rateLimit.windowMs).toBe('number');
+      expect(config.clients[0].rateLimit.windowMs).toBe(30000);
     });
-
-    it('should handle rename event (atomic save) by closing the old watcher and re-initializing the new watcher', () => new Promise((resolve, reject) => {
-      writeTempConfig(`
-gateway:
-  port: 20128
-  routing:
-    strategy: "round-robin"
-providers:
-  gemini:
-    keys:
-      - "key-1"
-    models:
-      - id: "gemini-2.5-pro"
-`);
-
-      const config = configLoader.loadConfig(tempConfigPath);
-      expect(config.providers.gemini.keys).toContain('key-1');
-
-      let triggerCount = 0;
-      const unsubscribe = configLoader.onConfigChange((newConfig) => {
-        try {
-          triggerCount += 1;
-          if (triggerCount === 1) {
-            expect(newConfig.providers.gemini.keys).toContain('key-2');
-            // Trigger a second write (rename/atomic save style) to verify the new watcher works!
-            if (fs.existsSync(tempConfigPath)) {
-              fs.unlinkSync(tempConfigPath);
-            }
-            writeTempConfig(`
-gateway:
-  port: 20128
-  routing:
-    strategy: "round-robin"
-providers:
-  gemini:
-    keys:
-      - "key-3"
-    models:
-      - id: "gemini-2.5-pro"
-`);
-          } else if (triggerCount === 2) {
-            expect(newConfig.providers.gemini.keys).toContain('key-3');
-            unsubscribe();
-            resolve();
-          }
-        } catch (err) {
-          unsubscribe();
-          reject(err);
-        }
-      });
-
-      // Simulate atomic save: unlink then write.
-      if (fs.existsSync(tempConfigPath)) {
-        fs.unlinkSync(tempConfigPath);
-      }
-      writeTempConfig(`
-gateway:
-  port: 20128
-  routing:
-    strategy: "round-robin"
-providers:
-  gemini:
-    keys:
-      - "key-2"
-    models:
-      - id: "gemini-2.5-pro"
-`);
-      // fs.watch triggers the rename event naturally on Linux when the file is unlinked.
-    }));
 
     it('should safely handle non-string (e.g. numeric) env variables without throwing trim TypeErrors', () => {
       // Stub process.env to return a number for our placeholder
@@ -739,135 +497,67 @@ providers:
       const config = configLoader.currentConfig;
       expect(config.gateway.port).toBe(30005);
     });
-
-    it('should stop watching and log warning after 5 failed watch attempts (infinite loop prevention)', () => {
-      vi.useFakeTimers();
-      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
-      const fsWatchSpy = vi.spyOn(fs, 'watch').mockImplementation(() => {
-        throw new Error('Watch failed');
-      });
-
-      writeTempConfig(`
-gateway:
-  port: 20128
-  routing:
-    strategy: "round-robin"
-providers:
-  gemini:
-    keys:
-      - "key-1"
-    models:
-      - id: "gemini-2.5-pro"
-`);
-
-      configLoader.loadConfig(tempConfigPath);
-
-      // Fast forward time to trigger all 5 attempts
-      vi.runAllTimers();
-
-      expect(fsWatchSpy).toHaveBeenCalledTimes(5);
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Stopped watching configuration file after 5 failed attempts'),
-      );
-      expect(configLoader.isWatching).toBe(false);
-
-      consoleWarnSpy.mockRestore();
-      fsWatchSpy.mockRestore();
-      vi.useRealTimers();
-    });
-
-    it('should handle config watch reload when the file is deleted before the debounce timer fires', () => new Promise((resolve) => {
-      writeTempConfig(`
-gateway:
-  port: 20128
-providers:
-  gemini:
-    keys: ["key-1"]
-    models: [{ id: "gemini-2.5-pro" }]
-`);
-      configLoader.loadConfig(tempConfigPath);
-
-      // We do not subscribe to config change because we expect it NOT to fire when deleted.
-      // Trigger reload by touching the config
-      writeTempConfig(`
-gateway:
-  port: 20128
-providers:
-  gemini:
-    keys: ["key-2"]
-    models: [{ id: "gemini-2.5-pro" }]
-`);
-
-      // Immediately delete the file so that when debounce fires in 100ms, it is missing
-      removeTempConfig();
-
-      setTimeout(() => {
-        // Assert loader did not crash and kept the current config intact
-        expect(configLoader.currentConfig.providers.gemini.keys).toContain('key-1');
-        resolve();
-      }, 200);
-    }));
   });
 
   describe('Configuration Validation Edge Cases', () => {
     it('should throw validation error when gateway field is missing and shouldExit is false', () => {
       // eslint-disable-next-line global-require
-      const { validateConfig } = require('../src/config/loader.js');
+      const { validateConfig } = require('../src/config/validator.js');
       expect(() => {
         validateConfig({}, false);
       }).toThrow("Missing structural field 'gateway'.");
     });
 
-    it('should throw validation error when gateway.http_timeout_ms is invalid and shouldExit is false', () => {
+    it('should throw validation error when gateway.httpTimeoutMs is invalid and shouldExit is false', () => {
       // eslint-disable-next-line global-require
-      const { validateConfig } = require('../src/config/loader.js');
+      const { validateConfig } = require('../src/config/validator.js');
       const invalidConfig = {
         gateway: {
           port: 8080,
-          http_timeout_ms: -5,
+          httpTimeoutMs: -5,
         },
       };
       expect(() => {
         validateConfig(invalidConfig, false);
-      }).toThrow("Invalid 'gateway.http_timeout_ms'. Must be a positive integer.");
+      }).toThrow("Invalid 'gateway.httpTimeoutMs'. Must be a positive integer.");
     });
 
     it('should allow fallback model reference to a provider that exists structurally but was deleted/omitted during validation', () => {
       // eslint-disable-next-line global-require
-      const { validateConfig } = require('../src/config/loader.js');
+      const { validateConfig } = require('../src/config/validator.js');
       const config = {
         gateway: {
           port: 20128,
           routing: { strategy: 'round-robin' },
         },
         logging: {
-          enable_console: true,
-          enable_file: false,
+          enableConsole: true,
+          enableFile: false,
           format: 'json',
         },
         clients: [
           {
             name: 'open-webui',
             token: 'some-token',
-            rate_limit: { window_ms: 60000, max: 100 },
+            rateLimit: { windowMs: 60000, max: 100 },
           },
         ],
         providers: {
           'primary-provider': {
-            base_url: 'http://localhost:8080',
+            baseUrl: 'http://localhost:8080',
             keys: ['key-a'],
             get models() {
               delete config.providers['fallback-provider'];
               return [
                 {
                   id: 'model-a',
-                  fallback_model: 'fallback-provider/model-b',
+                  fallbackModel: 'fallback-provider/model-b',
                 },
               ];
             },
           },
           'fallback-provider': {
-            base_url: 'http://localhost:8080',
+            baseUrl: 'http://localhost:8080',
             keys: ['key-b'],
             models: [{ id: 'model-b' }],
           },

@@ -17,7 +17,7 @@ import { logDebug, logWarning } from '../utils/loggerHelpers.js';
  * @param {Object} keyRegistry - Stateful API key registry instance.
  * @returns {Object} Normalized 503 error payload with retry duration.
  */
-export function buildAllKeysExhaustedError(provider, keyRegistry) {
+function buildAllKeysExhaustedError(provider, keyRegistry) {
   let retryAfterSeconds = 0;
   const keys = keyRegistry.pools[provider]?.keys;
   if (keys) {
@@ -36,7 +36,7 @@ export function buildAllKeysExhaustedError(provider, keyRegistry) {
 
   return {
     error: {
-      code: 'all_keys_exhausted',
+      code: 'allKeysExhausted',
       message: `All keys for provider '${provider}' are currently in cooldown. Retry after ${retryAfterSeconds} seconds.`,
       retryAfterSeconds,
       provider,
@@ -81,7 +81,7 @@ export const executeWithRetry = async ({
       logDebug(logger, 'Request aborted during retry loop check');
       return {
         error: {
-          code: 'request_cancelled',
+          code: 'requestCancelled',
           message: 'Request was cancelled by the client.',
           provider,
           httpStatus: 499,
@@ -201,7 +201,7 @@ export const executeWithRetry = async ({
         logDebug(logger, 'Request aborted during adapter call exception handling');
         return {
           error: {
-            code: 'request_cancelled',
+            code: 'requestCancelled',
             message: 'Request was cancelled by the client.',
             provider,
             httpStatus: 499,

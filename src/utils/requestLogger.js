@@ -4,8 +4,6 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { getAppLogger } from './logger.js';
 import {
-  sanitizeUrl,
-  serializeHeaders,
   shortId,
   safeTimestamp,
   redactHeaders,
@@ -14,21 +12,11 @@ import {
 
 const logger = getAppLogger('request-logger');
 
-// Re-export utility functions so existing imports don't break.
-export {
-  sanitizeUrl,
-  serializeHeaders,
-  shortId,
-  safeTimestamp,
-  redactHeaders,
-  writeJsonFile,
-};
-
 /**
  * No-op stub returned when request logging is disabled.
  * The null object pattern prevents massive nested if checks in downstream operations.
  */
-export const NOOP_LOG = Object.freeze({
+const NOOP_LOG = Object.freeze({
   logProviderRequest() {},
   logProviderResponse() {},
   logProviderStreamSummary() {},
@@ -272,13 +260,13 @@ export class RequestLog {
  */
 export function createRequestLog(req, config) {
   const loggingConfig = config?.logging || {};
-  if (!loggingConfig.log_requests) {
+  if (!loggingConfig.logRequests) {
     return NOOP_LOG;
   }
 
   const now = new Date();
   const id = shortId();
-  let logPath = loggingConfig.request_log_path;
+  let logPath = loggingConfig.requestLogPath;
   if (process.env.VITEST) {
     if (!logPath || logPath === './logs/requests' || logPath === 'logs/requests' || logPath.endsWith('/logs/requests') || logPath.endsWith('\\logs/requests')) {
       logPath = './logs/requests-test';
@@ -314,5 +302,3 @@ export function createRequestLog(req, config) {
   logger.debug('Request log created', { dir, id });
   return reqLog;
 }
-
-export default createRequestLog;

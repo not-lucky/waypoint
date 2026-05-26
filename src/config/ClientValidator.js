@@ -35,19 +35,19 @@ export class ClientValidator {
       if (!isNonEmptyString(client.token)) {
         logErrorAndExitOrThrow(`Missing or empty 'token' for client at index ${i}.`, shouldExit, customLogger);
       }
-      if (!client.rate_limit || typeof client.rate_limit !== 'object') {
-        logErrorAndExitOrThrow(`Missing structural field 'rate_limit' for client at index ${i}.`, shouldExit, customLogger);
+      if (!client.rateLimit || typeof client.rateLimit !== 'object') {
+        logErrorAndExitOrThrow(`Missing structural field 'rateLimit' for client at index ${i}.`, shouldExit, customLogger);
       }
-      if (!isPositiveInteger(client.rate_limit.window_ms)) {
+      if (!isPositiveInteger(client.rateLimit.windowMs)) {
         logErrorAndExitOrThrow(
-          `Invalid or missing 'rate_limit.window_ms' for client at index ${i}. Must be a positive integer.`,
+          `Invalid or missing 'rateLimit.windowMs' for client at index ${i}. Must be a positive integer.`,
           shouldExit,
           customLogger,
         );
       }
-      if (!isPositiveInteger(client.rate_limit.max)) {
+      if (!isPositiveInteger(client.rateLimit.max)) {
         logErrorAndExitOrThrow(
-          `Invalid or missing 'rate_limit.max' for client at index ${i}. Must be a positive integer.`,
+          `Invalid or missing 'rateLimit.max' for client at index ${i}. Must be a positive integer.`,
           shouldExit,
           customLogger,
         );

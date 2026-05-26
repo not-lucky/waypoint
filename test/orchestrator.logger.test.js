@@ -62,7 +62,7 @@ describe('UnifiedOrchestrator – Logger Integration', () => {
   let consoleWarnSpy;
 
   const baseConfig = {
-    gateway: { global_retry_limit: 3 },
+    gateway: { globalRetryLimit: 3 },
     providers: {
       'mock-provider': {
         keys: ['key-1', 'key-2', 'key-3'],
@@ -240,7 +240,7 @@ describe('UnifiedOrchestrator – Logger Integration', () => {
 
   it('should log warnings for both primary and fallback provider failures', async () => {
     const config = {
-      gateway: { global_retry_limit: 1 },
+      gateway: { globalRetryLimit: 1 },
       providers: {
         primary: { keys: ['pk1'] },
         fallback: { keys: ['fk1'] },

@@ -132,4 +132,16 @@ export async function* parseSSEStream(responseBody, signal) {
   }
 }
 
-export default parseSSEStream;
+/**
+ * Parses a single SSE data payload into JSON, returning null for terminal or invalid frames.
+ */
+export function parseSSEEventData(data) {
+  if (data === '[DONE]') {
+    return null;
+  }
+  try {
+    return JSON.parse(data);
+  } catch (err) {
+    return null;
+  }
+}

@@ -26,10 +26,8 @@ describe('authMiddleware', () => {
   };
 
   it('assert: no Authorization header -> 401 {error:{code:\'unauthorized\'}}', () => {
-    const mockConfigLoader = {
-      loadConfig: vi.fn().mockReturnValue({
-        clients: [{ name: 'test-client', token: 'valid-token' }],
-      }),
+    const mockConfig = {
+      clients: [{ name: 'test-client', token: 'valid-token' }],
     };
 
     const req = {
@@ -39,7 +37,7 @@ describe('authMiddleware', () => {
     const res = createMockResponse();
     const next = vi.fn();
 
-    authMiddleware(mockConfigLoader)(req, res, next);
+    authMiddleware(mockConfig)(req, res, next);
 
     expect(res.statusCode).toBe(401);
     expect(res.body).toEqual({
@@ -53,10 +51,8 @@ describe('authMiddleware', () => {
   });
 
   it('assert: unrecognized token -> 401', () => {
-    const mockConfigLoader = {
-      loadConfig: vi.fn().mockReturnValue({
-        clients: [{ name: 'test-client', token: 'valid-token' }],
-      }),
+    const mockConfig = {
+      clients: [{ name: 'test-client', token: 'valid-token' }],
     };
 
     const req = {
@@ -68,7 +64,7 @@ describe('authMiddleware', () => {
     const res = createMockResponse();
     const next = vi.fn();
 
-    authMiddleware(mockConfigLoader)(req, res, next);
+    authMiddleware(mockConfig)(req, res, next);
 
     expect(res.statusCode).toBe(401);
     expect(res.body.error).toBeDefined();
@@ -78,10 +74,8 @@ describe('authMiddleware', () => {
   });
 
   it('assert: valid token -> next() called, req.client.name matches config entry name', () => {
-    const mockConfigLoader = {
-      loadConfig: vi.fn().mockReturnValue({
-        clients: [{ name: 'test-client', token: 'valid-token' }],
-      }),
+    const mockConfig = {
+      clients: [{ name: 'test-client', token: 'valid-token' }],
     };
 
     const req = {
@@ -93,7 +87,7 @@ describe('authMiddleware', () => {
     const res = createMockResponse();
     const next = vi.fn();
 
-    authMiddleware(mockConfigLoader)(req, res, next);
+    authMiddleware(mockConfig)(req, res, next);
 
     expect(next).toHaveBeenCalled();
     expect(req.client).toBeDefined();
@@ -102,10 +96,8 @@ describe('authMiddleware', () => {
   });
 
   it('should tolerate lowercase "bearer" and multiple spaces', () => {
-    const mockConfigLoader = {
-      loadConfig: vi.fn().mockReturnValue({
-        clients: [{ name: 'another-client', token: 'another-token' }],
-      }),
+    const mockConfig = {
+      clients: [{ name: 'another-client', token: 'another-token' }],
     };
 
     const req = {
@@ -119,7 +111,7 @@ describe('authMiddleware', () => {
     const res = createMockResponse();
     const next = vi.fn();
 
-    authMiddleware(mockConfigLoader)(req, res, next);
+    authMiddleware(mockConfig)(req, res, next);
 
     expect(next).toHaveBeenCalled();
     expect(req.client).toBeDefined();
@@ -127,10 +119,7 @@ describe('authMiddleware', () => {
   });
 
   it('should return 401 when the client configuration list is missing', () => {
-    const mockConfigLoader = {
-      // Configuration might be empty or missing the clients section entirely
-      loadConfig: vi.fn().mockReturnValue({}),
-    };
+    const mockConfig = {};
 
     const req = {
       headers: {
@@ -141,7 +130,7 @@ describe('authMiddleware', () => {
     const res = createMockResponse();
     const next = vi.fn();
 
-    authMiddleware(mockConfigLoader)(req, res, next);
+    authMiddleware(mockConfig)(req, res, next);
 
     expect(res.statusCode).toBe(401);
     expect(res.body.error.code).toBe('unauthorized');
@@ -150,10 +139,8 @@ describe('authMiddleware', () => {
 
   // Edge Case: Empty Authorization header value or only spaces
   it('should return 401 when Authorization header is empty or only whitespace', () => {
-    const mockConfigLoader = {
-      loadConfig: vi.fn().mockReturnValue({
-        clients: [{ name: 'test-client', token: 'valid-token' }],
-      }),
+    const mockConfig = {
+      clients: [{ name: 'test-client', token: 'valid-token' }],
     };
 
     const testHeaders = ['', '   '];
@@ -167,7 +154,7 @@ describe('authMiddleware', () => {
       const res = createMockResponse();
       const next = vi.fn();
 
-      authMiddleware(mockConfigLoader)(req, res, next);
+      authMiddleware(mockConfig)(req, res, next);
 
       expect(res.statusCode).toBe(401);
       expect(res.body.error.code).toBe('unauthorized');
@@ -177,10 +164,8 @@ describe('authMiddleware', () => {
 
   // Edge Case: Invalid format of the Authorization header (missing Bearer, extra arguments, etc.)
   it('should return 401 for various invalid format edge cases', () => {
-    const mockConfigLoader = {
-      loadConfig: vi.fn().mockReturnValue({
-        clients: [{ name: 'test-client', token: 'valid-token' }],
-      }),
+    const mockConfig = {
+      clients: [{ name: 'test-client', token: 'valid-token' }],
     };
 
     const invalidFormats = [
@@ -202,7 +187,7 @@ describe('authMiddleware', () => {
       const res = createMockResponse();
       const next = vi.fn();
 
-      authMiddleware(mockConfigLoader)(req, res, next);
+      authMiddleware(mockConfig)(req, res, next);
 
       expect(res.statusCode).toBe(401);
       expect(res.body.error.code).toBe('unauthorized');
@@ -213,10 +198,8 @@ describe('authMiddleware', () => {
 
   // Edge Case: Token values must be case-sensitive
   it('should enforce case-sensitivity for client token matching', () => {
-    const mockConfigLoader = {
-      loadConfig: vi.fn().mockReturnValue({
-        clients: [{ name: 'test-client', token: 'vAlId-ToKeN' }],
-      }),
+    const mockConfig = {
+      clients: [{ name: 'test-client', token: 'vAlId-ToKeN' }],
     };
 
     // Scheme ('Bearer') is case-insensitive, but the token part ('vAlId-ToKeN') must match exactly
@@ -229,61 +212,20 @@ describe('authMiddleware', () => {
     const res = createMockResponse();
     const next = vi.fn();
 
-    authMiddleware(mockConfigLoader)(req, res, next);
+    authMiddleware(mockConfig)(req, res, next);
 
     expect(res.statusCode).toBe(401);
     expect(res.body.error.code).toBe('unauthorized');
     expect(next).not.toHaveBeenCalled();
   });
 
-  // Edge Case: Hot-reloading config changes between successive requests
-  it('should dynamically load updated configuration (hot-reload reactivity)', () => {
-    const configState = {
-      clients: [{ name: 'client-1', token: 'token-1' }],
-    };
-
-    const mockConfigLoader = {
-      loadConfig: () => configState,
-    };
-
-    const middleware = authMiddleware(mockConfigLoader);
-
-    // First request: token-1 should succeed
-    const req1 = { headers: { authorization: 'Bearer token-1' } };
-    const res1 = createMockResponse();
-    const next1 = vi.fn();
-    middleware(req1, res1, next1);
-    expect(next1).toHaveBeenCalled();
-
-    // Hot-reload simulator: Change the config state (e.g. revoke token-1, add token-2)
-    configState.clients = [{ name: 'client-2', token: 'token-2' }];
-
-    // Second request: token-1 should now fail
-    const req2 = { headers: { authorization: 'Bearer token-1' } };
-    const res2 = createMockResponse();
-    const next2 = vi.fn();
-    middleware(req2, res2, next2);
-    expect(res2.statusCode).toBe(401);
-    expect(next2).not.toHaveBeenCalled();
-
-    // Third request: token-2 should now succeed
-    const req3 = { headers: { authorization: 'Bearer token-2' } };
-    const res3 = createMockResponse();
-    const next3 = vi.fn();
-    middleware(req3, res3, next3);
-    expect(next3).toHaveBeenCalled();
-    expect(req3.client.name).toBe('client-2');
-  });
-
   // Edge Case: Multiple client entries in configuration matching the same token
   it('should match the first client configuration profile when duplicate tokens exist', () => {
-    const mockConfigLoader = {
-      loadConfig: vi.fn().mockReturnValue({
-        clients: [
-          { name: 'first-client', token: 'duplicate-token', rate_limit: { max: 10 } },
-          { name: 'second-client', token: 'duplicate-token', rate_limit: { max: 20 } },
-        ],
-      }),
+    const mockConfig = {
+      clients: [
+        { name: 'first-client', token: 'duplicate-token', rateLimit: { max: 10 } },
+        { name: 'second-client', token: 'duplicate-token', rateLimit: { max: 20 } },
+      ],
     };
 
     const req = {
@@ -295,13 +237,13 @@ describe('authMiddleware', () => {
     const res = createMockResponse();
     const next = vi.fn();
 
-    authMiddleware(mockConfigLoader)(req, res, next);
+    authMiddleware(mockConfig)(req, res, next);
 
     expect(next).toHaveBeenCalled();
     expect(req.client).toBeDefined();
     // The middleware should attach the first matched client profile
     expect(req.client.name).toBe('first-client');
-    expect(req.client.rate_limit.max).toBe(10);
+    expect(req.client.rateLimit.max).toBe(10);
   });
 
   // Edge Case: Resilient to config returned as null, undefined or containing
@@ -316,10 +258,6 @@ describe('authMiddleware', () => {
     ];
 
     edgeConfigs.forEach((config) => {
-      const mockConfigLoader = {
-        loadConfig: vi.fn().mockReturnValue(config),
-      };
-
       const req = {
         headers: {
           authorization: 'Bearer valid-token',
@@ -329,7 +267,7 @@ describe('authMiddleware', () => {
       const res = createMockResponse();
       const next = vi.fn();
 
-      authMiddleware(mockConfigLoader)(req, res, next);
+      authMiddleware(config)(req, res, next);
 
       // If the configuration is missing or malformed, the authorization should safely fail with 401
       // and not crash the node process.
@@ -349,10 +287,8 @@ describe('authMiddleware', () => {
   // Edge Case: Authentication via x-api-key header (Anthropic compatibility)
   describe('x-api-key authentication', () => {
     it('assert: valid x-api-key -> next() called and client set', () => {
-      const mockConfigLoader = {
-        loadConfig: vi.fn().mockReturnValue({
-          clients: [{ name: 'anthropic-client', token: 'anthropic-token' }],
-        }),
+      const mockConfig = {
+        clients: [{ name: 'anthropic-client', token: 'anthropic-token' }],
       };
 
       const req = {
@@ -364,7 +300,7 @@ describe('authMiddleware', () => {
       const res = createMockResponse();
       const next = vi.fn();
 
-      authMiddleware(mockConfigLoader)(req, res, next);
+      authMiddleware(mockConfig)(req, res, next);
 
       // Intention: Valid client token passed via x-api-key should succeed.
       expect(next).toHaveBeenCalled();
@@ -374,10 +310,8 @@ describe('authMiddleware', () => {
     });
 
     it('assert: unrecognized x-api-key -> 401', () => {
-      const mockConfigLoader = {
-        loadConfig: vi.fn().mockReturnValue({
-          clients: [{ name: 'anthropic-client', token: 'anthropic-token' }],
-        }),
+      const mockConfig = {
+        clients: [{ name: 'anthropic-client', token: 'anthropic-token' }],
       };
 
       const req = {
@@ -389,7 +323,7 @@ describe('authMiddleware', () => {
       const res = createMockResponse();
       const next = vi.fn();
 
-      authMiddleware(mockConfigLoader)(req, res, next);
+      authMiddleware(mockConfig)(req, res, next);
 
       // Intention: Unrecognized token passed via x-api-key returns 401.
       expect(res.statusCode).toBe(401);
@@ -399,10 +333,8 @@ describe('authMiddleware', () => {
     });
 
     it('assert: empty or whitespace x-api-key -> 401', () => {
-      const mockConfigLoader = {
-        loadConfig: vi.fn().mockReturnValue({
-          clients: [{ name: 'anthropic-client', token: 'anthropic-token' }],
-        }),
+      const mockConfig = {
+        clients: [{ name: 'anthropic-client', token: 'anthropic-token' }],
       };
 
       const testValues = ['', '   '];
@@ -416,7 +348,7 @@ describe('authMiddleware', () => {
         const res = createMockResponse();
         const next = vi.fn();
 
-        authMiddleware(mockConfigLoader)(req, res, next);
+        authMiddleware(mockConfig)(req, res, next);
 
         // Intention: Empty/whitespace x-api-key header must fail.
         expect(res.statusCode).toBe(401);
@@ -427,13 +359,11 @@ describe('authMiddleware', () => {
     });
 
     it('assert: Authorization header takes precedence over x-api-key', () => {
-      const mockConfigLoader = {
-        loadConfig: vi.fn().mockReturnValue({
-          clients: [
-            { name: 'client-1', token: 'token-1' },
-            { name: 'client-2', token: 'token-2' },
-          ],
-        }),
+      const mockConfig = {
+        clients: [
+          { name: 'client-1', token: 'token-1' },
+          { name: 'client-2', token: 'token-2' },
+        ],
       };
 
       // Case A: Valid Authorization, invalid x-api-key -> Should succeed.
@@ -446,7 +376,7 @@ describe('authMiddleware', () => {
       const resA = createMockResponse();
       const nextA = vi.fn();
 
-      authMiddleware(mockConfigLoader)(reqA, resA, nextA);
+      authMiddleware(mockConfig)(reqA, resA, nextA);
 
       // Intention: Precedence rules dictate checking Authorization first.
       expect(nextA).toHaveBeenCalled();
@@ -462,7 +392,7 @@ describe('authMiddleware', () => {
       const resB = createMockResponse();
       const nextB = vi.fn();
 
-      authMiddleware(mockConfigLoader)(reqB, resB, nextB);
+      authMiddleware(mockConfig)(reqB, resB, nextB);
 
       // Intention: If Authorization is present but invalid, validation
       // fails and we do not fall back to x-api-key.

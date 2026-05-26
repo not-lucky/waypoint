@@ -1,7 +1,7 @@
 /**
  * @fileoverview Validator class for providers section of configuration.
  * Validates that providers are configured correctly, verify custom base URLs,
- * active API keys, model declarations, aliases, thinking budget configurations,
+ * active API keys, model declarations, aliases, reasoning settings,
  * and fallback models.
  * @module config/ProviderValidator
  */
@@ -66,9 +66,9 @@ export class ProviderValidator {
         }
       }
 
-      if (!this.reservedProviders.has(providerName) && !isNonEmptyString(providerConf.base_url)) {
+      if (!this.reservedProviders.has(providerName) && !isNonEmptyString(providerConf.baseUrl)) {
         logErrorAndExitOrThrow(
-          `Provider '${providerName}' is a custom provider and must specify a non-empty 'base_url'. custom provider requires base_url.`,
+          `Provider '${providerName}' is a custom provider and must specify a non-empty 'baseUrl'. custom provider requires baseUrl.`,
           shouldExit,
           customLogger,
         );
@@ -114,19 +114,12 @@ export class ProviderValidator {
         const VALID_MODEL_KEYS = [
           'id',
           'aliases',
-          'actual_model_id',
-          'fallback_model',
-          'thinking_supported',
-          'reasoning_supported',
+          'actualModelId',
+          'fallbackModel',
           'overrides',
           'temperature',
-          'max_tokens',
           'maxTokens',
-          'thinking_enabled',
-          'thinkingEnabled',
-          'thinking_level',
-          'thinkingLevel',
-          'reasoning_effort',
+          'reasoningSupported',
           'reasoningEffort',
         ];
 
@@ -147,18 +140,10 @@ export class ProviderValidator {
                 customLogger,
               );
             }
-          } else if (key === 'actual_model_id') {
+          } else if (key === 'actualModelId') {
             if (!isNonEmptyString(val)) {
               logErrorAndExitOrThrow(
-                `Invalid 'actual_model_id' at index ${j} for provider '${providerName}'. Must be a non-empty string.`,
-                shouldExit,
-                customLogger,
-              );
-            }
-          } else if (key === 'thinking_supported' || key === 'reasoning_supported') {
-            if (typeof val !== 'boolean') {
-              logErrorAndExitOrThrow(
-                `Invalid '${key}' at index ${j} for provider '${providerName}'. Must be a boolean.`,
+                `Invalid 'actualModelId' at index ${j} for provider '${providerName}'. Must be a non-empty string.`,
                 shouldExit,
                 customLogger,
               );
@@ -171,7 +156,7 @@ export class ProviderValidator {
                 customLogger,
               );
             }
-          } else if (key === 'max_tokens' || key === 'maxTokens') {
+          } else if (key === 'maxTokens') {
             const coerced = Number(val);
             if (!Number.isInteger(coerced) || coerced <= 0) {
               logErrorAndExitOrThrow(
@@ -180,7 +165,7 @@ export class ProviderValidator {
                 customLogger,
               );
             }
-          } else if (key === 'thinking_enabled' || key === 'thinkingEnabled') {
+          } else if (key === 'reasoningSupported') {
             if (typeof val !== 'boolean') {
               logErrorAndExitOrThrow(
                 `Setting '${key}' at index ${j} for provider '${providerName}' must be a boolean.`,
@@ -188,7 +173,7 @@ export class ProviderValidator {
                 customLogger,
               );
             }
-          } else if (key === 'thinking_level' || key === 'thinkingLevel' || key === 'reasoning_effort' || key === 'reasoningEffort') {
+          } else if (key === 'reasoningEffort') {
             const allowed = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
             if (typeof val !== 'string' || !allowed.includes(val.toLowerCase())) {
               logErrorAndExitOrThrow(
@@ -202,7 +187,7 @@ export class ProviderValidator {
           }
         });
 
-        if (model.fallback_model !== undefined) {
+        if (model.fallbackModel !== undefined) {
           validateFallbackModel(
             model,
             j,
@@ -238,15 +223,8 @@ export class ProviderValidator {
 
     const VALID_KEYS = [
       'temperature',
-      'max_tokens',
       'maxTokens',
-      'thinking_enabled',
-      'thinkingEnabled',
-      'thinking_level',
-      'thinkingLevel',
-      'reasoning_supported',
       'reasoningSupported',
-      'reasoning_effort',
       'reasoningEffort',
     ];
 
@@ -266,7 +244,7 @@ export class ProviderValidator {
             customLogger,
           );
         }
-      } else if (key === 'max_tokens' || key === 'maxTokens') {
+      } else if (key === 'maxTokens') {
         const coerced = Number(val);
         if (!isPositiveInteger(coerced)) {
           logErrorAndExitOrThrow(
@@ -275,10 +253,7 @@ export class ProviderValidator {
             customLogger,
           );
         }
-      } else if (
-        key === 'thinking_enabled' || key === 'thinkingEnabled'
-        || key === 'reasoning_supported' || key === 'reasoningSupported'
-      ) {
+      } else if (key === 'reasoningSupported') {
         if (typeof val !== 'boolean') {
           logErrorAndExitOrThrow(
             `Setting '${key}' at '${path}' for provider '${providerName}' must be a boolean.`,
@@ -286,10 +261,7 @@ export class ProviderValidator {
             customLogger,
           );
         }
-      } else if (
-        key === 'thinking_level' || key === 'thinkingLevel'
-        || key === 'reasoning_effort' || key === 'reasoningEffort'
-      ) {
+      } else if (key === 'reasoningEffort') {
         const allowed = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
         if (typeof val !== 'string' || !allowed.includes(val.toLowerCase())) {
           logErrorAndExitOrThrow(

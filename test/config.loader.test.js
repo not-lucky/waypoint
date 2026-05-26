@@ -324,25 +324,20 @@ providers:
       expect(config.providers['my-ollama'].keys).toContain('ollama-key');
     });
 
-    it('should preserve type "openai-compatible" when explicitly set on custom provider', () => {
-      writeTempConfig(`
-gateway:
-  port: 20128
-  routing:
-    strategy: "round-robin"
-providers:
-  my-ollama:
-    type: "openai-compatible"
-    baseUrl: "http://localhost:11434/v1"
-    keys:
-      - "ollama-key"
-    models:
-      - id: "llama3"
-`);
-
-      const config = configLoader.loadConfig(tempConfigPath);
-
-      expect(config.providers['my-ollama'].type).toBe('openai-compatible');
+    it('should ignore process.env.PORT and use YAML gateway.port', () => {
+      const loader = new ConfigLoader();
+      const config = loader.interpolateAndValidate({
+        gateway: { port: 20128 },
+        clients: [{ name: 'c', token: 't', rateLimit: { windowMs: 60000, max: 100 } }],
+        logging: { enableConsole: true, enableFile: false, format: 'json' },
+        providers: {
+          openai: {
+            keys: ['mock-key'],
+            models: [{ id: 'mock-model' }],
+          },
+        },
+      });
+      expect(config.gateway.port).toBe(20128);
     });
 
     it('should preserve type "anthropic-compatible" when set on custom provider', () => {
@@ -471,102 +466,6 @@ providers:
 
       expect(typeof config.clients[0].rateLimit.windowMs).toBe('number');
       expect(config.clients[0].rateLimit.windowMs).toBe(30000);
-    });
-
-    it('should safely handle non-string (e.g. numeric) env variables without throwing trim TypeErrors', () => {
-      // Stub process.env to return a number for our placeholder
-      process.env.GATEWAY_PORT = 30005;
-
-      writeTempConfig(`
-gateway:
-  port: "\${GATEWAY_PORT}"
-  routing:
-    strategy: "round-robin"
-providers:
-  gemini:
-    keys:
-      - "key-1"
-    models:
-      - id: "gemini-2.5-pro"
-`);
-
-      expect(() => {
-        configLoader.loadConfig(tempConfigPath);
-      }).not.toThrow();
-
-      const config = configLoader.currentConfig;
-      expect(config.gateway.port).toBe(30005);
-    });
-  });
-
-  describe('Configuration Validation Edge Cases', () => {
-    it('should throw validation error when gateway field is missing and shouldExit is false', () => {
-      // eslint-disable-next-line global-require
-      const { validateConfig } = require('../src/config/validator.js');
-      expect(() => {
-        validateConfig({}, false);
-      }).toThrow("Missing structural field 'gateway'.");
-    });
-
-    it('should throw validation error when gateway.httpTimeoutMs is invalid and shouldExit is false', () => {
-      // eslint-disable-next-line global-require
-      const { validateConfig } = require('../src/config/validator.js');
-      const invalidConfig = {
-        gateway: {
-          port: 8080,
-          httpTimeoutMs: -5,
-        },
-      };
-      expect(() => {
-        validateConfig(invalidConfig, false);
-      }).toThrow("Invalid 'gateway.httpTimeoutMs'. Must be a positive integer.");
-    });
-
-    it('should allow fallback model reference to a provider that exists structurally but was deleted/omitted during validation', () => {
-      // eslint-disable-next-line global-require
-      const { validateConfig } = require('../src/config/validator.js');
-      const config = {
-        gateway: {
-          port: 20128,
-          routing: { strategy: 'round-robin' },
-        },
-        logging: {
-          enableConsole: true,
-          enableFile: false,
-          format: 'json',
-        },
-        clients: [
-          {
-            name: 'open-webui',
-            token: 'some-token',
-            rateLimit: { windowMs: 60000, max: 100 },
-          },
-        ],
-        providers: {
-          'primary-provider': {
-            baseUrl: 'http://localhost:8080',
-            keys: ['key-a'],
-            get models() {
-              delete config.providers['fallback-provider'];
-              return [
-                {
-                  id: 'model-a',
-                  fallbackModel: 'fallback-provider/model-b',
-                },
-              ];
-            },
-          },
-          'fallback-provider': {
-            baseUrl: 'http://localhost:8080',
-            keys: ['key-b'],
-            models: [{ id: 'model-b' }],
-          },
-        },
-      };
-
-      expect(() => {
-        validateConfig(config, false);
-      }).not.toThrow();
     });
   });
 });

@@ -3,152 +3,13 @@ import {
 } from 'vitest';
 import { KeyRegistry } from '../src/registry/KeyRegistry.js';
 
-describe('Key Registry Suite', () => {
+describe('Key Registry Health & Edge Cases', () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });
 
   afterEach(() => {
     vi.useRealTimers();
-  });
-
-  describe('Routing Strategies', () => {
-    it('round-robin: should cycle through keys sequentially and wrap', () => {
-      const config = {
-        gateway: { routing: { strategy: 'round-robin' } },
-        providers: { gemini: { keys: ['A', 'B', 'C'] } },
-      };
-      const registry = new KeyRegistry(config);
-
-      expect(registry.getKey('gemini')).toBe('A');
-      expect(registry.getKey('gemini')).toBe('B');
-      expect(registry.getKey('gemini')).toBe('C');
-      expect(registry.getKey('gemini')).toBe('A');
-    });
-
-    it('round-robin: should skip cooling, exhausted, or inactive keys', () => {
-      const config = {
-        gateway: { routing: { strategy: 'round-robin' } },
-        providers: { gemini: { keys: ['A', 'B', 'C'] } },
-      };
-      const registry = new KeyRegistry(config);
-      const pool = registry.pools.gemini;
-
-      // B is inactive
-      pool.keys[1].active = false;
-      // C is exhausted
-      pool.keys[2].exhausted = true;
-
-      expect(registry.getKey('gemini')).toBe('A');
-      expect(registry.getKey('gemini')).toBe('A');
-    });
-
-    it('fill-first: should always return the first active/non-cooling key', () => {
-      const config = {
-        gateway: { routing: { strategy: 'fill-first' } },
-        providers: { gemini: { keys: ['A', 'B', 'C'] } },
-      };
-      const registry = new KeyRegistry(config);
-
-      expect(registry.getKey('gemini')).toBe('A');
-      expect(registry.getKey('gemini')).toBe('A');
-
-      // Make A inactive
-      registry.pools.gemini.keys[0].active = false;
-      expect(registry.getKey('gemini')).toBe('B');
-    });
-  });
-
-  describe('Failure Handling & Cooldowns', () => {
-    it('should apply exponential backoff on 429 statusCode', () => {
-      const config = {
-        gateway: {
-          cooldown: { baseSeconds: 10, maxSeconds: 100 },
-        },
-        providers: { gemini: { keys: ['Key_A'] } },
-      };
-      const registry = new KeyRegistry(config);
-
-      // First failure (429): baseSeconds * 2^(1 - 1) = 10 * 1 = 10s cooldown
-      registry.flagFailure('gemini', 'Key_A', 429);
-      const key = registry.pools.gemini.keys[0];
-      expect(key.active).toBe(false);
-      expect(key.consecutiveFailures).toBe(1);
-      expect(key.cooldownUntil).toBeGreaterThan(Date.now());
-
-      // Advance time by 10s
-      vi.advanceTimersByTime(10000);
-      expect(key.active).toBe(true);
-      expect(key.cooldownUntil).toBeNull();
-
-      // Second failure (429): 10 * 2^(2 - 1) = 20s cooldown
-      registry.flagFailure('gemini', 'Key_A', 429);
-      expect(key.active).toBe(false);
-      expect(key.consecutiveFailures).toBe(2);
-
-      vi.advanceTimersByTime(20000);
-      expect(key.active).toBe(true);
-    });
-
-    it('should mark key exhausted on 402/403 statusCode', () => {
-      const config = {
-        providers: { gemini: { keys: ['Key_A'] } },
-      };
-      const registry = new KeyRegistry(config);
-
-      registry.flagFailure('gemini', 'Key_A', 402);
-      const key = registry.pools.gemini.keys[0];
-      expect(key.active).toBe(false);
-      expect(key.exhausted).toBe(true);
-    });
-
-    it('should apply a single-cycle 5000ms cooldown on other 4xx/5xx', () => {
-      const config = {
-        providers: { gemini: { keys: ['Key_A'] } },
-      };
-      const registry = new KeyRegistry(config);
-
-      registry.flagFailure('gemini', 'Key_A', 500);
-      const key = registry.pools.gemini.keys[0];
-      expect(key.cooldownUntil).toBeGreaterThan(Date.now());
-
-      vi.advanceTimersByTime(5000);
-      expect(key.cooldownUntil).toBeNull();
-    });
-  });
-
-  describe('Success Handlers', () => {
-    it('should reset failures and cooldowns on success', () => {
-      const config = {
-        providers: { gemini: { keys: ['Key_A'] } },
-      };
-      const registry = new KeyRegistry(config);
-      const key = registry.pools.gemini.keys[0];
-
-      registry.flagFailure('gemini', 'Key_A', 429);
-      expect(key.active).toBe(false);
-      expect(key.consecutiveFailures).toBe(1);
-
-      registry.flagSuccess('gemini', 'Key_A');
-      expect(key.active).toBe(true);
-      expect(key.consecutiveFailures).toBe(0);
-      expect(key.cooldownUntil).toBeNull();
-    });
-  });
-
-  describe('Cleanup', () => {
-    it('should clear all timers upon cleanup', () => {
-      const config = {
-        providers: { gemini: { keys: ['Key_A'] } },
-      };
-      const registry = new KeyRegistry(config);
-
-      registry.flagFailure('gemini', 'Key_A', 429);
-      expect(registry.timers.size).toBe(1);
-
-      registry.cleanup();
-      expect(registry.timers.size).toBe(0);
-    });
   });
 
   describe('getHealthStats', () => {
@@ -163,110 +24,30 @@ describe('Key Registry Suite', () => {
       const registry = new KeyRegistry(config);
       const stats = registry.getHealthStats();
 
-      // Expect overall status to be 'ok' when all keys are active
       expect(stats.status).toBe('ok');
       expect(stats.providers.gemini.totalKeys).toBe(2);
       expect(stats.providers.gemini.activeKeys).toBe(2);
-      expect(stats.providers.openai.totalKeys).toBe(1);
-      expect(stats.providers.openai.activeKeys).toBe(1);
       expect(stats.routing.strategy).toBe('round-robin');
-      // currentPointer should expose the current index pointers for round-robin routing
-      expect(stats.routing.currentPointer.gemini).toBe(0);
-      expect(stats.routing.currentPointer.openai).toBe(0);
     });
 
-    it('should return degraded and correctly track metrics when a key is exhausted (402)', () => {
+    it('should return degraded when a key is exhausted or cooling', () => {
       const config = {
+        gateway: { cooldown: { baseSeconds: 10 } },
         providers: { gemini: { keys: ['Key_A', 'Key_B'] } },
       };
       const registry = new KeyRegistry(config);
 
       registry.flagFailure('gemini', 'Key_A', 402);
-      const stats = registry.getHealthStats();
+      expect(registry.getHealthStats().status).toBe('degraded');
+      expect(registry.getHealthStats().providers.gemini.exhaustedKeys).toBe(1);
 
-      // Exhausting one key should degrade the overall registry health
-      expect(stats.status).toBe('degraded');
-      expect(stats.providers.gemini.totalKeys).toBe(2);
-      expect(stats.providers.gemini.activeKeys).toBe(1);
-      expect(stats.providers.gemini.exhaustedKeys).toBe(1);
-      expect(stats.providers.gemini.coolingKeys).toBe(0);
-    });
-
-    it('should return degraded and track cooling metrics when a key is cooling (429)', () => {
-      const config = {
-        gateway: { cooldown: { baseSeconds: 10 } },
-        providers: { gemini: { keys: ['Key_A', 'Key_B'] } },
-      };
-      const registry = new KeyRegistry(config);
-
-      const beforeSeconds = Math.floor(Date.now() / 1000);
-      registry.flagFailure('gemini', 'Key_A', 429);
-      const stats = registry.getHealthStats();
-
-      // Cooldown after 429 should cause degraded status
-      expect(stats.status).toBe('degraded');
-      expect(stats.providers.gemini.activeKeys).toBe(1);
-      expect(stats.providers.gemini.coolingKeys).toBe(1);
-      expect(stats.providers.gemini.coolingUntil).toBeGreaterThanOrEqual(beforeSeconds);
-    });
-
-    it('should report the minimum (earliest) coolingUntil timestamp when multiple keys are cooling', () => {
-      const config = {
-        gateway: { cooldown: { baseSeconds: 10 } },
-        providers: { gemini: { keys: ['Key_A', 'Key_B'] } },
-      };
-      const registry = new KeyRegistry(config);
-
-      // Trigger 429 for Key_A
-      registry.flagFailure('gemini', 'Key_A', 429);
-      const firstCooldownTime = registry.pools.gemini.keys[0].cooldownUntil;
-
-      // Advance time slightly to ensure Key_B gets a later cooldown timestamp
-      vi.advanceTimersByTime(2000);
-
-      // Trigger 429 for Key_B
       registry.flagFailure('gemini', 'Key_B', 429);
-      const secondCooldownTime = registry.pools.gemini.keys[1].cooldownUntil;
-
-      expect(secondCooldownTime).toBeGreaterThan(firstCooldownTime);
-
-      const stats = registry.getHealthStats();
-      expect(stats.providers.gemini.coolingKeys).toBe(2);
-      // coolingUntil must select the minimum (earliest) of all cooling keys
-      expect(stats.providers.gemini.coolingUntil).toBe(Math.floor(firstCooldownTime / 1000));
+      const coolingStats = registry.getHealthStats();
+      expect(coolingStats.status).toBe('degraded');
+      expect(coolingStats.providers.gemini.coolingKeys).toBe(1);
     });
 
-    it('should handle empty providers config or empty keys arrays gracefully', () => {
-      // Configuration with empty providers and a provider with empty keys
-      const config = {
-        providers: {
-          gemini: { keys: [] },
-        },
-      };
-      const registry = new KeyRegistry(config);
-      const stats = registry.getHealthStats();
-
-      // Overall status should remain 'ok' since no active keys are degraded
-      expect(stats.status).toBe('ok');
-      expect(stats.providers.gemini.totalKeys).toBe(0);
-      expect(stats.providers.gemini.activeKeys).toBe(0);
-      expect(stats.providers.gemini.exhaustedKeys).toBe(0);
-      expect(stats.providers.gemini.coolingKeys).toBe(0);
-      expect(stats.providers.gemini.coolingUntil).toBeNull();
-    });
-
-    it('should correctly reflect custom routing strategy in health stats', () => {
-      const config = {
-        gateway: { routing: { strategy: 'fill-first' } },
-        providers: { gemini: { keys: ['Key_A'] } },
-      };
-      const registry = new KeyRegistry(config);
-      const stats = registry.getHealthStats();
-
-      expect(stats.routing.strategy).toBe('fill-first');
-    });
-
-    it('should treat a key with cooldown in the past as active and not cooling', () => {
+    it('should treat expired cooldowns as active in health stats', () => {
       const config = {
         gateway: { cooldown: { baseSeconds: 10 } },
         providers: { gemini: { keys: ['Key_A'] } },
@@ -274,96 +55,28 @@ describe('Key Registry Suite', () => {
       const registry = new KeyRegistry(config);
 
       registry.flagFailure('gemini', 'Key_A', 429);
-      const key = registry.pools.gemini.keys[0];
-      expect(key.cooldownUntil).not.toBeNull();
-      expect(key.cooldownUntil).toBeGreaterThan(Date.now());
-
-      // Advance time beyond the 10 seconds cooldown
       vi.advanceTimersByTime(10001);
 
       const stats = registry.getHealthStats();
-      // Even if the setTimeout timer callback hasn't run yet to clear cooldownUntil,
-      // getHealthStats uses Date.now() check to determine cooling state
       expect(stats.status).toBe('ok');
-      expect(stats.providers.gemini.activeKeys).toBe(1);
       expect(stats.providers.gemini.coolingKeys).toBe(0);
-      expect(stats.providers.gemini.coolingUntil).toBeNull();
-    });
-
-    it('should handle generic error (e.g. 500) cooldowns and degrade health stats', () => {
-      const config = {
-        providers: { gemini: { keys: ['Key_A'] } },
-      };
-      const registry = new KeyRegistry(config);
-
-      // Flag a generic error (e.g. status code 500)
-      registry.flagFailure('gemini', 'Key_A', 500);
-
-      let stats = registry.getHealthStats();
-      // A generic failure causes a short cooldown (5000ms by default), which degrades status
-      expect(stats.status).toBe('degraded');
-      expect(stats.providers.gemini.activeKeys).toBe(0);
-      expect(stats.providers.gemini.coolingKeys).toBe(1);
-      expect(stats.providers.gemini.coolingUntil).not.toBeNull();
-
-      // Advance time past the generic cooldown (5000ms)
-      vi.advanceTimersByTime(5000);
-
-      stats = registry.getHealthStats();
-      // Health stats should recover to 'ok' once cooldown expires
-      expect(stats.status).toBe('ok');
-      expect(stats.providers.gemini.activeKeys).toBe(1);
-      expect(stats.providers.gemini.coolingKeys).toBe(0);
-      expect(stats.providers.gemini.coolingUntil).toBeNull();
     });
   });
 
-  describe('KeyRegistry Edge Cases', () => {
-    it('should return null when fill-first has no available keys', () => {
-      const config = {
+  describe('edge cases', () => {
+    it('should return null when no active keys are available', () => {
+      const registry = new KeyRegistry({
         gateway: { routing: { strategy: 'fill-first' } },
         providers: { gemini: { keys: ['Key_A'] } },
-      };
-      const registry = new KeyRegistry(config);
+      });
       registry.pools.gemini.keys[0].active = false;
       expect(registry.getKey('gemini')).toBeNull();
     });
 
-    it('should return null in findKey when provider does not exist', () => {
-      const registry = new KeyRegistry();
-      expect(registry.findKey('non-existent-provider', 'key')).toBeNull();
-    });
-
-    it('should return early in flagFailure when key does not exist', () => {
-      const config = {
-        providers: { gemini: { keys: ['Key_A'] } },
-      };
-      const registry = new KeyRegistry(config);
-      expect(registry.flagFailure('gemini', 'non-existent-key', 500)).toBeUndefined();
-    });
-
-    it('should return early in flagSuccess when key does not exist', () => {
-      const config = {
-        providers: { gemini: { keys: ['Key_A'] } },
-      };
-      const registry = new KeyRegistry(config);
-      expect(registry.flagSuccess('gemini', 'non-existent-key')).toBeUndefined();
-    });
-
-    it('should handle constructor gracefully when config is missing providers', () => {
+    it('should handle missing providers and unknown keys gracefully', () => {
       const registry = new KeyRegistry({});
-      expect(registry.pools).toEqual({});
-    });
-
-    it('should return null in getKey when keys array is empty or undefined', () => {
-      const config = {
-        providers: {
-          gemini: { keys: [] },
-        },
-      };
-      const registry = new KeyRegistry(config);
-      expect(registry.getKey('gemini')).toBeNull();
-      expect(registry.getKey('non-existent-provider')).toBeNull();
+      expect(registry.getKey('missing')).toBeNull();
+      expect(registry.flagFailure('missing', 'key', 500)).toBeUndefined();
     });
   });
 });

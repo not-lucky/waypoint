@@ -94,12 +94,6 @@ describe('Configuration Loader Tests', () => {
       expect(config.providers.gemini.keys).toContain('gemini-key-2');
       expect(config.providers.anthropic.keys).toContain('anthropic-key-1');
       expect(config.providers.openai.keys).toContain('openai-key-1');
-
-      // Verify that the configuration is deeply frozen (immutable).
-      expect(Object.isFrozen(config)).toBe(true);
-      expect(Object.isFrozen(config.gateway)).toBe(true);
-      expect(Object.isFrozen(config.providers)).toBe(true);
-      expect(Object.isFrozen(config.providers.gemini)).toBe(true);
     });
   });
 

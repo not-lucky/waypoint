@@ -23,7 +23,7 @@ describe('Dry Run Endpoints Integration Tests', () => {
     process.env.WAYPOINT_CONFIG_PATH = 'test/dryrun-config.yaml';
 
     // Ensure we start with a clean logs directory
-    await fsp.rm(logsDir, { recursive: true, force: true }).catch(() => {});
+    await fsp.rm(logsDir, { recursive: true, force: true }).catch(() => { });
 
     vi.resetModules();
 
@@ -39,7 +39,7 @@ describe('Dry Run Endpoints Integration Tests', () => {
     if (server) {
       await new Promise((resolve) => { server.close(resolve); });
     }
-    await fsp.rm(logsDir, { recursive: true, force: true }).catch(() => {});
+    await fsp.rm(logsDir, { recursive: true, force: true }).catch(() => { });
   });
 
   it('POST /dryrun/openai/chat/completions - performs dry run and logs exactly 2 stages', async () => {
@@ -104,7 +104,7 @@ describe('Dry Run Endpoints Integration Tests', () => {
 
   it('POST /dryrun/anthropic/messages - performs dry run and logs exactly 2 stages', async () => {
     // Clean logs dir for second test
-    await fsp.rm(logsDir, { recursive: true, force: true }).catch(() => {});
+    await fsp.rm(logsDir, { recursive: true, force: true }).catch(() => { });
 
     const payload = {
       model: 'anthropic/claude-sonnet-4',

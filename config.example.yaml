@@ -7,6 +7,11 @@ gateway:
   
   # Maximum number of retry attempts for failed upstream calls (optional, positive integer)
   globalRetryLimit: 3
+
+  # Gateway-level request timeout in milliseconds before failing the client (optional, positive integer).
+  # This sets the MAXIMUM DURATION a single upstream request can take before Waypoint aborts it.
+  # This differs from client rate limits (below), which control the frequency of requests over time.
+  httpTimeoutMs: 120000
   
   # Cooldown settings for rate-limiting exponential backoff (optional)
   cooldown:
@@ -64,11 +69,15 @@ clients:
   - name: "open-webui"
     # The Bearer token the client uses to authenticate. Environment variables are supported via ${VAR_NAME} (required)
     token: "${OPEN_WEBUI_TOKEN}"
-    # Rate limit configuration (required)
+    # Rate limit configuration (optional).
+    # This controls the FREQUENCY of requests allowed from this client to prevent abuse.
+    # It does NOT affect the duration of a single request (that is handled by gateway.httpTimeoutMs).
     rateLimit:
-      # Time window in milliseconds (required, positive integer)
+      # The time window in milliseconds (required, positive integer)
+      # e.g., 60000 = 1 minute window.
       windowMs: 60000
-      # Maximum requests allowed per window (required, positive integer)
+      # Maximum requests this client is allowed to make within the windowMs (required, positive integer)
+      # e.g., 100 requests every 60 seconds.
       max: 100
   - name: "codex-agent"
     token: "${CODEX_AGENT_TOKEN}"
@@ -101,12 +110,15 @@ providers:
         actualModelId: "gemini-flash-lite-latest"     # The underlying model to call upstream (optional, string)
         reasoningSupported: true                       # Whether reasoning is supported (optional, boolean)
         temperature: 0.3                                # Default parameters applied if not specified by client (optional)
+        maxTokens: 4096                                 # Default parameters applied if not specified by client (optional)
         reasoningEffort: "low"                         # Unified reasoning level: minimal | low | medium | high | xhigh | max
       - id: "gemini-flash-lite-latest-high"
         actualModelId: "gemini-flash-lite-latest"
         reasoningSupported: true
         overrides:                                      # Locked settings that ignore/override client-supplied values or headers (optional, object)
           reasoningEffort: "high"
+          temperature: 0.8
+          maxTokens: 8192
       - id: "gemini-2.0-flash"
         aliases: ["flash"]
         reasoningSupported: false

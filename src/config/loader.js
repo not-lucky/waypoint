@@ -1,6 +1,5 @@
 import fs from 'node:fs';
 import yaml from 'js-yaml';
-import { deepFreeze } from '../utils/objectUtils.js';
 import {
   logDebug,
   logWarning,
@@ -46,7 +45,7 @@ export class ConfigLoader {
       logDebug(this.logger, `Reading configuration file from path: ${configPath}`);
       const raw = fs.readFileSync(configPath, 'utf8');
       const parsed = yaml.load(raw);
-      this.currentConfig = deepFreeze(this.interpolateAndValidate(parsed, reservedProviders));
+      this.currentConfig = this.interpolateAndValidate(parsed, reservedProviders);
     } catch (err) {
       // Initial startup validation failure: log fatal error and abort startup.
       logFatal(this.logger, `FATAL ERROR: Failed to load config file at ${configPath}: ${err.message}`);

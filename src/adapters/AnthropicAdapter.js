@@ -15,19 +15,150 @@ export class AnthropicAdapter extends BaseProvider {
     this.timeoutMs = timeoutMs;
   }
 
-  async generateCompletion(req, apiKey, signal, requestLog = null) {
-    const payload = translateRequest(FORMATS.OPENAI, FORMATS.ANTHROPIC, req);
-    payload.stream = false;
-
-    const url = this.baseUrl
+  /**
+   * Builds the API endpoint URL.
+   */
+  buildUrl() {
+    return this.baseUrl
       ? `${this.baseUrl.replace(/\/$/, '')}/messages`
       : 'https://api.anthropic.com/v1/messages';
+  }
 
-    const headers = {
+  /**
+   * Builds the request headers.
+   */
+  buildHeaders(apiKey) {
+    return {
       'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
       'content-type': 'application/json',
     };
+  }
+
+  /**
+   * Processes a single SSE event to update stream state.
+   */
+  processSSEEvent(sseEvent, state, requestLog) {
+    let newState = { ...state };
+    try {
+      const dataJson = JSON.parse(sseEvent.data);
+      if (requestLog && typeof requestLog.appendStreamEvent === 'function') {
+        requestLog.appendStreamEvent('provider', dataJson);
+      }
+
+      switch (dataJson.type) {
+        case 'message_start':
+          newState.responseId = dataJson.message?.id;
+          newState.responseModel = dataJson.message?.model;
+          newState.inputTokens = dataJson.message?.usage?.input_tokens ?? 0;
+          break;
+        case 'content_block_start':
+          newState.contentBlocks = this.handleContentBlockStart(
+            dataJson.content_block,
+            newState.contentBlocks,
+          );
+          break;
+        case 'content_block_delta':
+          newState.contentBlocks = this.handleContentBlockDelta(
+            dataJson,
+            newState.contentBlocks,
+          );
+          break;
+        case 'message_delta':
+          newState = this.handleMessageDelta(dataJson, newState);
+          break;
+        default:
+          break;
+      }
+    } catch (err) {
+      // Ignore parsing errors for non-JSON events
+    }
+    return newState;
+  }
+
+  /**
+   * Handles content_block_start events.
+   */
+  handleContentBlockStart(contentBlock, contentBlocks) {
+    const newContentBlocks = [...contentBlocks];
+    const block = contentBlock || {};
+    if (block.type === 'text') {
+      newContentBlocks.push({ type: 'text', text: '' });
+    } else if (block.type === 'thinking') {
+      newContentBlocks.push({ type: 'thinking', thinking: '' });
+    }
+    return newContentBlocks;
+  }
+
+  /**
+   * Handles content_block_delta events.
+   */
+  handleContentBlockDelta(data, contentBlocks) {
+    const index = data.index ?? 0;
+    const delta = data.delta || {};
+    const newContentBlocks = [...contentBlocks];
+
+    if (!newContentBlocks[index]) {
+      if (delta.type === 'text_delta') {
+        newContentBlocks[index] = { type: 'text', text: '' };
+      } else if (delta.type === 'thinking_delta') {
+        newContentBlocks[index] = { type: 'thinking', thinking: '' };
+      }
+    }
+
+    const block = newContentBlocks[index];
+    if (block) {
+      if (delta.type === 'text_delta' && delta.text) {
+        newContentBlocks[index] = { ...block, text: block.text + delta.text };
+      } else if (delta.type === 'thinking_delta' && delta.thinking) {
+        newContentBlocks[index] = { ...block, thinking: block.thinking + delta.thinking };
+      }
+    }
+    return newContentBlocks;
+  }
+
+  /**
+   * Handles message_delta events.
+   */
+  handleMessageDelta(data, state) {
+    const newState = { ...state };
+    if (data.delta?.stop_reason) newState.stopReason = data.delta.stop_reason;
+    if (data.delta?.stop_sequence) newState.stopSequence = data.delta.stop_sequence;
+    if (data.usage?.output_tokens) newState.outputTokens = data.usage.output_tokens;
+    return newState;
+  }
+
+  /**
+   * Logs the stream summary.
+   */
+  logStreamSummary(requestLog, state, chunkId, req) {
+    if (requestLog && typeof requestLog.logProviderStreamSummary === 'function') {
+      requestLog.logProviderStreamSummary({
+        _format: 'anthropic-sse',
+        _eventCount: state.eventCount,
+        summary: {
+          id: state.responseId || chunkId,
+          type: 'message',
+          role: 'assistant',
+          content: state.contentBlocks,
+          model: state.responseModel || req.model,
+          stop_reason: state.stopReason || 'end_turn',
+          stop_sequence: state.stopSequence || null,
+          usage: {
+            input_tokens: state.inputTokens,
+            output_tokens: state.outputTokens,
+          },
+        },
+      });
+    }
+  }
+
+  async generateCompletion(req, apiKey, signal, requestLog = null) {
+    const payload = translateRequest(FORMATS.OPENAI, FORMATS.ANTHROPIC, req);
+    payload.stream = false;
+
+    const url = this.buildUrl();
+    const headers = this.buildHeaders(apiKey);
 
     const { response, cleanup } = await this.performFetch(
       url,
@@ -50,15 +181,8 @@ export class AnthropicAdapter extends BaseProvider {
     const payload = translateRequest(FORMATS.OPENAI, FORMATS.ANTHROPIC, req);
     payload.stream = true;
 
-    const url = this.baseUrl
-      ? `${this.baseUrl.replace(/\/$/, '')}/messages`
-      : 'https://api.anthropic.com/v1/messages';
-
-    const headers = {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    };
+    const url = this.buildUrl();
+    const headers = this.buildHeaders(apiKey);
 
     const { response, fetchSignal, cleanup } = await this.performFetch(
       url,
@@ -72,88 +196,30 @@ export class AnthropicAdapter extends BaseProvider {
     const chunkId = `waypoint-chunk-${Date.now()}`;
     const stream = parseSSEStream(response.body, fetchSignal);
 
-    let eventCount = 0;
-    let responseId = null;
-    let responseModel = null;
-    let stopReason = null;
-    let stopSequence = null;
-    let inputTokens = 0;
-    let outputTokens = 0;
-    const contentBlocks = [];
+    let state = {
+      eventCount: 0,
+      responseId: null,
+      responseModel: null,
+      stopReason: null,
+      stopSequence: null,
+      inputTokens: 0,
+      outputTokens: 0,
+      contentBlocks: [],
+    };
 
     try {
       for await (const sseEvent of stream) {
         if (fetchSignal?.aborted) throw new Error('Stream aborted');
-        eventCount += 1;
+        state = { ...state, eventCount: state.eventCount + 1 };
 
-        try {
-          const dataJson = JSON.parse(sseEvent.data);
-          if (requestLog && typeof requestLog.appendStreamEvent === 'function') {
-            requestLog.appendStreamEvent('provider', dataJson);
-          }
-
-          if (dataJson.type === 'message_start') {
-            responseId = dataJson.message?.id;
-            responseModel = dataJson.message?.model;
-            inputTokens = dataJson.message?.usage?.input_tokens ?? 0;
-          } else if (dataJson.type === 'content_block_start') {
-            const block = dataJson.content_block || {};
-            if (block.type === 'text') {
-              contentBlocks.push({ type: 'text', text: '' });
-            } else if (block.type === 'thinking') {
-              contentBlocks.push({ type: 'thinking', thinking: '' });
-            }
-          } else if (dataJson.type === 'content_block_delta') {
-            const index = dataJson.index ?? 0;
-            const delta = dataJson.delta || {};
-            if (!contentBlocks[index]) {
-              if (delta.type === 'text_delta') {
-                contentBlocks[index] = { type: 'text', text: '' };
-              } else if (delta.type === 'thinking_delta') {
-                contentBlocks[index] = { type: 'thinking', thinking: '' };
-              }
-            }
-            const block = contentBlocks[index];
-            if (block) {
-              if (delta.type === 'text_delta' && delta.text) {
-                block.text += delta.text;
-              } else if (delta.type === 'thinking_delta' && delta.thinking) {
-                block.thinking += delta.thinking;
-              }
-            }
-          } else if (dataJson.type === 'message_delta') {
-            if (dataJson.delta?.stop_reason) stopReason = dataJson.delta.stop_reason;
-            if (dataJson.delta?.stop_sequence) stopSequence = dataJson.delta.stop_sequence;
-            if (dataJson.usage?.output_tokens) outputTokens = dataJson.usage.output_tokens;
-          }
-        } catch (e) {
-          // Ignore parsing errors for non-JSON events
-        }
+        state = this.processSSEEvent(sseEvent, state, requestLog);
 
         const openaiChunk = translateStreamChunk(FORMATS.ANTHROPIC, sseEvent, chunkId, req);
         if (openaiChunk) yield openaiChunk;
       }
     } finally {
       cleanup();
-      if (requestLog && typeof requestLog.logProviderStreamSummary === 'function') {
-        requestLog.logProviderStreamSummary({
-          _format: 'anthropic-sse',
-          _eventCount: eventCount,
-          summary: {
-            id: responseId || chunkId,
-            type: 'message',
-            role: 'assistant',
-            content: contentBlocks,
-            model: responseModel || req.model,
-            stop_reason: stopReason || 'end_turn',
-            stop_sequence: stopSequence || null,
-            usage: {
-              input_tokens: inputTokens,
-              output_tokens: outputTokens,
-            },
-          },
-        });
-      }
+      this.logStreamSummary(requestLog, state, chunkId, req);
     }
   }
 

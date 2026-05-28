@@ -14,6 +14,96 @@ import {
 import { validateConfig } from './validator.js';
 
 /**
+ * Processes model numeric properties.
+ * @param {object} model - Model configuration
+ * @returns {object} Processed model config
+ */
+function processModel(model) {
+  let processed = { ...model };
+
+  processed = coerceToInt(processed, 'maxTokens');
+
+  if (processed.overrides && typeof processed.overrides === 'object') {
+    let overrides = { ...processed.overrides };
+    overrides = coerceToInt(overrides, 'maxTokens');
+    processed = { ...processed, overrides };
+  }
+
+  return processed;
+}
+
+/**
+ * Processes individual provider numeric properties.
+ * @param {object} providerConf - Single provider configuration
+ * @returns {object} Processed provider config
+ */
+function processProvider(providerConf) {
+  const processed = { ...providerConf };
+
+  if (Array.isArray(processed.models)) {
+    processed.models = processed.models.map((model) => processModel(model));
+  }
+
+  return processed;
+}
+
+/**
+ * Processes providers numeric properties.
+ * @param {object} providers - Providers configuration
+ * @returns {object} Processed providers config
+ */
+function processProviders(providers) {
+  return Object.fromEntries(
+    Object.entries(providers).map(([name, providerConf]) => [
+      name,
+      processProvider(providerConf),
+    ]),
+  );
+}
+
+/**
+ * Processes client numeric properties.
+ * @param {object} client - Client configuration
+ * @returns {object} Processed client config
+ */
+function processClient(client) {
+  if (!client) return client;
+
+  const processed = { ...client };
+
+  if (processed.rateLimit) {
+    let rateLimit = { ...processed.rateLimit };
+    rateLimit = coerceToInt(rateLimit, 'windowMs');
+    rateLimit = coerceToInt(rateLimit, 'max');
+    processed.rateLimit = rateLimit;
+  }
+
+  return processed;
+}
+
+/**
+ * Processes gateway numeric properties.
+ * @param {object} gateway - Gateway configuration
+ * @returns {object} Processed gateway config
+ */
+function processGateway(gateway) {
+  let processed = { ...gateway };
+
+  processed = coerceToInt(processed, 'port');
+  processed = coerceToInt(processed, 'globalRetryLimit');
+  processed = coerceToInt(processed, 'httpTimeoutMs');
+
+  if (processed.cooldown) {
+    let cooldown = { ...processed.cooldown };
+    cooldown = coerceToInt(cooldown, 'baseSeconds');
+    cooldown = coerceToInt(cooldown, 'maxSeconds');
+    processed = { ...processed, cooldown };
+  }
+
+  return processed;
+}
+
+/**
  * ConfigLoader manages parsing, environment variable interpolation, and validation
  * of configuration files.
  */
@@ -35,7 +125,10 @@ export class ConfigLoader {
    * Loads the YAML configuration file, parses it, and interpolates env variables.
    * Fails fast and terminates process if configuration is invalid at startup.
    */
-  loadConfig(configPath = process.env.WAYPOINT_CONFIG_PATH || 'config/config.yaml', reservedProviders = RESERVED_PROVIDERS) {
+  loadConfig(
+    configPath = process.env.WAYPOINT_CONFIG_PATH || 'config/config.yaml',
+    reservedProviders = RESERVED_PROVIDERS,
+  ) {
     if (this.currentConfig) {
       return this.currentConfig;
     }
@@ -86,50 +179,29 @@ export class ConfigLoader {
   }
 
   /**
-   * Coerces numeric properties immutably.
+   * Coerces numeric configuration properties from string to integer immutably.
+   * Handles nested numeric properties across gateway, clients, and providers.
+   * @param {object} config - The configuration object to process
+   * @returns {object} A new configuration object with numeric properties coerced
    */
   static coerceNumericProperties(config) {
     if (!config) return config;
 
-    return {
-      ...config,
-      ...(config.gateway && {
-        gateway: [
-          (g) => coerceToInt(g, 'port'),
-          (g) => coerceToInt(g, 'globalRetryLimit'),
-          (g) => coerceToInt(g, 'httpTimeoutMs'),
-          (g) => (g.cooldown ? {
-            ...g,
-            cooldown: coerceToInt(coerceToInt(g.cooldown, 'baseSeconds'), 'maxSeconds'),
-          } : g),
-        ].reduce((acc, fn) => fn(acc), config.gateway),
-      }),
-      ...(Array.isArray(config.clients) && {
-        clients: config.clients.map((client) => (client?.rateLimit ? {
-          ...client,
-          rateLimit: coerceToInt(coerceToInt(client.rateLimit, 'windowMs'), 'max'),
-        } : client)),
-      }),
-      ...(config.providers && typeof config.providers === 'object' && {
-        providers: Object.fromEntries(
-          Object.entries(config.providers).map(([name, providerConf]) => [
-            name,
-            {
-              ...providerConf,
-              ...(Array.isArray(providerConf?.models) && {
-                models: providerConf.models.map((model) => {
-                  let m = coerceToInt({ ...model }, 'maxTokens');
-                  if (m.overrides && typeof m.overrides === 'object') {
-                    m = { ...m, overrides: coerceToInt({ ...m.overrides }, 'maxTokens') };
-                  }
-                  return m;
-                }),
-              }),
-            },
-          ]),
-        ),
-      }),
-    };
+    const processedConfig = { ...config };
+
+    if (processedConfig.gateway) {
+      processedConfig.gateway = processGateway(processedConfig.gateway);
+    }
+
+    if (Array.isArray(processedConfig.clients)) {
+      processedConfig.clients = processedConfig.clients.map((client) => processClient(client));
+    }
+
+    if (processedConfig.providers && typeof processedConfig.providers === 'object') {
+      processedConfig.providers = processProviders(processedConfig.providers);
+    }
+
+    return processedConfig;
   }
 
   /**

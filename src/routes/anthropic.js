@@ -1,5 +1,5 @@
 import express from 'express';
-import { validateCompletionBody } from '../middleware/zod.validation.js';
+import { validateCompletionBody } from '../middleware/zodValidation.js';
 import { rateLimiter } from '../middleware/rateLimiter.js';
 
 /**

@@ -7,7 +7,7 @@
 
 /* eslint-disable max-len */
 /* eslint-disable no-restricted-syntax, no-await-in-loop */
-import { logDebug, logWarning } from '../utils/loggerHelpers.js';
+import { logDebug, logWarning } from '../logging/loggerHelpers.js';
 
 /**
  * Constructs a 503 error payload when all keys are unavailable.

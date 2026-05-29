@@ -1,0 +1,135 @@
+import {
+  describe, it, expect, beforeEach, afterEach, vi,
+} from 'vitest';
+import { validateConfig } from '../../src/config/validator.js';
+
+describe('Configuration Validation Tests', () => {
+  let exitSpy;
+
+  beforeEach(() => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('process.exit called');
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function getBaseValidConfig() {
+    return {
+      gateway: {
+        port: 20128,
+        routing: { strategy: 'round-robin' },
+      },
+      logging: {
+        enableConsole: true,
+        enableFile: false,
+        format: 'json',
+      },
+      clients: [
+        {
+          name: 'open-webui',
+          token: 'some-token',
+          rateLimit: { windowMs: 60000, max: 100 },
+        },
+      ],
+      providers: {
+        gemini: {
+          keys: ['gemini-key-1'],
+          models: [{ id: 'gemini-2.5-pro', aliases: ['gemini-2.5-pro'] }],
+        },
+      },
+    };
+  }
+
+  it('accepts a valid complete config', () => {
+    expect(() => validateConfig(getBaseValidConfig())).not.toThrow();
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
+  it('rejects missing gateway, clients, and provider structure', () => {
+    expect(() => validateConfig(null)).toThrow('process.exit called');
+
+    const missingPort = getBaseValidConfig();
+    delete missingPort.gateway.port;
+    expect(() => validateConfig(missingPort)).toThrow('process.exit called');
+
+    const missingClients = getBaseValidConfig();
+    delete missingClients.clients;
+    expect(() => validateConfig(missingClients)).toThrow('process.exit called');
+
+    const missingModels = getBaseValidConfig();
+    missingModels.providers.gemini.models = [];
+    expect(() => validateConfig(missingModels)).toThrow('process.exit called');
+  });
+
+  it('rejects invalid routing, logging format, and rate limit fields', () => {
+    const badRouting = getBaseValidConfig();
+    badRouting.gateway.routing.strategy = 'invalid';
+    expect(() => validateConfig(badRouting)).toThrow('process.exit called');
+
+    const badLogging = getBaseValidConfig();
+    badLogging.logging.format = 'xml';
+    expect(() => validateConfig(badLogging)).toThrow('process.exit called');
+
+    const badRateLimit = getBaseValidConfig();
+    badRateLimit.clients[0].rateLimit.max = 0;
+    expect(() => validateConfig(badRateLimit)).toThrow('process.exit called');
+  });
+
+  it('rejects custom providers without baseUrl or with invalid type', () => {
+    const missingBaseUrl = getBaseValidConfig();
+    missingBaseUrl.providers.custom = {
+      keys: ['key'],
+      models: [{ id: 'model' }],
+    };
+    expect(() => validateConfig(missingBaseUrl)).toThrow('process.exit called');
+
+    const invalidType = getBaseValidConfig();
+    invalidType.providers.custom = {
+      baseUrl: 'https://example.com',
+      type: 'llm-compatible',
+      keys: ['key'],
+      models: [{ id: 'model' }],
+    };
+    expect(() => validateConfig(invalidType)).toThrow('process.exit called');
+  });
+
+  it('validates fallbackModel references and self-reference rules', () => {
+    const validFallback = getBaseValidConfig();
+    validFallback.providers.gemini.models[0].fallbackModel = 'openai/gpt-4o';
+    validFallback.providers.openai = {
+      keys: ['openai-key'],
+      models: [{ id: 'gpt-4o' }],
+    };
+    expect(() => validateConfig(validFallback)).not.toThrow();
+
+    const badFormat = getBaseValidConfig();
+    badFormat.providers.gemini.models[0].fallbackModel = 'bad-format';
+    expect(() => validateConfig(badFormat)).toThrow('process.exit called');
+
+    const selfReference = getBaseValidConfig();
+    selfReference.providers.gemini.models[0].fallbackModel = 'gemini/gemini-2.5-pro';
+    expect(() => validateConfig(selfReference)).toThrow('process.exit called');
+  });
+
+  it('rejects invalid gateway retry and cooldown values', () => {
+    const badRetry = getBaseValidConfig();
+    badRetry.gateway.globalRetryLimit = 0;
+    expect(() => validateConfig(badRetry)).toThrow('process.exit called');
+
+    const badCooldown = getBaseValidConfig();
+    badCooldown.gateway.cooldown = { baseSeconds: 0, maxSeconds: 3600 };
+    expect(() => validateConfig(badCooldown)).toThrow('process.exit called');
+  });
+
+  it('allows validation without exiting when shouldExit is false', () => {
+    const config = getBaseValidConfig();
+    delete config.gateway.port;
+    expect(() => validateConfig(config, false)).toThrow("Missing or invalid 'gateway.port'");
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+});

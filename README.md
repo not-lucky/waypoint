@@ -148,6 +148,32 @@ npm run lint
 
 ---
 
+## Project Layout
+
+Source and test files use **camelCase** naming throughout. The `src/` tree is organized by responsibility:
+
+```
+src/
+├── index.js                 # Application entry point
+├── lifecycle/               # Graceful shutdown and signal handling
+├── adapters/                # Provider HTTP adapters (gemini/ for Gemini internals)
+├── config/                  # YAML loader and Zod validators
+├── controllers/             # Protocol translation boundaries (OpenAI, Anthropic)
+├── domain/                  # Model routing, caching, and request transformation
+├── logging/                 # LogTape integration and per-request audit logging
+├── streaming/               # SSE parsing and stream accumulation utilities
+├── common/                  # Shared errors and string helpers
+├── middleware/              # Auth, rate limiting, payload validation
+├── registry/                # API key pool state and teardown hooks
+├── services/                # Orchestration, retry, and failover logic
+├── routes/                  # HTTP route definitions
+└── translators/             # Cross-protocol request/response translation
+```
+
+Tests mirror this structure under `test/`, with cross-cutting HTTP tests in `test/integration/` and shared fixtures in `test/fixtures/`.
+
+---
+
 ## ⚙️ Configuration Guide
 
 Waypoint reads configuration from `config/config.yaml` or a path designated in `process.env.WAYPOINT_CONFIG_PATH`.

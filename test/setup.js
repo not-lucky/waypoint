@@ -1,5 +1,5 @@
 import { afterEach, beforeAll } from 'vitest';
-import { resetLifecycleState } from '../src/lifecycle.js';
+import { resetLifecycleState } from '../src/lifecycle/lifecycle.js';
 
 beforeAll(() => {
   // Prevent MaxListenersExceededWarning caused by LogTape and other services

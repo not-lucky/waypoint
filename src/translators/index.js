@@ -1,10 +1,10 @@
-import { translateOpenAIToClaude } from './request/openai-to-claude.js';
-import { translateOpenAIToGemini } from './request/openai-to-gemini.js';
-import { translateClaudeToOpenAIRequest } from './request/claude-to-openai.js';
+import { translateOpenAIToClaude } from './request/openaiToClaude.js';
+import { translateOpenAIToGemini } from './request/openaiToGemini.js';
+import { translateClaudeToOpenAIRequest } from './request/claudeToOpenai.js';
 
-import { translateClaudeToOpenAI, translateClaudeChunkToOpenAI } from './response/claude-to-openai.js';
-import { translateGeminiToOpenAI, translateGeminiChunkToOpenAI } from './response/gemini-to-openai.js';
-import { translateOpenAIToClaudeResponse } from './response/openai-to-claude.js';
+import { translateClaudeToOpenAI, translateClaudeChunkToOpenAI } from './response/claudeToOpenai.js';
+import { translateGeminiToOpenAI, translateGeminiChunkToOpenAI } from './response/geminiToOpenai.js';
+import { translateOpenAIToClaudeResponse } from './response/openaiToClaude.js';
 
 export const FORMATS = {
   OPENAI: 'openai',

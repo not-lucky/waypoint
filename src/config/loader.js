@@ -4,13 +4,13 @@ import {
   logDebug,
   logWarning,
   logFatal,
-} from './loggerWrapper.js';
+} from '../logging/loggerWrapper.js';
 import {
   RESERVED_PROVIDERS,
   replaceEnvVars,
   getMissingEnvVar,
   coerceToInt,
-} from './utils.js';
+} from './configUtils.js';
 import { validateConfig } from './validator.js';
 
 /**

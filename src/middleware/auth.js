@@ -5,7 +5,7 @@
  * @module middleware/auth
  */
 
-import { getAppLogger } from '../utils/logger.js';
+import { getAppLogger } from '../logging/logger.js';
 
 /**
  * @type {Object}

@@ -5,8 +5,8 @@
  * @module middleware/rateLimiter
  */
 
-import { getAppLogger } from '../utils/logger.js';
-import { teardownRegistry } from '../registry/TeardownRegistry.js';
+import { getAppLogger } from '../logging/logger.js';
+import { teardownRegistry } from '../registry/teardownRegistry.js';
 
 /**
  * @type {Object}

@@ -1,4 +1,4 @@
-import { logErrorAndExitOrThrow } from './loggerWrapper.js';
+import { logErrorAndExitOrThrow } from '../logging/loggerWrapper.js';
 
 export const isPositiveInteger = (val) => Number.isInteger(val) && val > 0;
 

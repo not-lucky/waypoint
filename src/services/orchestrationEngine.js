@@ -6,10 +6,10 @@
  */
 
 /* eslint-disable no-restricted-syntax, no-constant-condition */
-import { resolveModel } from '../utils/ModelRouter.js';
-import { applyModelConfigToRequest } from '../utils/RequestTransformer.js';
+import { resolveModel } from '../domain/modelRouter.js';
+import { applyModelConfigToRequest } from '../domain/requestTransformer.js';
 import { executeWithRetry } from './retryExecutor.js';
-import { logDebug } from '../utils/loggerHelpers.js';
+import { logDebug } from '../logging/loggerHelpers.js';
 
 /**
  * Updates the current request object with resolved model configuration.

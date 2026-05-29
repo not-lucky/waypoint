@@ -5,12 +5,12 @@
  * @module config/validator
  */
 
-import { logDebug, logErrorAndExitOrThrow } from './loggerWrapper.js';
-import { RESERVED_PROVIDERS } from './utils.js';
-import { GatewayValidator } from './GatewayValidator.js';
-import { ClientValidator } from './ClientValidator.js';
-import { LoggingValidator } from './LoggingValidator.js';
-import { ProviderValidator } from './ProviderValidator.js';
+import { logDebug, logErrorAndExitOrThrow } from '../logging/loggerWrapper.js';
+import { RESERVED_PROVIDERS } from './configUtils.js';
+import { GatewayValidator } from './gatewayValidator.js';
+import { ClientValidator } from './clientValidator.js';
+import { LoggingValidator } from './loggingValidator.js';
+import { ProviderValidator } from './providerValidator.js';
 
 /**
  * Validates the entire application configuration object.

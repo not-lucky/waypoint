@@ -154,7 +154,8 @@ Source and test files use **camelCase** naming throughout. The `src/` tree is or
 
 ```
 src/
-├── index.js                 # Application entry point
+├── index.js                 # Thin entry point (delegates to app/bootstrap.js)
+├── app/                     # Startup wiring and Express app factory
 ├── lifecycle/               # Graceful shutdown and signal handling
 ├── adapters/                # Provider HTTP adapters (gemini/ for Gemini internals)
 ├── config/                  # YAML loader and Zod validators

@@ -5,14 +5,19 @@
   "main": "src/index.js",
   "scripts": {
     "test": "vitest run",
+    "test:watch": "vitest",
+    "ci": "npm run lint && npm test",
     "lint": "eslint .",
     "dev": "node --watch src/index.js",
     "start": "node src/index.js"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "@logtape/file": "^2.1.1",
     "@logtape/logtape": "^2.1.1",

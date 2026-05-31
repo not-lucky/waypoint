@@ -15,6 +15,8 @@ export function wireServices(config, logger) {
 
   return {
     keyRegistry,
+    providerFactory,
+    orchestrator,
     openAIController,
     anthropicController,
     modelCache,

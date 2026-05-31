@@ -3,32 +3,26 @@ import {
   describe,
   it,
   expect,
-  beforeAll,
   afterEach,
   afterAll,
 } from 'vitest';
 import request from 'supertest';
-import fs from 'node:fs';
 import path from 'node:path';
-import { resetLifecycleState } from '../../src/lifecycle/lifecycle.js';
+import {
+  reloadTestApp,
+  writeTempConfig,
+  removeTempConfig,
+} from '../helpers/testServer.js';
 
-// Define the temporary configuration path for testing.
 const tempConfigPath = path.resolve('test/temp_cors_config.yaml');
 
-// We track the port sequentially to completely prevent any port conflicts or
-// address-already-in-use errors during test executions.
 let currentPort = 20130;
 let app;
-let server;
-let originalProcessOn;
+let close;
 
-/**
- * Utility function to write a temporary configuration file with custom
- * CORS and payload limit options.
- */
-function writeTempConfig(allowedOrigins, maxPayloadSize) {
+function buildCorsConfig(allowedOrigins, maxPayloadSize) {
   currentPort += 1;
-  const content = `
+  return `
 gateway:
   port: ${currentPort}
   globalRetryLimit: 3
@@ -58,64 +52,26 @@ providers:
       - id: "gpt-4o"
         reasoningSupported: false
 `;
-  fs.writeFileSync(tempConfigPath, content, 'utf8');
 }
 
-/**
- * Utility to cleanly close any running test server and delete the temp config.
- */
-async function cleanup() {
-  if (server) {
-    await new Promise((resolve) => {
-      server.close(resolve);
-    });
-    server = null;
-  }
-  if (fs.existsSync(tempConfigPath)) {
-    try {
-      fs.unlinkSync(tempConfigPath);
-    } catch (err) {
-      // Ignore cleanup errors
-    }
-  }
-}
-
-/**
- * Helper to dynamically load index.js with a fresh configuration.
- * By clearing the module cache, index.js runs from scratch, initializing a new
- * Express app with the test configuration.
- */
 async function loadServerWithConfig(allowedOrigins, maxPayloadSize) {
-  await cleanup();
-  writeTempConfig(allowedOrigins, maxPayloadSize);
-  process.env.WAYPOINT_CONFIG_PATH = tempConfigPath;
-
-  vi.resetModules();
-  const mod = await import('../../src/index.js');
-  app = mod.app;
-  server = mod.server;
+  if (close) {
+    await close();
+  }
+  writeTempConfig(buildCorsConfig(allowedOrigins, maxPayloadSize), tempConfigPath);
+  ({ app, close } = await reloadTestApp({ configPath: tempConfigPath }));
 }
 
 describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
-  beforeAll(() => {
-    // Stub process.on during test executions to prevent memory leak warnings.
-    // Each dynamic import of index.js registers SIGTERM/SIGINT listeners.
-    originalProcessOn = process.on;
-    process.on = (event, handler) => {
-      if (event === 'SIGTERM' || event === 'SIGINT') {
-        return process;
-      }
-      return originalProcessOn.call(process, event, handler);
-    };
-  });
-
   afterEach(async () => {
-    await cleanup();
+    if (close) {
+      await close();
+      close = null;
+    }
+    removeTempConfig(tempConfigPath);
   });
 
   afterAll(() => {
-    process.on = originalProcessOn;
-    resetLifecycleState();
     vi.restoreAllMocks();
   });
 
@@ -156,7 +112,6 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
     it('should match correctly against multiple configured allowed origins', async () => {
       await loadServerWithConfig(['http://a.com', 'http://b.com'], '10mb');
 
-      // Test origin a.com
       const resA = await request(app)
         .get('/health')
         .set('Authorization', 'Bearer test-token')
@@ -164,7 +119,6 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
         .expect(200);
       expect(resA.headers['access-control-allow-origin']).toBe('http://a.com');
 
-      // Test origin b.com
       const resB = await request(app)
         .get('/health')
         .set('Authorization', 'Bearer test-token')
@@ -172,7 +126,6 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
         .expect(200);
       expect(resB.headers['access-control-allow-origin']).toBe('http://b.com');
 
-      // Test origin c.com (unallowed)
       const resC = await request(app)
         .get('/health')
         .set('Authorization', 'Bearer test-token')
@@ -182,8 +135,6 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
     });
 
     it('should omit Access-Control-Allow-Origin if Origin header is missing from request', async () => {
-      // If we use a specific trusted origin list and the client request lacks
-      // an Origin header, the CORS check fails to match and no CORS headers are returned.
       await loadServerWithConfig(['http://trusted.com'], '10mb');
       const res = await request(app)
         .get('/health')
@@ -200,7 +151,6 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
         .set('Origin', 'http://trusted.com')
         .set('Access-Control-Request-Method', 'GET')
         .expect((resOpt) => {
-          // Express cors middleware returns 204 No Content for preflights by default
           if (resOpt.status !== 200 && resOpt.status !== 204) {
             throw new Error(`Expected 200 or 204, got ${resOpt.status}`);
           }
@@ -210,7 +160,6 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
     });
 
     it('should default to wildcard * if cors config block is missing entirely', async () => {
-      // Pass undefined for allowedOrigins to omit cors block from YAML config
       await loadServerWithConfig(undefined, '10mb');
       const res = await request(app)
         .get('/health')
@@ -222,7 +171,6 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
     });
 
     it('should handle wildcard * mixed with specific origins by treating it as a global wildcard', async () => {
-      // Confirms that containing a wildcard '*' short-circuits the cors check to allow any origin
       await loadServerWithConfig(['http://trusted.com', '*'], '10mb');
       const res = await request(app)
         .get('/health')
@@ -234,7 +182,6 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
     });
 
     it('should reject all cross-origin requests when allowedOrigins is empty', async () => {
-      // Empty array should match nothing, omitting the header
       await loadServerWithConfig([], '10mb');
       const res = await request(app)
         .get('/health')
@@ -270,7 +217,6 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
     });
 
     it('should attach CORS headers even on error responses like 413 Payload Too Large', async () => {
-      // Verify CORS middleware attaches headers even when request processing is aborted early
       await loadServerWithConfig(['http://trusted.com'], '100b');
       const res = await request(app)
         .post('/openai/chat/completions')
@@ -295,11 +241,6 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
   });
 
   describe('Payload Limit Edge Cases', () => {
-    // Note: Since the body size check runs BEFORE authentication/validation,
-    // - A request within the limit will bypass the body parser and trigger authentication,
-    //   returning 401 Unauthorized (because we don't supply a valid token).
-    // - A request exceeding the limit will be blocked by body-parser and return 413.
-
     it('should accept a request with payload size exactly at the configured limit', async () => {
       const limitBytes = 150;
       await loadServerWithConfig(['*'], `${limitBytes}b`);
@@ -308,7 +249,6 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
       const baseLength = Buffer.byteLength(JSON.stringify(baseBody));
       const padLength = limitBytes - baseLength;
 
-      // Construct a valid JSON string of exactly 150 bytes
       const bodyStr = JSON.stringify({ data: 'x'.repeat(padLength) });
       expect(Buffer.byteLength(bodyStr)).toBe(limitBytes);
 
@@ -317,7 +257,6 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
         .set('Content-Type', 'application/json')
         .send(bodyStr);
 
-      // Verify that it passes body parsing (does not return 413) and fails on authentication (401)
       expect(res.status).toBe(401);
     });
 

@@ -1,7 +1,7 @@
 /* eslint-disable max-len */
 import { FORMATS, translateRequest, translateResponse } from '../../translators/index.js';
 import { getThinkingLevel } from './geminiFormatter.js';
-import { mapOpenAICompletionResponse } from './geminiOpenaiResponse.js';
+import { mapOpenAICompletionResponse } from '../shared/openaiResponse.js';
 
 /**
  * WHAT: Executes standard unary text completion for Gemini.

@@ -7,7 +7,7 @@ import {
   afterAll,
 } from 'vitest';
 import supertest from 'supertest';
-import { resetLifecycleState } from '../../src/lifecycle/lifecycle.js';
+import { createTestApp } from '../helpers/testServer.js';
 
 const request = (app) => {
   const req = supertest(app);
@@ -18,32 +18,15 @@ const request = (app) => {
 
 describe('Zod Request Validation Middleware', () => {
   let app;
-  let server;
-  let originalEnv;
+  let close;
 
   beforeAll(async () => {
-    originalEnv = { ...process.env };
-    process.env.OPEN_WEBUI_TOKEN = 'mock-webui-token';
-    process.env.CODEX_AGENT_TOKEN = 'mock-codex-token';
-    process.env.GEMINI_API_KEY_1 = 'gemini-key-1';
-    process.env.GEMINI_API_KEY_2 = 'gemini-key-2';
-    process.env.ANTHROPIC_API_KEY_1 = 'anthropic-key-1';
-    process.env.OPENAI_API_KEY_1 = 'openai-key-1';
-    process.env.WAYPOINT_CONFIG_PATH = 'config.example.yaml';
-
-    vi.resetModules();
-    const mod = await import('../../src/index.js');
-    app = mod.app;
-    server = mod.server;
+    ({ app, close } = await createTestApp());
   });
 
   afterAll(async () => {
-    process.env = originalEnv;
-    resetLifecycleState();
     vi.restoreAllMocks();
-    if (server) {
-      await new Promise((resolve) => { server.close(resolve); });
-    }
+    await close();
   });
 
   it('rejects missing or invalid model', async () => {

@@ -1,6 +1,7 @@
 import 'dotenv/config';
+import { fileURLToPath } from 'node:url';
 import { bootstrap } from './app/bootstrap.js';
 
-const { app, server, keyRegistry } = await bootstrap();
-
-export { app, server, keyRegistry };
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  await bootstrap();
+}

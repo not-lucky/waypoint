@@ -108,6 +108,8 @@ Waypoint resolves parameters (e.g., `temperature`, `maxTokens`, `reasoningEffort
 - Secure endpoint authentication with bearer token mappings (`Authorization: Bearer <token>`).
 - Client-level sliding window rate limiting.
 - Ingress payload size constraints and CORS controls.
+- **Health endpoint** (`GET /health`): requires authentication; returns `status` (`ok` or `degraded`), `uptimeSeconds`, per-provider key pool stats (`providers`), and routing state (`routing`).
+- **Dry-run endpoints**: mirror the live OpenAI and Anthropic routes under `/dryrun/openai/*` and `/dryrun/anthropic/*`. Requests are validated and logged but never sent upstream; the response includes `{ dryRun: true, ... }`. Requires `logging.logRequests: true` in config.
 
 ---
 
@@ -118,10 +120,14 @@ Waypoint resolves parameters (e.g., `temperature`, `maxTokens`, `reasoningEffort
 - npm
 
 ### Installation
-Clone the repository and install dependencies:
+Clone the repository, copy the example configuration files, and install dependencies:
 ```bash
 npm install
+cp config.example.yaml config/config.yaml
+cp .env.example .env
 ```
+
+Edit `.env` with your API keys and client tokens, then adjust `config/config.yaml` as needed.
 
 ### Running Waypoint
 Run the gateway in development mode (with file-watch and auto-restart):
@@ -135,9 +141,11 @@ npm start
 ```
 
 ### Running Tests
-Waypoint features a comprehensive test suite (590 unit, integration, and edge-case tests) executed via **Vitest**:
+Waypoint features a comprehensive test suite (334 unit, integration, and edge-case tests) executed via **Vitest**:
 ```bash
 npm test
+npm run test:watch   # watch mode
+npm run ci           # lint + test
 ```
 
 ### Code Quality & Linting
@@ -154,10 +162,10 @@ Source and test files use **camelCase** naming throughout. The `src/` tree is or
 
 ```
 src/
-├── index.js                 # Thin entry point (delegates to app/bootstrap.js)
+├── index.js                 # CLI entry point (delegates to app/bootstrap.js)
 ├── app/                     # Startup wiring and Express app factory
 ├── lifecycle/               # Graceful shutdown and signal handling
-├── adapters/                # Provider HTTP adapters (gemini/ for Gemini internals)
+├── adapters/                # Provider HTTP adapters (shared/ for cross-adapter utilities, gemini/ for Gemini internals)
 ├── config/                  # YAML loader and Zod validators
 ├── controllers/             # Protocol translation boundaries (OpenAI, Anthropic)
 ├── domain/                  # Model routing, caching, and request transformation
@@ -171,13 +179,13 @@ src/
 └── translators/             # Cross-protocol request/response translation
 ```
 
-Tests mirror this structure under `test/`, with cross-cutting HTTP tests in `test/integration/` and shared fixtures in `test/fixtures/`.
+Tests mirror this structure under `test/`, with cross-cutting HTTP tests in `test/integration/`, shared test helpers in `test/helpers/`, and fixtures in `test/fixtures/`.
 
 ---
 
 ## ⚙️ Configuration Guide
 
-Waypoint reads configuration from `config/config.yaml` or a path designated in `process.env.WAYPOINT_CONFIG_PATH`.
+Waypoint reads configuration from `config/config.yaml` (copy from `config.example.yaml` at the repo root) or a path designated in `process.env.WAYPOINT_CONFIG_PATH`. Environment variables referenced in the YAML are loaded from `.env` (copy from `.env.example`).
 
 ### Complete YAML Example
 ```yaml

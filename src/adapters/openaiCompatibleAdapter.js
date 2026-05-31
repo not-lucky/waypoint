@@ -6,7 +6,7 @@ import {
   resolveReasoningEffort,
   mapOpenAICompletionResponse,
   mapOpenAIStreamChunk,
-} from './gemini/geminiOpenaiResponse.js';
+} from './shared/openaiResponse.js';
 
 /**
  * Adapter for natively OpenAI-compatible APIs.

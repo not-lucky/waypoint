@@ -7,48 +7,23 @@ import {
   afterAll,
 } from 'vitest';
 import request from 'supertest';
-import { resetLifecycleState } from '../../src/lifecycle/lifecycle.js';
+import { createTestApp } from '../helpers/testServer.js';
 
 describe('Server Route Integration Tests', () => {
   let app;
-  let server;
-  let originalEnv;
+  let close;
   let executeCompletionSpy;
 
   beforeAll(async () => {
-    originalEnv = { ...process.env };
+    ({ app, close } = await createTestApp());
 
-    // Set mock env values so loader does not fail on missing keys
-    process.env.OPEN_WEBUI_TOKEN = 'mock-webui-token';
-    process.env.CODEX_AGENT_TOKEN = 'mock-codex-token';
-    process.env.GEMINI_API_KEY_1 = 'gemini-key-1';
-    process.env.GEMINI_API_KEY_2 = 'gemini-key-2';
-    process.env.ANTHROPIC_API_KEY_1 = 'anthropic-key-1';
-    process.env.OPENAI_API_KEY_1 = 'openai-key-1';
-
-    // Point the path environment variable to config.example.yaml
-    process.env.WAYPOINT_CONFIG_PATH = 'config.example.yaml';
-
-    // Clear module cache to allow fresh execution of index.js
-    vi.resetModules();
-
-    // Dynamically import UnifiedOrchestrator to ensure we get the fresh module definition
-    const { UnifiedOrchestrator: FreshOrchestrator } = await import('../../src/services/unifiedOrchestrator.js');
-    executeCompletionSpy = vi.spyOn(FreshOrchestrator.prototype, 'executeCompletion');
-
-    // Dynamically import to start server with process.env mocked
-    const mod = await import('../../src/index.js');
-    app = mod.app;
-    server = mod.server;
+    const { UnifiedOrchestrator } = await import('../../src/services/unifiedOrchestrator.js');
+    executeCompletionSpy = vi.spyOn(UnifiedOrchestrator.prototype, 'executeCompletion');
   });
 
   afterAll(async () => {
-    process.env = originalEnv;
-    resetLifecycleState();
     vi.restoreAllMocks();
-    if (server) {
-      await new Promise((resolve) => { server.close(resolve); });
-    }
+    await close();
   });
 
   it('GET /health - returns ok', async () => {

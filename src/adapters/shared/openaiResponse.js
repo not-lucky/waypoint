@@ -1,4 +1,4 @@
-import { extractThoughtTags } from './geminiFormatter.js';
+import { extractThoughtTags } from '../gemini/geminiFormatter.js';
 
 /**
  * Maps unified reasoning settings to OpenAI reasoning_effort values.

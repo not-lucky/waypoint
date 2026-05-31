@@ -1,13 +1,32 @@
 import {
-  describe, it, expect, afterAll, beforeEach, afterEach, vi,
+  vi,
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll,
+  beforeEach,
+  afterEach,
 } from 'vitest';
-import request from 'supertest';
-import { app, server } from '../../src/index.js';
-import { UnifiedOrchestrator } from '../../src/services/unifiedOrchestrator.js';
-import { ModelCache } from '../../src/domain/modelCache.js';
+import { createTestApp, authed } from '../helpers/testServer.js';
 
 describe('Index Endpoints Coverage', () => {
-  beforeEach(() => {
+  let app;
+  let close;
+
+  beforeAll(async () => {
+    ({ app, close } = await createTestApp());
+  });
+
+  afterAll(async () => {
+    vi.restoreAllMocks();
+    await close();
+  });
+
+  beforeEach(async () => {
+    const { UnifiedOrchestrator } = await import('../../src/services/unifiedOrchestrator.js');
+    const { ModelCache } = await import('../../src/domain/modelCache.js');
+
     vi.spyOn(UnifiedOrchestrator.prototype, 'executeCompletion').mockResolvedValue({
       id: 'mock-id',
       object: 'chat.completion',
@@ -27,60 +46,46 @@ describe('Index Endpoints Coverage', () => {
     vi.restoreAllMocks();
   });
 
-  afterAll(async () => {
-    if (server) {
-      await new Promise((resolve) => { server.close(resolve); });
-    }
-  });
-
   it('GET /openai/models', async () => {
-    let res = await request(app)
+    let res = await authed(app)
       .get('/openai/models')
-      .set('Authorization', 'Bearer mock-webui-token')
       .expect(200);
     expect(res.body.object).toBe('list');
 
-    // Second request to hit the `cachedUniqueModels` branch
-    res = await request(app)
+    res = await authed(app)
       .get('/openai/models')
-      .set('Authorization', 'Bearer mock-webui-token')
       .expect(200);
     expect(res.body.object).toBe('list');
   });
 
   it('POST /openai/chat/completions', async () => {
-    const res = await request(app)
+    const res = await authed(app)
       .post('/openai/chat/completions')
-      .set('Authorization', 'Bearer mock-webui-token')
       .send({
         model: 'openai/gpt-4o',
         messages: [{ role: 'user', content: 'test' }],
       });
-    // Can be 200 or 503 depending on rate limits, we just need to hit the route
     expect([200, 400, 503]).toContain(res.status);
   });
 
   it('GET /health', async () => {
-    const res = await request(app)
+    const res = await authed(app)
       .get('/health')
-      .set('Authorization', 'Bearer mock-webui-token')
       .expect(200);
     expect(res.body).toHaveProperty('status');
     expect(res.body).toHaveProperty('uptimeSeconds');
   });
 
   it('GET /anthropic/models', async () => {
-    const res = await request(app)
+    const res = await authed(app)
       .get('/anthropic/models')
-      .set('Authorization', 'Bearer mock-webui-token')
       .expect(200);
     expect(res.body.type).toBe('list');
   });
 
   it('POST /anthropic/messages', async () => {
-    const res = await request(app)
+    const res = await authed(app)
       .post('/anthropic/messages')
-      .set('Authorization', 'Bearer mock-webui-token')
       .send({
         model: 'anthropic/claude-sonnet-4',
         messages: [{ role: 'user', content: 'test' }],
@@ -89,20 +94,18 @@ describe('Index Endpoints Coverage', () => {
   });
 
   it('Global Error Handler - 400', async () => {
-    const res = await request(app)
+    const res = await authed(app)
       .post('/openai/chat/completions')
-      .set('Authorization', 'Bearer mock-webui-token')
       .set('Content-Type', 'application/json')
-      .send('invalid json'); // This will throw a syntax error in body-parser
-    expect(res.status).toBe(400); // Because of SyntaxError middleware or our global error handler
+      .send('invalid json');
+    expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('badRequest');
   });
 
   it('Global Error Handler - 413', async () => {
-    const largeString = 'a'.repeat(11 * 1024 * 1024); // 11MB
-    const res = await request(app)
+    const largeString = 'a'.repeat(11 * 1024 * 1024);
+    const res = await authed(app)
       .post('/openai/chat/completions')
-      .set('Authorization', 'Bearer mock-webui-token')
       .set('Content-Type', 'application/json')
       .send(`{"model":"gpt-4","messages":[{"role":"user","content":"${largeString}"}]}`);
 
@@ -111,10 +114,10 @@ describe('Index Endpoints Coverage', () => {
   });
 
   it('GET /openai/models with missing providers config', async () => {
+    const { ModelCache } = await import('../../src/domain/modelCache.js');
     vi.spyOn(ModelCache.prototype, 'getUniqueModels').mockReturnValue([]);
-    const res = await request(app)
+    const res = await authed(app)
       .get('/openai/models')
-      .set('Authorization', 'Bearer mock-webui-token')
       .expect(200);
     expect(res.body.object).toBe('list');
     expect(res.body.data).toEqual([]);
@@ -122,15 +125,15 @@ describe('Index Endpoints Coverage', () => {
 
   describe('Global Error Handler - status and statusCode variations', () => {
     it('should handle error with status property', async () => {
+      const { ModelCache } = await import('../../src/domain/modelCache.js');
       const err = new Error('Status 400 Error');
       err.status = 400;
       vi.spyOn(ModelCache.prototype, 'getUniqueModels').mockImplementation(() => {
         throw err;
       });
 
-      const res = await request(app)
+      const res = await authed(app)
         .get('/openai/models')
-        .set('Authorization', 'Bearer mock-webui-token')
         .expect(400);
 
       expect(res.body.error.code).toBe('badRequest');
@@ -138,15 +141,15 @@ describe('Index Endpoints Coverage', () => {
     });
 
     it('should handle error with statusCode property', async () => {
+      const { ModelCache } = await import('../../src/domain/modelCache.js');
       const err = new Error('StatusCode 413 Error');
       err.statusCode = 413;
       vi.spyOn(ModelCache.prototype, 'getUniqueModels').mockImplementation(() => {
         throw err;
       });
 
-      const res = await request(app)
+      const res = await authed(app)
         .get('/openai/models')
-        .set('Authorization', 'Bearer mock-webui-token')
         .expect(413);
 
       expect(res.body.error.code).toBe('payloadTooLarge');
@@ -154,14 +157,14 @@ describe('Index Endpoints Coverage', () => {
     });
 
     it('should handle error with default 500 status', async () => {
+      const { ModelCache } = await import('../../src/domain/modelCache.js');
       const err = new Error('Default 500 Error');
       vi.spyOn(ModelCache.prototype, 'getUniqueModels').mockImplementation(() => {
         throw err;
       });
 
-      const res = await request(app)
+      const res = await authed(app)
         .get('/openai/models')
-        .set('Authorization', 'Bearer mock-webui-token')
         .expect(500);
 
       expect(res.body.error.code).toBe('internalServerError');

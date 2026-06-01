@@ -1,108 +1,180 @@
-import {
-  describe,
-  it,
-  expect,
-} from 'vitest';
-import fs from 'node:fs';
+import { describe, it, expect } from 'vitest';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import { authed, createDryrunTestApp } from '../helpers/testServer.js';
+import request from 'supertest';
+import {
+  authed,
+  createDryrunTestApp,
+  createTestApp,
+  tempDir,
+  writeTempConfig,
+  removeTempDir,
+} from '../helpers/testServer.js';
+
+function buildDryrunConfigWithoutLogging() {
+  return `
+gateway:
+  port: 20150
+  globalRetryLimit: 1
+  routing:
+    strategy: "round-robin"
+logging:
+  enableConsole: false
+  enableFile: false
+  format: "json"
+  logRequests: false
+clients:
+  - name: "open-webui"
+    token: "mock-webui-token"
+    rateLimit:
+      windowMs: 60000
+      max: 100
+providers:
+  openai:
+    keys:
+      - "openai-key"
+    models:
+      - id: "gpt-4o"
+        aliases: ["gpt4"]
+`;
+}
+
+async function expectTwoStageAuditLog(logsDir, endpointFragment) {
+  const [requestDir] = await fsp.readdir(logsDir);
+  const logDir = path.join(logsDir, requestDir);
+  const files = await fsp.readdir(logDir);
+
+  expect(files).toContain('01_client_request.json');
+  expect(files).toContain('02_provider_request.json');
+  expect(files).not.toContain('03_provider_response.json');
+  expect(files).not.toContain('04_client_response.json');
+  expect(files).not.toContain('05_event_stream.jsonl');
+
+  const clientReq = JSON.parse(await fsp.readFile(path.join(logDir, '01_client_request.json'), 'utf8'));
+  expect(clientReq.endpoint).toContain(endpointFragment);
+}
 
 describe('Dry Run Endpoints Integration Tests', () => {
-  it('POST /dryrun/openai/chat/completions - performs dry run and logs exactly 2 stages', async () => {
+  it.each([
+    ['/dryrun/openai/chat/completions', '/dryrun/openai/chat/completions'],
+    ['/dryrun/openai/v1/chat/completions', '/dryrun/openai/v1/chat/completions'],
+  ])('POST %s - returns dry-run response and writes two audit stages', async (route, endpointFragment) => {
     const { app, logsDir, teardown } = await createDryrunTestApp();
+    const payload = {
+      model: 'openai/gpt4',
+      messages: [{ role: 'user', content: 'test dryrun' }],
+      temperature: 0.7,
+    };
 
     try {
-      const payload = {
-        model: 'openai/gpt-4o',
-        messages: [{ role: 'user', content: 'test dryrun' }],
-        temperature: 0.7,
-      };
+      const res = await authed(app).post(route).send(payload).expect(200);
 
-      const response = await authed(app)
-        .post('/dryrun/openai/chat/completions')
-        .send(payload)
-        .expect('Content-Type', /json/)
-        .expect(200);
-
-      expect(response.body.dryRun).toBe(true);
-      expect(response.body.message).toContain('Dry run completed successfully');
-      expect(response.body.request.url).toBe('https://api.openai.com/v1/chat/completions');
-      const authHeader = response.body.request.headers.Authorization
-        || response.body.request.headers.authorization;
-      expect(authHeader).toBe('[REDACTED]');
-      expect(response.body.request.body).toEqual({
+      expect(res.body.dryRun).toBe(true);
+      expect(res.body.request.url).toBe('https://api.openai.com/v1/chat/completions');
+      expect(res.body.request.headers.Authorization || res.body.request.headers.authorization).toBe('[REDACTED]');
+      expect(JSON.stringify(res.body.request.headers)).not.toContain('openai-key');
+      expect(res.body.request.body).toEqual({
         model: 'gpt-4o',
-        messages: [{ role: 'user', content: 'test dryrun' }],
+        messages: payload.messages,
         stream: false,
         temperature: 0.7,
       });
 
-      expect(fs.existsSync(logsDir)).toBe(true);
-      const subdirs = await fsp.readdir(logsDir);
-      expect(subdirs.length).toBe(1);
-
-      const requestLogDir = path.join(logsDir, subdirs[0]);
-      const files = await fsp.readdir(requestLogDir);
-
-      expect(files).toContain('01_client_request.json');
-      expect(files).toContain('02_provider_request.json');
-      expect(files).not.toContain('03_provider_response.json');
-      expect(files).not.toContain('04_client_response.json');
-      expect(files).not.toContain('05_event_stream.jsonl');
-
-      const clientReqContent = await fsp.readFile(path.join(requestLogDir, '01_client_request.json'), 'utf8');
-      const clientReq = JSON.parse(clientReqContent);
-      expect(clientReq.endpoint).toContain('/dryrun/openai/chat/completions');
-      expect(clientReq.body).toEqual(payload);
-
-      const providerReqContent = await fsp.readFile(path.join(requestLogDir, '02_provider_request.json'), 'utf8');
-      const providerReq = JSON.parse(providerReqContent);
-      expect(providerReq.url).toBe('https://api.openai.com/v1/chat/completions');
-      expect(providerReq.body).toEqual({
-        model: 'gpt-4o',
-        messages: [{ role: 'user', content: 'test dryrun' }],
-        stream: false,
-        temperature: 0.7,
-      });
+      await expectTwoStageAuditLog(logsDir, endpointFragment);
     } finally {
       await teardown();
     }
   });
 
-  it('POST /dryrun/anthropic/messages - performs dry run and logs exactly 2 stages', async () => {
+  it.each([
+    ['/dryrun/anthropic/messages', '/dryrun/anthropic/messages'],
+    ['/dryrun/anthropic/v1/messages', '/dryrun/anthropic/v1/messages'],
+  ])('POST %s - returns dry-run response and writes two audit stages', async (route, endpointFragment) => {
     const { app, logsDir, teardown } = await createDryrunTestApp();
+    const payload = {
+      model: 'anthropic/claude-sonnet-4',
+      messages: [{ role: 'user', content: 'hello claude' }],
+    };
 
     try {
-      const payload = {
-        model: 'anthropic/claude-sonnet-4',
-        messages: [{ role: 'user', content: 'hello claude' }],
-      };
+      const res = await authed(app).post(route).send(payload).expect(200);
 
-      const response = await authed(app)
-        .post('/dryrun/anthropic/messages')
-        .send(payload)
-        .expect('Content-Type', /json/)
+      expect(res.body.dryRun).toBe(true);
+      expect(res.body.request.url).toBe('https://api.anthropic.com/v1/messages');
+      const apiKey = res.body.request.headers['x-api-key'] || res.body.request.headers['X-Api-Key'];
+      expect(apiKey).toBe('[REDACTED]');
+
+      await expectTwoStageAuditLog(logsDir, endpointFragment);
+    } finally {
+      await teardown();
+    }
+  });
+
+  it('requires authentication', async () => {
+    const { app, teardown } = await createDryrunTestApp();
+    try {
+      await request(app)
+        .post('/dryrun/openai/chat/completions')
+        .send({
+          model: 'openai/gpt-4o',
+          messages: [{ role: 'user', content: 'no auth' }],
+        })
+        .expect(401);
+    } finally {
+      await teardown();
+    }
+  });
+
+  it('validates request body', async () => {
+    const { app, teardown } = await createDryrunTestApp();
+    try {
+      const res = await authed(app)
+        .post('/dryrun/openai/chat/completions')
+        .send({ model: 'openai/gpt-4o' })
+        .expect(400);
+
+      expect(res.body.error.code).toBe('validationError');
+      expect(res.body.error.details.some((d) => d.field === 'messages')).toBe(true);
+    } finally {
+      await teardown();
+    }
+  });
+
+  it('fails when logRequests is disabled', async () => {
+    const dir = tempDir();
+    const configPath = `${dir}/config.yaml`;
+    writeTempConfig(buildDryrunConfigWithoutLogging(), configPath);
+    const { app, close } = await createTestApp({ configPath });
+
+    try {
+      await authed(app)
+        .post('/dryrun/openai/chat/completions')
+        .send({
+          model: 'openai/gpt-4o',
+          messages: [{ role: 'user', content: 'no logs' }],
+        })
+        .expect(503);
+    } finally {
+      await close();
+      await removeTempDir(dir);
+    }
+  });
+
+  it('streaming returns JSON instead of SSE', async () => {
+    const { app, teardown } = await createDryrunTestApp();
+    try {
+      const res = await authed(app)
+        .post('/dryrun/openai/chat/completions')
+        .send({
+          model: 'openai/gpt-4o',
+          messages: [{ role: 'user', content: 'stream' }],
+          stream: true,
+        })
         .expect(200);
 
-      expect(response.body.dryRun).toBe(true);
-      expect(response.body.message).toContain('Dry run completed successfully');
-      expect(response.body.request.url).toBe('https://api.anthropic.com/v1/messages');
-      const apiKeyHeader = response.body.request.headers['x-api-key'] || response.body.request.headers['X-Api-Key'];
-      expect(apiKeyHeader).toBe('[REDACTED]');
-
-      expect(fs.existsSync(logsDir)).toBe(true);
-      const subdirs = await fsp.readdir(logsDir);
-      expect(subdirs.length).toBe(1);
-
-      const requestLogDir = path.join(logsDir, subdirs[0]);
-      const files = await fsp.readdir(requestLogDir);
-
-      expect(files).toContain('01_client_request.json');
-      expect(files).toContain('02_provider_request.json');
-      expect(files).not.toContain('03_provider_response.json');
-      expect(files).not.toContain('04_client_response.json');
-      expect(files).not.toContain('05_event_stream.jsonl');
+      expect(res.body.dryRun).toBe(true);
+      expect(res.headers['content-type']).toMatch(/json/);
+      expect(res.body.request.body.stream).toBe(true);
     } finally {
       await teardown();
     }

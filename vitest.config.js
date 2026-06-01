@@ -5,6 +5,7 @@ export default defineConfig({
     passWithNoTests: true,
     silent: true,
     setupFiles: ['./test/setup.js'],
+    globalTeardown: './test/globalTeardown.js',
     env: {
       OPEN_WEBUI_TOKEN: 'mock-webui-token',
       CODEX_AGENT_TOKEN: 'mock-codex-token',

@@ -16,24 +16,28 @@ export const DEFAULT_TEST_ENV = {
   WAYPOINT_CONFIG_PATH: 'config.example.yaml',
 };
 
-/**
- * Unique path under test/ for isolated temp files or directories (safe for parallel tests).
- */
-export function uniqueTempPath(prefix = 'tmp') {
-  return path.resolve('test', `${prefix}-${crypto.randomUUID()}`);
+const TEST_TMP = path.resolve('test/.tmp');
+
+/** Creates an isolated directory under test/.tmp/. */
+export function tempDir() {
+  const dir = path.join(TEST_TMP, crypto.randomUUID());
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
 }
 
-/**
- * Remove a temporary directory if it exists.
- */
-export async function removeTempDir(dirPath) {
-  if (!dirPath) return;
-  await fsp.rm(dirPath, { recursive: true, force: true }).catch(() => { });
+export async function removeTempDir(dir) {
+  if (dir) await fsp.rm(dir, { recursive: true, force: true }).catch(() => {});
 }
 
-/**
- * YAML config for dry-run integration tests with a dedicated request log directory.
- */
+export function writeTempConfig(content, filePath) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, content, 'utf8');
+}
+
+export function removeTempConfig(filePath) {
+  if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
+}
+
 export function buildDryrunConfig(requestLogPath, port = 20129) {
   return `
 gateway:
@@ -78,30 +82,54 @@ providers:
 `;
 }
 
-/**
- * Write a temporary YAML config file and return its absolute path.
- */
-export function writeTempConfig(content, filePath = uniqueTempPath('config')) {
-  fs.writeFileSync(filePath, content, 'utf8');
-  return filePath;
+export function buildModelConfigYaml(requestLogPath) {
+  return `
+gateway:
+  port: 20160
+  globalRetryLimit: 1
+  routing:
+    strategy: "round-robin"
+logging:
+  enableConsole: false
+  enableFile: false
+  format: "json"
+  logRequests: true
+  requestLogPath: "${requestLogPath}"
+clients:
+  - name: "open-webui"
+    token: "mock-webui-token"
+    rateLimit:
+      windowMs: 60000
+      max: 100
+providers:
+  gemini:
+    keys:
+      - "gemini-key"
+    models:
+      - id: "gemini-flash-lite-latest-low"
+        actualModelId: "gemini-flash-lite-latest"
+        reasoningSupported: true
+        temperature: 0.3
+        maxTokens: 4096
+        reasoningEffort: "low"
+      - id: "gemini-flash-lite-latest-high"
+        actualModelId: "gemini-flash-lite-latest"
+        reasoningSupported: true
+        overrides:
+          reasoningEffort: "high"
+          temperature: 0.8
+          maxTokens: 8192
+  custom-openai:
+    type: "openai-compatible"
+    baseUrl: "https://custom.example.com/v1"
+    keys:
+      - "custom-key"
+    models:
+      - id: "custom-model"
+        aliases: ["custom-alias"]
+`;
 }
 
-/**
- * Remove a temporary config file if it exists.
- */
-export function removeTempConfig(filePath) {
-  if (filePath && fs.existsSync(filePath)) {
-    try {
-      fs.unlinkSync(filePath);
-    } catch {
-      // Ignore cleanup errors
-    }
-  }
-}
-
-/**
- * Save/restore process.env around an async function.
- */
 export async function withTestEnv(fn, envOverrides = {}) {
   const originalEnv = { ...process.env };
   Object.assign(process.env, DEFAULT_TEST_ENV, envOverrides);
@@ -112,9 +140,6 @@ export async function withTestEnv(fn, envOverrides = {}) {
   }
 }
 
-/**
- * Build an Express app via wireServices + createApp without listening or lifecycle hooks.
- */
 export async function createTestApp(opts = {}) {
   const {
     configPath = DEFAULT_TEST_ENV.WAYPOINT_CONFIG_PATH,
@@ -156,45 +181,38 @@ export async function createTestApp(opts = {}) {
   };
 
   return {
-    app,
-    services,
-    config,
-    logger,
-    close,
+    app, services, config, logger, close,
   };
 }
 
-/**
- * Reload the app with fresh module state (for per-test config changes).
- */
 export async function reloadTestApp(opts = {}) {
   return createTestApp({ ...opts, resetModules: true });
 }
 
-/**
- * Create a test app configured for dry-run with isolated log and config paths.
- */
-export async function createDryrunTestApp(port = 20129) {
-  const logsDir = uniqueTempPath('dryrun-logs');
-  const configPath = `${uniqueTempPath('dryrun-config')}.yaml`;
-  writeTempConfig(buildDryrunConfig(logsDir, port), configPath);
+async function createTempConfigApp(buildYaml) {
+  const dir = tempDir();
+  const logsDir = path.join(dir, 'logs');
+  const configPath = path.join(dir, 'config.yaml');
+  fs.mkdirSync(logsDir);
+  writeTempConfig(buildYaml(logsDir), configPath);
   const ctx = await createTestApp({ configPath });
   const teardown = async () => {
     await ctx.close();
-    await removeTempDir(logsDir);
-    removeTempConfig(configPath);
+    await removeTempDir(dir);
   };
   return {
-    ...ctx,
-    logsDir,
-    configPath,
-    teardown,
+    ...ctx, dir, logsDir, configPath, teardown,
   };
 }
 
-/**
- * Shorthand for authenticated supertest requests.
- */
+export function createDryrunTestApp(port = 20129) {
+  return createTempConfigApp((logsDir) => buildDryrunConfig(logsDir, port));
+}
+
+export function createModelConfigTestApp() {
+  return createTempConfigApp(buildModelConfigYaml);
+}
+
 export function authed(app, token = 'mock-webui-token') {
   const authHeader = { Authorization: `Bearer ${token}` };
   return {

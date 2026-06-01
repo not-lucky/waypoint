@@ -21,14 +21,10 @@ export class ModelCache {
     const providers = this.config?.providers || {};
     const models = Object.entries(providers).flatMap(([providerName, providerConfig]) => {
       const providerModels = providerConfig.models || [];
-      return providerModels.flatMap((modelConfig) => {
-        const list = [];
-        if (modelConfig.id) list.push(`${providerName}/${modelConfig.id}`);
-        if (Array.isArray(modelConfig.aliases)) {
-          list.push(...modelConfig.aliases.map((alias) => `${providerName}/${alias}`));
-        }
-        return list;
-      });
+      return providerModels.flatMap((modelConfig) => [
+        ...(modelConfig.id ? [`${providerName}/${modelConfig.id}`] : []),
+        ...(modelConfig.aliases || []).map((alias) => `${providerName}/${alias}`),
+      ]);
     });
 
     this.cachedUniqueModels = [...new Set(models)];

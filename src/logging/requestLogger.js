@@ -202,20 +202,17 @@ export class RequestLog {
    */
   async writeStreamLog() {
     if (this.isDryRun) return;
-    const providerEvents = this.streamBuffer.filter((e) => e.direction === 'provider');
-    const clientEvents = this.streamBuffer.filter((e) => e.direction === 'client');
+    let providerContent = '';
+    let clientContent = '';
+    for (const e of this.streamBuffer) {
+      const formatted = this.constructor.formatStreamEvent(e.data);
+      if (e.direction === 'provider') providerContent += formatted;
+      else if (e.direction === 'client') clientContent += formatted;
+    }
 
     const sections = [];
-
-    if (providerEvents.length > 0) {
-      const providerContent = providerEvents.map((e) => this.constructor.formatStreamEvent(e.data)).join('');
-      sections.push(`--- provider ---\n${providerContent}`);
-    }
-
-    if (clientEvents.length > 0) {
-      const clientContent = clientEvents.map((e) => this.constructor.formatStreamEvent(e.data)).join('');
-      sections.push(`--- client ---\n${clientContent}`);
-    }
+    if (providerContent) sections.push(`--- provider ---\n${providerContent}`);
+    if (clientContent) sections.push(`--- client ---\n${clientContent}`);
 
     const content = sections.join('\n');
 

@@ -5,7 +5,7 @@ import {
   beforeAll,
   afterAll,
 } from 'vitest';
-import { createTestApp, authed } from '../helpers/testServer.js';
+import { createTestApp, createDryrunTestApp, authed } from '../helpers/testServer.js';
 
 describe('createApp', () => {
   let app;
@@ -35,20 +35,21 @@ describe('createApp', () => {
   });
 
   it('mounts dry-run routes', async () => {
-    const { app: dryApp, close: dryClose } = await createTestApp({
-      configPath: 'test/fixtures/dryrunConfig.yaml',
-    });
+    const { app: dryApp, teardown } = await createDryrunTestApp(20130);
 
-    const res = await authed(dryApp)
-      .post('/dryrun/openai/chat/completions')
-      .send({
-        model: 'openai/gpt-4o',
-        messages: [{ role: 'user', content: 'test' }],
-      })
-      .expect(200);
+    try {
+      const res = await authed(dryApp)
+        .post('/dryrun/openai/chat/completions')
+        .send({
+          model: 'openai/gpt-4o',
+          messages: [{ role: 'user', content: 'test' }],
+        })
+        .expect(200);
 
-    expect(res.body.dryRun).toBe(true);
-    await dryClose();
+      expect(res.body.dryRun).toBe(true);
+    } finally {
+      await teardown();
+    }
   });
 
   it('applies CORS headers', async () => {

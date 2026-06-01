@@ -1,4 +1,6 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { vi } from 'vitest';
 import request from 'supertest';
@@ -15,9 +17,71 @@ export const DEFAULT_TEST_ENV = {
 };
 
 /**
+ * Unique path under test/ for isolated temp files or directories (safe for parallel tests).
+ */
+export function uniqueTempPath(prefix = 'tmp') {
+  return path.resolve('test', `${prefix}-${crypto.randomUUID()}`);
+}
+
+/**
+ * Remove a temporary directory if it exists.
+ */
+export async function removeTempDir(dirPath) {
+  if (!dirPath) return;
+  await fsp.rm(dirPath, { recursive: true, force: true }).catch(() => { });
+}
+
+/**
+ * YAML config for dry-run integration tests with a dedicated request log directory.
+ */
+export function buildDryrunConfig(requestLogPath, port = 20129) {
+  return `
+gateway:
+  port: ${port}
+  globalRetryLimit: 3
+  routing:
+    strategy: "round-robin"
+  cors:
+    allowedOrigins:
+      - "*"
+logging:
+  enableConsole: false
+  enableFile: false
+  format: "json"
+  logRequests: true
+  requestLogPath: "${requestLogPath}"
+clients:
+  - name: "open-webui"
+    token: "mock-webui-token"
+    rateLimit:
+      windowMs: 60000
+      max: 100
+providers:
+  gemini:
+    keys:
+      - "gemini-key"
+    models:
+      - id: "gemini-2.5-pro-preview-05-06"
+        aliases: ["gemini-pro"]
+  anthropic:
+    keys:
+      - "anthropic-key"
+    models:
+      - id: "claude-sonnet-4"
+        aliases: ["sonnet"]
+  openai:
+    keys:
+      - "openai-key"
+    models:
+      - id: "gpt-4o"
+        aliases: ["gpt4"]
+`;
+}
+
+/**
  * Write a temporary YAML config file and return its absolute path.
  */
-export function writeTempConfig(content, filePath = path.resolve('test/temp_test_config.yaml')) {
+export function writeTempConfig(content, filePath = uniqueTempPath('config')) {
   fs.writeFileSync(filePath, content, 'utf8');
   return filePath;
 }
@@ -105,6 +169,27 @@ export async function createTestApp(opts = {}) {
  */
 export async function reloadTestApp(opts = {}) {
   return createTestApp({ ...opts, resetModules: true });
+}
+
+/**
+ * Create a test app configured for dry-run with isolated log and config paths.
+ */
+export async function createDryrunTestApp(port = 20129) {
+  const logsDir = uniqueTempPath('dryrun-logs');
+  const configPath = `${uniqueTempPath('dryrun-config')}.yaml`;
+  writeTempConfig(buildDryrunConfig(logsDir, port), configPath);
+  const ctx = await createTestApp({ configPath });
+  const teardown = async () => {
+    await ctx.close();
+    await removeTempDir(logsDir);
+    removeTempConfig(configPath);
+  };
+  return {
+    ...ctx,
+    logsDir,
+    configPath,
+    teardown,
+  };
 }
 
 /**

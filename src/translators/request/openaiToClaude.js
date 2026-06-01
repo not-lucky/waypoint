@@ -16,8 +16,8 @@ export const translateOpenAIToClaude = (req) => {
   // property and forbids 'system' roles in the messages array.
   // We extract and aggregate all system messages to ensure no contextual instructions
   // are dropped while adhering to Anthropic's schema.
-  const systemMessages = messages.filter((m) => m.role === 'system');
-  const systemPrompt = systemMessages
+  const systemPrompt = messages
+    .filter((m) => m.role === 'system')
     .map((m) => {
       // Edge Case: OpenAI content can be a scalar string or a structured array of content blocks.
       // We normalize both into a flat string because Anthropic's system prompt does not support

@@ -3,6 +3,13 @@ import {
 } from 'vitest';
 import { executeThinkingStream } from '../../src/adapters/gemini/geminiThinkingStream.js';
 
+function collectDeltaValues(chunks, field) {
+  return chunks.flatMap((chunk) => chunk.choices.flatMap((choice) => {
+    const value = choice.delta[field];
+    return value ? [value] : [];
+  }));
+}
+
 function buildSseBody(events) {
   const encoder = new TextEncoder();
   return {
@@ -54,10 +61,8 @@ describe('executeThinkingStream', () => {
       chunks.push(chunk);
     }
 
-    const textDeltas = chunks
-      .flatMap((c) => c.choices.map((choice) => choice.delta.content).filter(Boolean));
-    const thinkingDeltas = chunks
-      .flatMap((c) => c.choices.map((choice) => choice.delta.reasoning_content).filter(Boolean));
+    const textDeltas = collectDeltaValues(chunks, 'content');
+    const thinkingDeltas = collectDeltaValues(chunks, 'reasoning_content');
 
     expect(textDeltas.join('')).toContain('answer');
     expect(thinkingDeltas.join('')).toContain('reasoning');

@@ -60,7 +60,8 @@ export class StreamAccumulator {
     return {
       id: this.responseId,
       model: this.responseModel,
-      choices: this.choicesAccumulator.filter(Boolean).map((c) => {
+      choices: this.choicesAccumulator.flatMap((c) => {
+        if (!c) return [];
         const msg = {
           role: c.message.role,
           content: c.message.content,
@@ -68,10 +69,10 @@ export class StreamAccumulator {
         if (c.message.reasoning_content !== null) {
           msg.reasoning_content = c.message.reasoning_content;
         }
-        return {
+        return [{
           message: msg,
           finish_reason: c.finish_reason || 'stop',
-        };
+        }];
       }),
       usage: {
         prompt_tokens: this.promptTokens,

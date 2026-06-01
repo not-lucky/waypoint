@@ -17,8 +17,8 @@ export const translateOpenAIToGemini = (req) => {
   // history to ensure the model maintains alignment across long context windows.
   // We extract all 'system' messages and concatenate them into a single string to
   // populate Gemini's dedicated `systemInstruction` field later.
-  const systemMessages = messages.filter((m) => m.role === 'system');
-  const systemPrompt = systemMessages
+  const systemPrompt = messages
+    .filter((m) => m.role === 'system')
     .map((m) => {
       // Handle string payloads
       if (typeof m.content === 'string') return m.content;

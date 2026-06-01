@@ -199,15 +199,22 @@ export class KeyRegistry {
     const { keys } = pool;
     const totalKeys = keys.length;
 
-    const exhaustedKeys = keys.filter((k) => k.exhausted).length;
-    const coolingKeysList = keys.filter(
-      (k) => !k.exhausted && k.cooldownUntil !== null && k.cooldownUntil > now,
-    );
-    const coolingKeys = coolingKeysList.length;
-    const activeKeys = totalKeys - exhaustedKeys - coolingKeys;
+    let exhaustedKeys = 0;
+    let coolingKeys = 0;
+    let coolingUntilMs = null;
 
-    const coolingUntilTimes = coolingKeysList.map((k) => k.cooldownUntil);
-    const coolingUntilMs = coolingUntilTimes.length > 0 ? Math.min(...coolingUntilTimes) : null;
+    for (const k of keys) {
+      if (k.exhausted) {
+        exhaustedKeys += 1;
+      } else if (k.cooldownUntil !== null && k.cooldownUntil > now) {
+        coolingKeys += 1;
+        coolingUntilMs = coolingUntilMs === null
+          ? k.cooldownUntil
+          : Math.min(coolingUntilMs, k.cooldownUntil);
+      }
+    }
+
+    const activeKeys = totalKeys - exhaustedKeys - coolingKeys;
     const coolingUntil = coolingUntilMs !== null ? Math.floor(coolingUntilMs / 1000) : null;
 
     const isDegraded = exhaustedKeys > 0 || coolingKeys > 0;

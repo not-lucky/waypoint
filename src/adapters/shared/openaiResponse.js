@@ -1,5 +1,34 @@
 import { extractThoughtTags } from '../gemini/geminiFormatter.js';
 
+const reasoningDetailText = (detail) => {
+  if (!detail || typeof detail !== 'object') return '';
+  return detail.text ?? detail.summary ?? detail.content ?? '';
+};
+
+/**
+ * Extracts reasoning text from an OpenAI-compatible message or stream delta.
+ * OpenRouter mirrors the same incremental token in both `reasoning` and
+ * `reasoning_details`, so only one source is used per chunk (not concatenated).
+ */
+export const extractReasoningText = (source) => {
+  if (!source) return null;
+
+  if (Array.isArray(source.reasoning_details) && source.reasoning_details.length > 0) {
+    const fromDetails = source.reasoning_details.map(reasoningDetailText).join('');
+    if (fromDetails) return fromDetails;
+  }
+
+  if (typeof source.reasoning_content === 'string' && source.reasoning_content) {
+    return source.reasoning_content;
+  }
+
+  if (typeof source.reasoning === 'string' && source.reasoning) {
+    return source.reasoning;
+  }
+
+  return null;
+};
+
 /**
  * Maps unified reasoning settings to OpenAI reasoning_effort values.
  */
@@ -12,7 +41,7 @@ export const resolveReasoningEffort = (req) => {
     return effort;
   }
   if (req.reasoningSupported) {
-    return 'medium';
+    return 'high';
   }
   return undefined;
 };
@@ -31,7 +60,7 @@ export const mapUsage = (usage) => {
 
 const mapCompletionChoice = (c, extractThoughts = false) => {
   let content = c.message?.content || '';
-  let reasoningContent = c.message?.reasoning_content || null;
+  let reasoningContent = extractReasoningText(c.message);
   if (extractThoughts) {
     ({ content, reasoningContent } = extractThoughtTags(content, reasoningContent));
   }
@@ -79,7 +108,7 @@ export const mapOpenAIStreamChunk = (parsedData, chunkId) => ({
     index: c.index ?? 0,
     delta: {
       content: c.delta?.content ?? null,
-      reasoning_content: c.delta?.reasoning_content ?? null,
+      reasoning_content: extractReasoningText(c.delta),
     },
     finish_reason: c.finish_reason ?? null,
   })),

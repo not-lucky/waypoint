@@ -97,6 +97,42 @@ describe('StreamAccumulator Unit Tests', () => {
     expect(accFallback.buildNormalizedResponse().usage.total_tokens).toBe(20);
   });
 
+  it('should not duplicate when OpenRouter sends reasoning and reasoning_details together', () => {
+    const acc = new StreamAccumulator();
+    acc.processChunk({
+      choices: [{
+        index: 0,
+        delta: {
+          reasoning: 'We',
+          reasoning_details: [{ type: 'reasoning.text', text: 'We' }],
+        },
+      }],
+    });
+    acc.processChunk({
+      choices: [{
+        index: 0,
+        delta: {
+          reasoning: ' need',
+          reasoning_details: [{ type: 'reasoning.text', text: ' need' }],
+        },
+      }],
+    });
+
+    expect(acc.buildNormalizedResponse().choices[0].message.reasoning_content).toBe('We need');
+  });
+
+  it('should accumulate reasoning_details across chunks when reasoning field is absent', () => {
+    const acc = new StreamAccumulator();
+    acc.processChunk({
+      choices: [{ index: 0, delta: { reasoning_details: [{ type: 'reasoning.text', text: 'step 1' }] } }],
+    });
+    acc.processChunk({
+      choices: [{ index: 0, delta: { reasoning: ' step 2' } }],
+    });
+
+    expect(acc.buildNormalizedResponse().choices[0].message.reasoning_content).toBe('step 1 step 2');
+  });
+
   it('should handle chunks without choices or delta properties, and fallback index and usage branches', () => {
     const acc = new StreamAccumulator();
     acc.processChunk({});

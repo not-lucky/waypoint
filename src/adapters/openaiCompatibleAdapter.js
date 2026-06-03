@@ -31,6 +31,7 @@ export class OpenAICompatibleAdapter extends BaseProvider {
 
     const effort = resolveReasoningEffort(req);
     if (effort) payload.reasoning_effort = effort;
+    if (req.reasoningSupported) payload.include_reasoning = true;
 
     const url = `${this.baseUrl.replace(/\/$/, '')}/chat/completions`;
     const headers = {
@@ -68,6 +69,7 @@ export class OpenAICompatibleAdapter extends BaseProvider {
 
     const effort = resolveReasoningEffort(req);
     if (effort) payload.reasoning_effort = effort;
+    if (req.reasoningSupported) payload.include_reasoning = true;
 
     const url = `${this.baseUrl.replace(/\/$/, '')}/chat/completions`;
     const headers = {

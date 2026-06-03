@@ -1,4 +1,6 @@
 /* eslint-disable max-len */
+import { extractReasoningText } from '../adapters/shared/openaiResponse.js';
+
 export class StreamAccumulator {
   constructor(defaultId = null, defaultModel = null) {
     this.responseId = defaultId;
@@ -36,11 +38,12 @@ export class StreamAccumulator {
           if (c.delta.content) {
             choice.message.content += c.delta.content;
           }
-          if (c.delta.reasoning_content) {
+          const reasoningDelta = extractReasoningText(c.delta);
+          if (reasoningDelta) {
             if (choice.message.reasoning_content === null) {
               choice.message.reasoning_content = '';
             }
-            choice.message.reasoning_content += c.delta.reasoning_content;
+            choice.message.reasoning_content += reasoningDelta;
           }
         }
         if (c.finish_reason) {

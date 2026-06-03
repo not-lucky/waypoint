@@ -386,12 +386,76 @@ describe('OpenAICompatibleAdapter Tests', () => {
       chunks.push(chunk);
     }
 
-    expect(mockFetch).toHaveBeenCalledWith(
-      'https://api.openai.com/v1/chat/completions',
-      expect.objectContaining({
-        body: expect.stringContaining('"reasoning_effort":"low"'),
+    const requestBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(requestBody.reasoning_effort).toBe('low');
+    expect(requestBody.include_reasoning).toBe(true);
+  });
+
+  it('assert: generateStream maps OpenRouter reasoning and reasoning_details to reasoning_content', async () => {
+    const adapter = new OpenAICompatibleAdapter('https://openrouter.ai/api/v1', 'openrouter');
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode('data: {"choices":[{"index":0,"delta":{"reasoning":"think "}}]}\n\n');
+        yield encoder.encode('data: {"choices":[{"index":0,"delta":{"reasoning_details":[{"type":"reasoning.text","text":"part 2"}]}}]}\n\n');
+        yield encoder.encode('data: {"choices":[{"index":0,"delta":{"content":"answer"}}]}\n\n');
+        yield encoder.encode('data: {"choices":[{"index":0,"finish_reason":"stop"}]}\n\n');
+      },
+    };
+    mockFetch.mockResolvedValue({ ok: true, body: mockBody });
+
+    const chunks = [];
+    for await (const chunk of adapter.generateStream(
+      { model: 'openrouter/nex-n2-pro', messages: [] },
+      'key',
+    )) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks[0].choices[0].delta.reasoning_content).toBe('think ');
+    expect(chunks[1].choices[0].delta.reasoning_content).toBe('part 2');
+    expect(chunks[2].choices[0].delta.content).toBe('answer');
+
+    const duplicateBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode('data: {"choices":[{"index":0,"delta":{"reasoning":"We","reasoning_details":[{"type":"reasoning.text","text":"We"}]}}]}\n\n');
+      },
+    };
+    mockFetch.mockResolvedValue({ ok: true, body: duplicateBody });
+    const [dupChunk] = await (async () => {
+      const out = [];
+      for await (const chunk of adapter.generateStream({ model: 'openrouter/nex-n2-pro', messages: [] }, 'key')) {
+        out.push(chunk);
+      }
+      return out;
+    })();
+    expect(dupChunk.choices[0].delta.reasoning_content).toBe('We');
+  });
+
+  it('assert: generateCompletion maps OpenRouter message.reasoning to reasoning_content', async () => {
+    const adapter = new OpenAICompatibleAdapter('https://openrouter.ai/api/v1', 'openrouter');
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: 'cmpl-1',
+        choices: [{
+          message: {
+            role: 'assistant',
+            content: 'final',
+            reasoning: 'internal chain of thought',
+          },
+        }],
       }),
+    });
+
+    const response = await adapter.generateCompletion(
+      { model: 'openrouter/nex-n2-pro', messages: [] },
+      'key',
     );
+
+    expect(response.choices[0].message.reasoning_content).toBe('internal chain of thought');
+    expect(response.choices[0].message.content).toBe('final');
   });
 
   it('asserts: generateStream handles stream abort and malformed sse chunks', async () => {

@@ -16,11 +16,10 @@ export class OpenAIController extends BaseController {
     return this.executeRequest(req, res, {
       protocolName: 'OpenAI',
       translateReq: (body) => ({
-        model: body.model,
+        ...body,
         messages: body.messages || [],
-        temperature: body.temperature,
         maxTokens: body.max_tokens ?? body.max_completion_tokens,
-        stream: body.stream || false,
+        stream: Boolean(body.stream),
       }),
       handleStream: (resp, response, unifiedReq, reqLog) => (
         this.handleStream(resp, response, reqLog)

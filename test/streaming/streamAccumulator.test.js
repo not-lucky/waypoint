@@ -133,6 +133,50 @@ describe('StreamAccumulator Unit Tests', () => {
     expect(acc.buildNormalizedResponse().choices[0].message.reasoning_content).toBe('step 1 step 2');
   });
 
+  it('should accumulate streaming tool_calls across chunks', () => {
+    const acc = new StreamAccumulator();
+
+    acc.processChunk({
+      choices: [{
+        index: 0,
+        delta: {
+          tool_calls: [{
+            index: 0,
+            id: 'call_1',
+            type: 'function',
+            function: { name: 'read_file', arguments: '' },
+          }],
+        },
+      }],
+    });
+    acc.processChunk({
+      choices: [{
+        index: 0,
+        delta: {
+          tool_calls: [{
+            index: 0,
+            function: { arguments: '{"path":"README.md"}' },
+          }],
+        },
+      }],
+    });
+    acc.processChunk({
+      choices: [{ index: 0, finish_reason: 'tool_calls' }],
+    });
+
+    const resp = acc.buildNormalizedResponse();
+    expect(resp.choices[0].message.tool_calls).toEqual([{
+      index: 0,
+      id: 'call_1',
+      type: 'function',
+      function: {
+        name: 'read_file',
+        arguments: '{"path":"README.md"}',
+      },
+    }]);
+    expect(resp.choices[0].finish_reason).toBe('tool_calls');
+  });
+
   it('should handle chunks without choices or delta properties, and fallback index and usage branches', () => {
     const acc = new StreamAccumulator();
     acc.processChunk({});

@@ -1,5 +1,6 @@
 /* eslint-disable max-len */
 import { extractReasoningText } from '../adapters/shared/openaiResponse.js';
+import { mergeToolCallDeltas } from '../adapters/shared/openaiToolCalls.js';
 
 export class StreamAccumulator {
   constructor(defaultId = null, defaultModel = null) {
@@ -29,6 +30,7 @@ export class StreamAccumulator {
               role: 'assistant',
               content: '',
               reasoning_content: null,
+              tool_calls: null,
             },
             finish_reason: null,
           };
@@ -45,6 +47,15 @@ export class StreamAccumulator {
             }
             choice.message.reasoning_content += reasoningDelta;
           }
+          if (c.delta?.tool_calls) {
+            choice.message.tool_calls = mergeToolCallDeltas(
+              choice.message.tool_calls,
+              c.delta.tool_calls,
+            );
+          }
+        }
+        if (c.message?.tool_calls) {
+          choice.message.tool_calls = c.message.tool_calls;
         }
         if (c.finish_reason) {
           choice.finish_reason = c.finish_reason;
@@ -71,6 +82,9 @@ export class StreamAccumulator {
         };
         if (c.message.reasoning_content !== null) {
           msg.reasoning_content = c.message.reasoning_content;
+        }
+        if (c.message.tool_calls?.length) {
+          msg.tool_calls = c.message.tool_calls;
         }
         return [{
           message: msg,

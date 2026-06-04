@@ -205,40 +205,24 @@ describe('OpenAICompatibleAdapter Tests', () => {
 
     // chunk 1 (text-delta)
     expect(chunks[0].object).toBe('chat.completion.chunk');
-    expect(chunks[0].choices).toEqual([
-      {
-        index: 0,
-        delta: {
-          content: 'chunk 1',
-          reasoning_content: null,
-        },
-        finish_reason: null,
-      },
-    ]);
+    expect(chunks[0].choices[0]).toMatchObject({
+      index: 0,
+      delta: { content: 'chunk 1' },
+      finish_reason: null,
+    });
 
     // chunk 2 (reasoning-delta)
-    expect(chunks[1].choices).toEqual([
-      {
-        index: 0,
-        delta: {
-          content: null,
-          reasoning_content: 'thinking 1',
-        },
-        finish_reason: null,
-      },
-    ]);
+    expect(chunks[1].choices[0]).toMatchObject({
+      index: 0,
+      delta: { reasoning_content: 'thinking 1' },
+      finish_reason: null,
+    });
 
     // chunk 3 (finish)
-    expect(chunks[2].choices).toEqual([
-      {
-        index: 0,
-        delta: {
-          content: null,
-          reasoning_content: null,
-        },
-        finish_reason: 'stop',
-      },
-    ]);
+    expect(chunks[2].choices[0]).toMatchObject({
+      index: 0,
+      finish_reason: 'stop',
+    });
   });
 
   it('assert: generateCompletion maps reasoningEffort to upstream reasoning_effort', async () => {
@@ -456,6 +440,90 @@ describe('OpenAICompatibleAdapter Tests', () => {
 
     expect(response.choices[0].message.reasoning_content).toBe('internal chain of thought');
     expect(response.choices[0].message.content).toBe('final');
+  });
+
+  it('assert: forwards tools and tool_choice to upstream chat/completions', async () => {
+    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+    const tools = [{
+      type: 'function',
+      function: { name: 'bash', parameters: { type: 'object' } },
+    }];
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { role: 'assistant', content: 'ok' } }],
+      }),
+    });
+
+    await adapter.generateCompletion({
+      actualModelId: 'gpt-4o',
+      messages: [{ role: 'user', content: 'run ls' }],
+      clientParams: {
+        tools,
+        tool_choice: 'required',
+      },
+    }, 'test-api-key');
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.tools).toEqual(tools);
+    expect(body.tool_choice).toBe('required');
+  });
+
+  it('assert: generateCompletion preserves assistant tool_calls in the response', async () => {
+    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: 'chatcmpl-tools',
+        choices: [{
+          message: {
+            role: 'assistant',
+            content: null,
+            tool_calls: [{
+              id: 'call_1',
+              type: 'function',
+              function: { name: 'read_file', arguments: '{"path":"README.md"}' },
+            }],
+          },
+          finish_reason: 'tool_calls',
+        }],
+      }),
+    });
+
+    const response = await adapter.generateCompletion(
+      { model: 'openai/gpt-4o', messages: [] },
+      'key',
+    );
+
+    expect(response.choices[0].message.tool_calls).toEqual([{
+      id: 'call_1',
+      type: 'function',
+      function: { name: 'read_file', arguments: '{"path":"README.md"}' },
+    }]);
+    expect(response.choices[0].finish_reason).toBe('tool_calls');
+  });
+
+  it('assert: generateStream passes through tool_calls deltas', async () => {
+    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode('data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"bash","arguments":""}}]}}]}\n\n');
+        yield encoder.encode('data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\"cmd\\":\\"ls\\"}"}}]}}]}\n\n');
+        yield encoder.encode('data: {"choices":[{"index":0,"finish_reason":"tool_calls"}]}\n\n');
+      },
+    };
+    mockFetch.mockResolvedValue({ ok: true, body: mockBody });
+
+    const chunks = [];
+    for await (const chunk of adapter.generateStream({ messages: [] }, 'key')) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks[0].choices[0].delta.tool_calls[0].function.name).toBe('bash');
+    expect(chunks[1].choices[0].delta.tool_calls[0].function.arguments).toBe('{"cmd":"ls"}');
+    expect(chunks[2].choices[0].finish_reason).toBe('tool_calls');
   });
 
   it('asserts: generateStream handles stream abort and malformed sse chunks', async () => {

@@ -12,27 +12,56 @@ const logger = getAppLogger('validation');
  * consumption, obscure adapter-level parsing crashes, or unpredictable provider-side behavior
  * downstream.
  */
-const messageSchema = z.object({
-  /**
-   * WHAT: Validates the 'role' property against an explicit set of allowed senders.
-   * WHY: Providers like OpenAI and Anthropic have strict requirements for message roles.
-   * If an unknown role bypasses ingress, adapters might drop the message or the provider API
-   * might return a cryptic HTTP 400. Failing fast here keeps adapter logic clean and predictable.
-   */
-  role: z.enum(['system', 'user', 'assistant'], {
-    message: "Role must be 'system', 'user', or 'assistant'",
+const toolFunctionSchema = z.object({
+  name: z.string(),
+  arguments: z.string(),
+});
+
+const toolCallSchema = z.object({
+  id: z.string(),
+  type: z.literal('function').optional(),
+  function: toolFunctionSchema,
+});
+
+const toolDefinitionSchema = z.object({
+  type: z.literal('function'),
+  function: z.object({
+    name: z.string(),
+    description: z.string().optional(),
+    parameters: z.record(z.unknown()).optional(),
   }),
-  /**
-   * WHAT: Enforces that message payload is a string.
-   * WHY: We strictly enforce string content to prevent nested object injection that could
-   * crash downstream text-only tokenizers or serialization logic. While some providers support
-   * multimodal objects, this tier requires a unified string abstraction for safety.
-   */
+});
+
+const standardMessageSchema = z.object({
+  role: z.enum(['system', 'user'], {
+    message: "Role must be 'system' or 'user'",
+  }),
   content: z.string({
     required_error: 'Content is required',
     invalid_type_error: 'Content must be a string',
   }),
-});
+}).passthrough();
+
+const assistantMessageSchema = z.object({
+  role: z.literal('assistant'),
+  content: z.union([z.string(), z.null()]).optional(),
+  tool_calls: z.array(toolCallSchema).optional(),
+}).passthrough();
+
+const toolMessageSchema = z.object({
+  role: z.literal('tool'),
+  tool_call_id: z.string(),
+  content: z.string({
+    required_error: 'Content is required',
+    invalid_type_error: 'Content must be a string',
+  }),
+}).passthrough();
+
+const messageSchema = z.union([
+  standardMessageSchema,
+  assistantMessageSchema,
+  toolMessageSchema,
+]);
 
 /**
  * Zod schema defining the core required and optional fields for a chat completion request.
@@ -97,7 +126,21 @@ export const completionSchema = z.object({
   stream: z.boolean({
     invalid_type_error: 'stream must be a boolean',
   }).optional(),
-});
+  tools: z.array(toolDefinitionSchema, {
+    invalid_type_error: 'tools must be an array',
+  }).optional(),
+  tool_choice: z.union([
+    z.literal('auto'),
+    z.literal('none'),
+    z.literal('required'),
+    z.object({
+      type: z.literal('function'),
+      function: z.object({ name: z.string() }),
+    }),
+  ], {
+    invalid_type_error: 'tool_choice must be auto, none, required, or a function object',
+  }).optional(),
+}).passthrough();
 
 /**
  * Express middleware to validate request body payloads against `completionSchema`.

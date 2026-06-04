@@ -2,8 +2,8 @@
 import { BaseProvider } from './baseProvider.js';
 import { parseSSEStream, parseSSEEventData } from '../streaming/sseParser.js';
 import { StreamAccumulator } from '../streaming/streamAccumulator.js';
+import { buildOpenAIChatPayload } from './shared/openaiPayload.js';
 import {
-  resolveReasoningEffort,
   mapOpenAICompletionResponse,
   mapOpenAIStreamChunk,
 } from './shared/openaiResponse.js';
@@ -20,18 +20,7 @@ export class OpenAICompatibleAdapter extends BaseProvider {
   }
 
   async generateCompletion(req, apiKey, signal, requestLog = null) {
-    const payload = {
-      model: req.actualModelId || req.model,
-      messages: req.messages,
-      stream: false,
-    };
-
-    if (req.temperature !== undefined) payload.temperature = req.temperature;
-    if (req.maxTokens !== undefined) payload.max_tokens = req.maxTokens;
-
-    const effort = resolveReasoningEffort(req);
-    if (effort) payload.reasoning_effort = effort;
-    if (req.reasoningSupported) payload.include_reasoning = true;
+    const payload = buildOpenAIChatPayload(req, false);
 
     const url = `${this.baseUrl.replace(/\/$/, '')}/chat/completions`;
     const headers = {
@@ -57,19 +46,7 @@ export class OpenAICompatibleAdapter extends BaseProvider {
   }
 
   async* generateStream(req, apiKey, signal, requestLog = null) {
-    const payload = {
-      model: req.actualModelId || req.model,
-      messages: req.messages,
-      stream: true,
-      stream_options: { include_usage: true },
-    };
-
-    if (req.temperature !== undefined) payload.temperature = req.temperature;
-    if (req.maxTokens !== undefined) payload.max_tokens = req.maxTokens;
-
-    const effort = resolveReasoningEffort(req);
-    if (effort) payload.reasoning_effort = effort;
-    if (req.reasoningSupported) payload.include_reasoning = true;
+    const payload = buildOpenAIChatPayload(req, true);
 
     const url = `${this.baseUrl.replace(/\/$/, '')}/chat/completions`;
     const headers = {

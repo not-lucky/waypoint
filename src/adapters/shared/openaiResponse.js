@@ -58,19 +58,39 @@ export const mapUsage = (usage) => {
   };
 };
 
+const normalizeStreamDelta = (delta) => {
+  if (!delta) return {};
+
+  const normalized = { ...delta };
+  const reasoningContent = extractReasoningText(delta);
+  if (reasoningContent !== null) {
+    normalized.reasoning_content = reasoningContent;
+  }
+  delete normalized.reasoning;
+  delete normalized.reasoning_details;
+  return normalized;
+};
+
 const mapCompletionChoice = (c, extractThoughts = false) => {
-  let content = c.message?.content || '';
-  let reasoningContent = extractReasoningText(c.message);
+  const rawMessage = c.message || {};
+  let content = rawMessage.content ?? '';
+  if (content === null) content = '';
+  let reasoningContent = extractReasoningText(rawMessage);
   if (extractThoughts) {
     ({ content, reasoningContent } = extractThoughtTags(content, reasoningContent));
   }
+
+  const message = {
+    role: rawMessage.role || 'assistant',
+    content,
+    ...(reasoningContent ? { reasoning_content: reasoningContent } : {}),
+    ...(rawMessage.tool_calls ? { tool_calls: rawMessage.tool_calls } : {}),
+    ...(rawMessage.refusal ? { refusal: rawMessage.refusal } : {}),
+  };
+
   return {
     index: c.index ?? 0,
-    message: {
-      role: c.message?.role || 'assistant',
-      content,
-      reasoning_content: reasoningContent,
-    },
+    message,
     finish_reason: c.finish_reason ?? 'stop',
   };
 };
@@ -102,15 +122,15 @@ export const mapOpenAICompletionResponse = (req, resultJson, { extractThoughts =
  * Maps an OpenAI-compatible streaming chunk to a StreamChunk.
  */
 export const mapOpenAIStreamChunk = (parsedData, chunkId) => ({
-  id: chunkId,
-  object: 'chat.completion.chunk',
+  id: parsedData.id || chunkId,
+  object: parsedData.object || 'chat.completion.chunk',
+  created: parsedData.created,
+  model: parsedData.model,
   choices: (parsedData.choices || []).map((c) => ({
     index: c.index ?? 0,
-    delta: {
-      content: c.delta?.content ?? null,
-      reasoning_content: extractReasoningText(c.delta),
-    },
+    delta: normalizeStreamDelta(c.delta),
     finish_reason: c.finish_reason ?? null,
+    logprobs: c.logprobs ?? null,
   })),
   usage: mapUsage(parsedData.usage),
 });

@@ -29,22 +29,43 @@ const toolDefinitionSchema = z.object({
     name: z.string(),
     description: z.string().optional(),
     parameters: z.record(z.unknown()).optional(),
-  }),
-});
+  }).passthrough(),
+}).passthrough();
 
-const standardMessageSchema = z.object({
-  role: z.enum(['system', 'user'], {
-    message: "Role must be 'system' or 'user'",
+const textContentPartSchema = z.object({
+  type: z.literal('text'),
+  text: z.string(),
+}).passthrough();
+
+const imageContentPartSchema = z.object({
+  type: z.literal('image_url'),
+  image_url: z.object({
+    url: z.string(),
+  }).passthrough(),
+}).passthrough();
+
+const contentPartSchema = z.union([textContentPartSchema, imageContentPartSchema]);
+
+const stringOrContentParts = z.union([
+  z.string(),
+  z.array(contentPartSchema).min(1),
+]);
+
+const instructionMessageSchema = z.object({
+  role: z.enum(['system', 'developer'], {
+    message: "Role must be 'system' or 'developer'",
   }),
-  content: z.string({
-    required_error: 'Content is required',
-    invalid_type_error: 'Content must be a string',
-  }),
+  content: stringOrContentParts,
+}).passthrough();
+
+const userMessageSchema = z.object({
+  role: z.literal('user'),
+  content: stringOrContentParts,
 }).passthrough();
 
 const assistantMessageSchema = z.object({
   role: z.literal('assistant'),
-  content: z.union([z.string(), z.null()]).optional(),
+  content: z.union([z.string(), z.null(), z.array(contentPartSchema)]).optional(),
   tool_calls: z.array(toolCallSchema).optional(),
 }).passthrough();
 
@@ -58,7 +79,8 @@ const toolMessageSchema = z.object({
 }).passthrough();
 
 const messageSchema = z.union([
-  standardMessageSchema,
+  instructionMessageSchema,
+  userMessageSchema,
   assistantMessageSchema,
   toolMessageSchema,
 ]);
@@ -116,6 +138,11 @@ export const completionSchema = z.object({
     invalid_type_error: 'max_tokens must be a number',
   }).int({ message: 'max_tokens must be an integer' })
     .positive({ message: 'max_tokens must be positive' })
+    .optional(),
+  max_completion_tokens: z.number({
+    invalid_type_error: 'max_completion_tokens must be a number',
+  }).int({ message: 'max_completion_tokens must be an integer' })
+    .positive({ message: 'max_completion_tokens must be positive' })
     .optional(),
   /**
    * WHAT: Boolean flag to request Server-Sent Events (SSE) streaming.

@@ -55,4 +55,34 @@ describe('completionSchema tool calling', () => {
 
     expect(result.success).toBe(false);
   });
+
+  it('accepts pi-style developer role and content part arrays', () => {
+    const result = completionSchema.safeParse({
+      model: 'openrouter/nex-n2-pro',
+      stream: true,
+      tools: baseTools,
+      tool_choice: 'auto',
+      messages: [
+        { role: 'developer', content: 'You are a coding agent.' },
+        { role: 'user', content: [{ type: 'text', text: 'list files in this directory' }] },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts multimodal user content blocks', () => {
+    const result = completionSchema.safeParse({
+      model: 'openai/gpt-4o',
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: 'what is in this image?' },
+          { type: 'image_url', image_url: { url: 'data:image/png;base64,abc' } },
+        ],
+      }],
+    });
+
+    expect(result.success).toBe(true);
+  });
 });

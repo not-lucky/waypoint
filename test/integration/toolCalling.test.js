@@ -1,4 +1,6 @@
-import { describe, it, expect, afterAll } from 'vitest';
+import {
+  describe, it, expect, afterAll,
+} from 'vitest';
 import request from 'supertest';
 import { MockAdapter, buildMockApp } from '../helpers/mockAdapter.js';
 

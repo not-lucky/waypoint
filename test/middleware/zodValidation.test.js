@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { completionSchema } from '../../src/middleware/zodValidation.js';
+import { anthropicMessagesSchema, completionSchema } from '../../src/middleware/zodValidation.js';
 
 describe('completionSchema tool calling', () => {
   const baseTools = [{
@@ -81,6 +81,42 @@ describe('completionSchema tool calling', () => {
           { type: 'image_url', image_url: { url: 'data:image/png;base64,abc' } },
         ],
       }],
+    });
+
+    expect(result.success).toBe(true);
+  });
+});
+
+describe('anthropicMessagesSchema tool calling', () => {
+  it('accepts Anthropic tools, tool_choice, and tool_result messages', () => {
+    const result = anthropicMessagesSchema.safeParse({
+      model: 'claude-sonnet-4',
+      max_tokens: 1024,
+      tools: [{
+        name: 'bash',
+        input_schema: { type: 'object', properties: {} },
+      }],
+      tool_choice: { type: 'auto' },
+      messages: [
+        { role: 'user', content: 'run ls' },
+        {
+          role: 'assistant',
+          content: [{
+            type: 'tool_use',
+            id: 'toolu_01',
+            name: 'bash',
+            input: { command: 'ls' },
+          }],
+        },
+        {
+          role: 'user',
+          content: [{
+            type: 'tool_result',
+            tool_use_id: 'toolu_01',
+            content: 'main.ts',
+          }],
+        },
+      ],
     });
 
     expect(result.success).toBe(true);

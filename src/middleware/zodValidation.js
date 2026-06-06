@@ -169,6 +169,103 @@ export const completionSchema = z.object({
   }).optional(),
 }).passthrough();
 
+const anthropicToolSchema = z.object({
+  name: z.string(),
+  description: z.string().optional(),
+  input_schema: z.record(z.unknown()).optional(),
+}).passthrough();
+
+const anthropicContentBlockSchema = z.union([
+  z.object({
+    type: z.literal('text'),
+    text: z.string(),
+  }),
+  z.object({
+    type: z.literal('image'),
+    source: z.object({}).passthrough(),
+  }),
+  z.object({
+    type: z.literal('tool_use'),
+    id: z.string(),
+    name: z.string(),
+    input: z.record(z.unknown()).optional(),
+  }),
+  z.object({
+    type: z.literal('tool_result'),
+    tool_use_id: z.string(),
+    content: z.union([z.string(), z.array(z.unknown())]),
+  }),
+  z.object({
+    type: z.literal('thinking'),
+    thinking: z.string(),
+  }).passthrough(),
+]);
+
+const anthropicMessageSchema = z.object({
+  role: z.enum(['user', 'assistant']),
+  content: z.union([
+    z.string(),
+    z.array(anthropicContentBlockSchema).min(1),
+  ]),
+}).passthrough();
+
+export const anthropicMessagesSchema = z.object({
+  model: z.string({
+    required_error: 'model is required and must be a string',
+    invalid_type_error: 'model must be a string',
+  }),
+  max_tokens: z.number({
+    invalid_type_error: 'max_tokens must be a number',
+  }).int({ message: 'max_tokens must be an integer' })
+    .positive({ message: 'max_tokens must be positive' })
+    .optional(),
+  messages: z.array(anthropicMessageSchema, {
+    required_error: 'messages is required',
+    invalid_type_error: 'messages must be an array',
+  }).min(1, { message: 'messages array must contain at least 1 message' }),
+  system: z.union([
+    z.string(),
+    z.array(z.object({
+      type: z.literal('text'),
+      text: z.string(),
+    }).passthrough()),
+  ]).optional(),
+  tools: z.array(anthropicToolSchema, {
+    invalid_type_error: 'tools must be an array',
+  }).optional(),
+  tool_choice: z.union([
+    z.object({ type: z.literal('auto') }),
+    z.object({ type: z.literal('any') }),
+    z.object({ type: z.literal('tool'), name: z.string() }),
+  ]).optional(),
+  temperature: z.number({
+    invalid_type_error: 'temperature must be a number',
+  }).min(0, { message: 'temperature must be between 0 and 1' })
+    .max(1, { message: 'temperature must be between 0 and 1' })
+    .optional(),
+  stream: z.boolean({
+    invalid_type_error: 'stream must be a boolean',
+  }).optional(),
+}).passthrough();
+
+const respondValidationError = (res, result) => {
+  const issues = result.error.issues || [];
+  const details = issues.map((err) => ({
+    field: err.path.join('.'),
+    message: err.message,
+  }));
+
+  logger.debug('Validation failed', { details });
+
+  return res.status(400).json({
+    error: {
+      code: 'validationError',
+      message: 'Payload validation failed',
+      details,
+    },
+  });
+};
+
 /**
  * Express middleware to validate request body payloads against `completionSchema`.
  *
@@ -189,34 +286,24 @@ export const validateCompletionBody = (req, res, next) => {
   const result = completionSchema.safeParse(req.body);
 
   if (!result.success) {
-    // WHAT: Transform deeply nested Zod issues into flat, dot-notated field error paths.
-    // WHY: Zod's native error format is verbose and leaks schema implementation details.
-    // Mapping `err.path` (e.g., ['messages', 0, 'role']) to a standard string (`messages.0.role`)
-    // provides frontend clients with an intuitive, programmatic way to highlight form errors.
-    const issues = result.error.issues || [];
-    const details = issues.map((err) => ({
-      field: err.path.join('.'),
-      message: err.message,
-    }));
-
-    logger.debug('Validation failed', { details });
-
-    // WHAT: Return a 400 response containing a unified NormalizedError payload.
-    // WHY: Halting execution here saves internal compute resources and prevents wasting
-    // provider rate limits on malformed queries. Standardizing the error schema across all
-    // endpoints drastically reduces client integration friction and debugging time.
-    return res.status(400).json({
-      error: {
-        code: 'validationError',
-        message: 'Payload validation failed',
-        details,
-      },
-    });
+    return respondValidationError(res, result);
   }
 
-  // WHAT: Pass control to the next middleware or route handler.
-  // WHY: Completes the middleware lifecycle. Calling `next()` only on success provides
-  // an ironclad guarantee to subsequent layers that `req.body` exactly matches the schema.
   logger.debug('Validation passed successfully');
+  return next();
+};
+
+/**
+ * Express middleware to validate Anthropic Messages API request bodies.
+ */
+export const validateAnthropicMessagesBody = (req, res, next) => {
+  logger.debug('Validating Anthropic messages request body');
+
+  const result = anthropicMessagesSchema.safeParse(req.body);
+  if (!result.success) {
+    return respondValidationError(res, result);
+  }
+
+  logger.debug('Anthropic validation passed successfully');
   return next();
 };

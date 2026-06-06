@@ -7,6 +7,12 @@ const FINISH_REASONS = {
     end_turn: 'stop',
     max_tokens: 'length',
     stop_sequence: 'stop',
+    tool_use: 'tool_calls',
+  },
+  OPENAI: {
+    stop: 'end_turn',
+    length: 'max_tokens',
+    tool_calls: 'tool_use',
   },
   GEMINI: {
     STOP: 'stop',
@@ -21,9 +27,18 @@ const FINISH_REASONS = {
  */
 export const mapFinishReason = (reason, providerFormat, defaultValue = 'stop') => {
   if (!reason) return defaultValue;
-  const providerMap = FINISH_REASONS[providerFormat.toUpperCase()];
+  const key = providerFormat.toUpperCase();
+  const providerMap = FINISH_REASONS[key];
   if (!providerMap) return reason.toLowerCase();
   return providerMap[reason] || reason.toLowerCase();
+};
+
+/**
+ * Maps OpenAI finish_reason values to Anthropic stop_reason values.
+ */
+export const mapOpenAIFinishReasonToAnthropic = (reason, defaultValue = 'end_turn') => {
+  if (!reason) return defaultValue;
+  return mapFinishReason(reason, 'openai', defaultValue);
 };
 
 /**

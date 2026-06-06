@@ -86,6 +86,13 @@ export class AnthropicAdapter extends BaseProvider {
       newContentBlocks.push({ type: 'text', text: '' });
     } else if (block.type === 'thinking') {
       newContentBlocks.push({ type: 'thinking', thinking: '' });
+    } else if (block.type === 'tool_use') {
+      newContentBlocks.push({
+        type: 'tool_use',
+        id: block.id,
+        name: block.name,
+        input: block.input || {},
+      });
     }
     return newContentBlocks;
   }
@@ -103,6 +110,14 @@ export class AnthropicAdapter extends BaseProvider {
         newContentBlocks[index] = { type: 'text', text: '' };
       } else if (delta.type === 'thinking_delta') {
         newContentBlocks[index] = { type: 'thinking', thinking: '' };
+      } else if (delta.type === 'input_json_delta') {
+        newContentBlocks[index] = {
+          type: 'tool_use',
+          id: '',
+          name: '',
+          input: {},
+          partialInput: '',
+        };
       }
     }
 
@@ -112,6 +127,19 @@ export class AnthropicAdapter extends BaseProvider {
         newContentBlocks[index] = { ...block, text: block.text + delta.text };
       } else if (delta.type === 'thinking_delta' && delta.thinking) {
         newContentBlocks[index] = { ...block, thinking: block.thinking + delta.thinking };
+      } else if (delta.type === 'input_json_delta') {
+        const partialInput = `${block.partialInput || ''}${delta.partial_json || ''}`;
+        let input = {};
+        try {
+          input = JSON.parse(partialInput);
+        } catch {
+          input = block.input || {};
+        }
+        newContentBlocks[index] = {
+          ...block,
+          partialInput,
+          input,
+        };
       }
     }
     return newContentBlocks;

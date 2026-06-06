@@ -82,6 +82,97 @@ describe('AnthropicAdapter Tests', () => {
     );
   });
 
+  it('assert: forwards tools and tool_result history to upstream messages API', async () => {
+    const adapter = new AnthropicAdapter();
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: 'msg_tools',
+        content: [{ type: 'text', text: 'done' }],
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 10, output_tokens: 5 },
+      }),
+    });
+
+    const tools = [{
+      name: 'Read',
+      input_schema: { type: 'object', properties: { file_path: { type: 'string' } } },
+    }];
+
+    await adapter.generateCompletion({
+      model: 'anthropic/claude-sonnet-4',
+      actualModelId: 'claude-sonnet-4',
+      messages: [
+        { role: 'user', content: 'read package.json' },
+        {
+          role: 'assistant',
+          content: null,
+          tool_calls: [{
+            id: 'toolu_01',
+            type: 'function',
+            function: { name: 'Read', arguments: '{"file_path":"package.json"}' },
+          }],
+        },
+        { role: 'tool', tool_call_id: 'toolu_01', content: '{"name":"waypoint"}' },
+      ],
+      tools,
+      tool_choice: 'auto',
+    }, 'anthropic-key');
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.tools).toEqual(tools);
+    expect(body.messages).toEqual([
+      { role: 'user', content: 'read package.json' },
+      {
+        role: 'assistant',
+        content: [{
+          type: 'tool_use',
+          id: 'toolu_01',
+          name: 'Read',
+          input: { file_path: 'package.json' },
+        }],
+      },
+      {
+        role: 'user',
+        content: [{
+          type: 'tool_result',
+          tool_use_id: 'toolu_01',
+          content: '{"name":"waypoint"}',
+        }],
+      },
+    ]);
+  });
+
+  it('assert: maps upstream tool_use blocks to OpenAI tool_calls', async () => {
+    const adapter = new AnthropicAdapter();
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: 'msg_tool_use',
+        content: [{
+          type: 'tool_use',
+          id: 'toolu_02',
+          name: 'bash',
+          input: { command: 'ls' },
+        }],
+        stop_reason: 'tool_use',
+        usage: { input_tokens: 10, output_tokens: 5 },
+      }),
+    });
+
+    const response = await adapter.generateCompletion({
+      model: 'anthropic/claude-sonnet-4',
+      messages: [],
+    }, 'anthropic-key');
+
+    expect(response.choices[0].message.tool_calls).toEqual([{
+      id: 'toolu_02',
+      type: 'function',
+      function: { name: 'bash', arguments: '{"command":"ls"}' },
+    }]);
+    expect(response.choices[0].finish_reason).toBe('tool_calls');
+  });
+
   it('assert: mock response with thinking block -> NormalizedResponse.choices[0].message.reasoning_content populated', async () => {
     const adapter = new AnthropicAdapter();
 

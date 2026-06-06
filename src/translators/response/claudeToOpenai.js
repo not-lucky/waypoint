@@ -1,5 +1,6 @@
 /* eslint-disable no-restricted-syntax, no-unused-vars */
 
+import { anthropicContentToOpenAIMessage } from '../shared/anthropicTools.js';
 import { mapFinishReason, synthesizeMetadata } from '../utils.js';
 
 /**
@@ -19,22 +20,7 @@ import { mapFinishReason, synthesizeMetadata } from '../utils.js';
  * @returns {Object} OpenAI-shaped NormalizedResponse.
  */
 export const translateClaudeToOpenAI = (claudeRes, req = {}) => {
-  const contentArray = claudeRes.content || [];
-  let textContent = '';
-  let reasoningContent = null;
-
-  // WHY: Anthropic returns messages as an array of discrete content blocks, which may interleave
-  // reasoning/thinking blocks with actual text. OpenAI clients typically expect a single flattened
-  // string for the response content, or a dedicated `reasoning_content` field (in newer models).
-  // We must iterate and concatenate these blocks by type to prevent data loss or dropping the AI's
-  // chain-of-thought, ensuring semantic equivalence in the target schema.
-  for (const block of contentArray) {
-    if (block.type === 'text') {
-      textContent += block.text || '';
-    } else if (block.type === 'thinking') {
-      reasoningContent = (reasoningContent || '') + (block.thinking || '');
-    }
-  }
+  const message = anthropicContentToOpenAIMessage(claudeRes.content || []);
 
   // WHY: Fallback token counts to 0 ensures numerical safety downstream
   // if Anthropic omits usage stats.
@@ -46,11 +32,7 @@ export const translateClaudeToOpenAI = (claudeRes, req = {}) => {
     choices: [
       {
         index: 0,
-        message: {
-          role: 'assistant',
-          content: textContent,
-          reasoning_content: reasoningContent,
-        },
+        message,
         finish_reason: mapFinishReason(claudeRes.stop_reason, 'anthropic'),
       },
     ],
@@ -98,8 +80,49 @@ export function translateClaudeChunkToOpenAI(eventObj, chunkId, req = {}) {
   // WHY: We only care about `content_block_delta` for actual generation content, and
   // `message_delta` for termination metadata (stop reason, usage). We deliberately ignore
   // `ping`, `message_start`, `content_block_start`, etc., as OpenAI streams lack equivalents.
-  if (type === 'content_block_delta') {
+  if (type === 'content_block_start') {
+    const block = dataJson.content_block || {};
+    if (block.type === 'tool_use') {
+      return {
+        id: chunkId,
+        object: 'chat.completion.chunk',
+        choices: [{
+          index: 0,
+          delta: {
+            tool_calls: [{
+              index: dataJson.index ?? 0,
+              id: block.id,
+              type: 'function',
+              function: {
+                name: block.name || '',
+                arguments: '',
+              },
+            }],
+          },
+          finish_reason: null,
+        }],
+      };
+    }
+  } else if (type === 'content_block_delta') {
     const delta = dataJson.delta || {};
+    if (delta.type === 'input_json_delta') {
+      return {
+        id: chunkId,
+        object: 'chat.completion.chunk',
+        choices: [{
+          index: 0,
+          delta: {
+            tool_calls: [{
+              index: dataJson.index ?? 0,
+              function: {
+                arguments: delta.partial_json || '',
+              },
+            }],
+          },
+          finish_reason: null,
+        }],
+      };
+    }
     if (delta.type === 'text_delta') {
       return {
         id: chunkId,

@@ -9,6 +9,7 @@ import { BaseController } from './baseController.js';
 const STOP_REASON_MAP = {
   stop: 'end_turn',
   length: 'max_tokens',
+  tool_calls: 'tool_use',
 };
 
 /**
@@ -42,14 +43,19 @@ export class AnthropicController extends BaseController {
     // State Machine Variables
     let messageStartSent = false;
     let activeBlockType = null;
+    let activeToolMeta = null;
     let currentBlockIndex = 0;
     const msgId = `msg_${Date.now()}`;
     let chunkCount = 0;
 
     const accumulator = new StreamAccumulator(msgId, unifiedReq.model);
 
-    const transitionBlock = (newBlockType) => {
-      if (activeBlockType === newBlockType) return;
+    const transitionBlock = (newBlockType, toolMeta = null) => {
+      if (activeBlockType === newBlockType
+        && newBlockType !== 'tool_use'
+        && activeBlockType !== 'tool_use') {
+        return;
+      }
 
       if (activeBlockType !== null) {
         const stopEvent = `event: content_block_stop\ndata: ${JSON.stringify({
@@ -62,9 +68,19 @@ export class AnthropicController extends BaseController {
       }
 
       if (newBlockType !== null) {
-        const contentBlock = newBlockType === 'thinking'
-          ? { type: 'thinking', thinking: '' }
-          : { type: 'text', text: '' };
+        let contentBlock;
+        if (newBlockType === 'thinking') {
+          contentBlock = { type: 'thinking', thinking: '' };
+        } else if (newBlockType === 'tool_use') {
+          contentBlock = {
+            type: 'tool_use',
+            id: toolMeta?.id || '',
+            name: toolMeta?.name || '',
+            input: {},
+          };
+        } else {
+          contentBlock = { type: 'text', text: '' };
+        }
 
         const startEvent = `event: content_block_start\ndata: ${JSON.stringify({
           type: 'content_block_start',
@@ -76,6 +92,7 @@ export class AnthropicController extends BaseController {
       }
 
       activeBlockType = newBlockType;
+      activeToolMeta = toolMeta;
     };
 
     try {
@@ -135,6 +152,29 @@ export class AnthropicController extends BaseController {
           })}\n\n`;
           reqLog.appendStreamEvent('client', textDelta);
           res.write(textDelta);
+        }
+
+        if (delta.tool_calls?.length) {
+          for (const toolCall of delta.tool_calls) {
+            if (toolCall.id || toolCall.function?.name) {
+              transitionBlock('tool_use', {
+                id: toolCall.id || activeToolMeta?.id || '',
+                name: toolCall.function?.name || activeToolMeta?.name || '',
+              });
+            }
+            if (toolCall.function?.arguments) {
+              const toolDelta = `event: content_block_delta\ndata: ${JSON.stringify({
+                type: 'content_block_delta',
+                index: currentBlockIndex,
+                delta: {
+                  type: 'input_json_delta',
+                  partial_json: toolCall.function.arguments,
+                },
+              })}\n\n`;
+              reqLog.appendStreamEvent('client', toolDelta);
+              res.write(toolDelta);
+            }
+          }
         }
 
         if (choice.finish_reason) {

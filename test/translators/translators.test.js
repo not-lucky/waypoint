@@ -143,8 +143,84 @@ describe('Translators', () => {
     }, 'chunk-1')).toBeNull();
   });
 
+  it('translates Anthropic ingress tool history into the OpenAI hub shape', () => {
+    const res = translateClaudeToOpenAIRequest({
+      model: 'claude-sonnet-4',
+      max_tokens: 1024,
+      tools: [{
+        name: 'bash',
+        input_schema: { type: 'object', properties: {} },
+      }],
+      tool_choice: { type: 'auto' },
+      messages: [
+        { role: 'user', content: 'run ls' },
+        {
+          role: 'assistant',
+          content: [{
+            type: 'tool_use',
+            id: 'toolu_01',
+            name: 'bash',
+            input: { command: 'ls' },
+          }],
+        },
+        {
+          role: 'user',
+          content: [{
+            type: 'tool_result',
+            tool_use_id: 'toolu_01',
+            content: 'main.ts',
+          }],
+        },
+      ],
+    });
+
+    expect(res.tools).toEqual([{
+      type: 'function',
+      function: {
+        name: 'bash',
+        parameters: { type: 'object', properties: {} },
+      },
+    }]);
+    expect(res.messages).toEqual([
+      { role: 'user', content: 'run ls' },
+      {
+        role: 'assistant',
+        content: null,
+        tool_calls: [{
+          id: 'toolu_01',
+          type: 'function',
+          function: { name: 'bash', arguments: '{"command":"ls"}' },
+        }],
+      },
+      { role: 'tool', tool_call_id: 'toolu_01', content: 'main.ts' },
+    ]);
+  });
+
   it('translates Anthropic stream chunks and egress responses', () => {
     expect(translateClaudeChunkToOpenAI({ data: '{invalid-json' }, 'session-1')).toBeNull();
+
+    const toolStart = translateClaudeChunkToOpenAI({
+      data: JSON.stringify({
+        type: 'content_block_start',
+        index: 1,
+        content_block: {
+          type: 'tool_use',
+          id: 'toolu_01',
+          name: 'bash',
+          input: {},
+        },
+      }),
+    }, 'session-1');
+    expect(toolStart.choices[0].delta.tool_calls[0].function.name).toBe('bash');
+
+    const toolDelta = translateClaudeChunkToOpenAI({
+      data: JSON.stringify({
+        type: 'content_block_delta',
+        index: 1,
+        delta: { type: 'input_json_delta', partial_json: '{"command":"ls"}' },
+      }),
+    }, 'session-1');
+    expect(toolDelta.choices[0].delta.tool_calls[0].function.arguments).toBe('{"command":"ls"}');
 
     const response = translateOpenAIToClaudeResponse({
       choices: [{

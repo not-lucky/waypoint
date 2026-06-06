@@ -1,5 +1,5 @@
 import express from 'express';
-import { validateCompletionBody } from '../middleware/zodValidation.js';
+import { validateAnthropicMessagesBody } from '../middleware/zodValidation.js';
 import { rateLimiter } from '../middleware/rateLimiter.js';
 
 /**
@@ -26,7 +26,7 @@ export function createAnthropicRouter({ auth, anthropicController, modelCache })
 
   router.post(
     '/messages',
-    validateCompletionBody,
+    validateAnthropicMessagesBody,
     (req, res) => anthropicController.handleCompletion(req, res),
   );
 

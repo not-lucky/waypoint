@@ -258,6 +258,12 @@ export class RequestLog {
 export function createRequestLog(req, config) {
   const loggingConfig = config?.logging || {};
   if (!loggingConfig.logRequests) {
+    if (req?.isDryRun) {
+      return {
+        ...NOOP_LOG,
+        isDryRun: true,
+      };
+    }
     return NOOP_LOG;
   }
 

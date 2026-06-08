@@ -4,15 +4,17 @@ import { parseSSEStream } from '../streaming/sseParser.js';
 import {
   FORMATS, translateRequest, translateResponse, translateStreamChunk,
 } from '../translators/index.js';
+import { UpstreamError, ERROR_CATEGORIES } from '../common/upstreamErrors.js';
 
 /**
  * Provider adapter for Anthropic's Claude API endpoints.
  */
 export class AnthropicAdapter extends BaseProvider {
-  constructor(baseUrl = null, timeoutMs = null) {
+  constructor(baseUrl = null, timeoutMs = null, providerName = 'anthropic') {
     super();
     this.baseUrl = baseUrl;
     this.timeoutMs = timeoutMs;
+    this.providerName = providerName;
   }
 
   /**
@@ -240,6 +242,25 @@ export class AnthropicAdapter extends BaseProvider {
         if (fetchSignal?.aborted) throw new Error('Stream aborted');
         state = { ...state, eventCount: state.eventCount + 1 };
 
+        let dataJson = null;
+        try {
+          dataJson = JSON.parse(sseEvent.data);
+        } catch (err) {
+          // ignore
+        }
+
+        if (sseEvent.event === 'error' || dataJson?.type === 'error') {
+          const errorDetails = dataJson?.error || dataJson || {};
+          throw new UpstreamError(errorDetails.message || 'Anthropic stream error', {
+            statusCode: 502,
+            errorType: errorDetails.type || 'stream_error',
+            errorCode: errorDetails.code || 'stream_error',
+            upstreamBody: dataJson || { message: sseEvent.data },
+            provider: this.providerName,
+            category: ERROR_CATEGORIES.STREAMING,
+          });
+        }
+
         state = this.processSSEEvent(sseEvent, state, requestLog);
 
         const openaiChunk = translateStreamChunk(FORMATS.ANTHROPIC, sseEvent, chunkId, req);
@@ -251,7 +272,7 @@ export class AnthropicAdapter extends BaseProvider {
     }
   }
 
-  normalizeError(error) {
-    return BaseProvider.normalizeProviderError(error, 'anthropic');
+  normalizeError(error, req = null) {
+    return BaseProvider.normalizeProviderError(error, this.providerName, req);
   }
 }

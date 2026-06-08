@@ -125,6 +125,21 @@ describe('Key Registry Failures & Cooldowns', () => {
     expect(key.cooldownUntil).toBeNull();
   });
 
+  it('404 does not put the key on cooldown', () => {
+    const config = {
+      providers: { requesty: { keys: ['Key_A'] } },
+    };
+    const registry = new KeyRegistry(config);
+    const key = registry.pools.requesty.keys[0];
+
+    registry.flagFailure('requesty', 'Key_A', 404);
+
+    expect(key.active).toBe(true);
+    expect(key.cooldownUntil).toBeNull();
+    expect(key.exhausted).toBe(false);
+    expect(registry.timers.size).toBe(0);
+  });
+
   it('cleanup() clears all timeout handles in the Set', () => {
     const config = {
       gateway: {

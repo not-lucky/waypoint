@@ -24,8 +24,8 @@ export class GeminiAdapter extends BaseProvider {
   }
 
   // eslint-disable-next-line class-methods-use-this
-  normalizeError(error) {
+  normalizeError(error, req = null) {
     // Convert upstream Google API error messages and status codes to normalized internal codes
-    return BaseProvider.normalizeProviderError(error, 'gemini');
+    return BaseProvider.normalizeProviderError(error, 'gemini', req);
   }
 }

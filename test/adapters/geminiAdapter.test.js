@@ -121,34 +121,46 @@ describe('GeminiAdapter Tests', () => {
 
     // 429
     expect(adapter.normalizeError({ statusCode: 429 })).toEqual({
-      code: 'upstreamRateLimited',
+      code: 'rate_limit_exceeded',
       message: expect.any(String),
-      httpStatus: 503,
+      httpStatus: 429,
       provider: 'gemini',
+      category: 'Rate limiting',
+      upstreamBody: undefined,
+      retryAfterSeconds: undefined,
     });
 
     // 402
     expect(adapter.normalizeError({ response: { status: 402 } })).toEqual({
-      code: 'quotaExhausted',
+      code: 'insufficient_quota',
       message: expect.any(String),
-      httpStatus: 503,
+      httpStatus: 402,
       provider: 'gemini',
+      category: 'Auth & billing',
+      upstreamBody: undefined,
+      retryAfterSeconds: undefined,
     });
 
     // 403
     expect(adapter.normalizeError({ response: { status: 403 } })).toEqual({
-      code: 'quotaExhausted',
+      code: 'forbidden',
       message: expect.any(String),
-      httpStatus: 503,
+      httpStatus: 403,
       provider: 'gemini',
+      category: 'Auth & billing',
+      upstreamBody: undefined,
+      retryAfterSeconds: undefined,
     });
 
     // Other error
     expect(adapter.normalizeError({ message: 'Internal Server Error', statusCode: 500 })).toEqual({
-      code: 'upstreamError',
+      code: 'internal_server_error',
       message: 'Internal Server Error',
       httpStatus: 502,
       provider: 'gemini',
+      category: 'Server errors',
+      upstreamBody: undefined,
+      retryAfterSeconds: undefined,
     });
   });
 

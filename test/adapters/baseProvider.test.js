@@ -32,18 +32,19 @@ describe('BaseProvider Tests', () => {
   describe('normalizeProviderError', () => {
     it('should map known upstream status codes', () => {
       const rateLimited = BaseProvider.normalizeProviderError({ statusCode: 429 }, 'openai');
-      expect(rateLimited.code).toBe('upstreamRateLimited');
-      expect(rateLimited.httpStatus).toBe(503);
+      expect(rateLimited.code).toBe('rate_limit_exceeded');
+      expect(rateLimited.httpStatus).toBe(429);
 
       const quota = BaseProvider.normalizeProviderError({ statusCode: 403 }, 'anthropic');
-      expect(quota.code).toBe('quotaExhausted');
+      expect(quota.code).toBe('forbidden');
+      expect(quota.httpStatus).toBe(403);
     });
 
-    it('should map unknown errors to upstreamError', () => {
+    it('should map unknown errors to connect_timeout', () => {
       const res = BaseProvider.normalizeProviderError(new Error('boom'), 'gemini');
-      expect(res.code).toBe('upstreamError');
-      expect(res.httpStatus).toBe(502);
-      expect(res.message).toBe('boom');
+      expect(res.code).toBe('connect_timeout');
+      expect(res.httpStatus).toBe(503);
+      expect(res.message).toContain('boom');
     });
   });
 });

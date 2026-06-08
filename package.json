@@ -6,7 +6,7 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "ci": "npm run lint && npm test",
+    "ci": "npm run lint && echo 'Linting passed' && echo 'Running tests...' && npm test && echo 'Tests passed'",
     "lint": "eslint .",
     "dev": "node --watch src/index.js",
     "start": "node src/index.js"

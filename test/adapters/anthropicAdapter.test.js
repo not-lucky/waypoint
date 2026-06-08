@@ -226,39 +226,63 @@ describe('AnthropicAdapter Tests', () => {
     });
   });
 
+  it('assert: normalizeError uses the configured provider name for custom adapters', () => {
+    const adapter = new AnthropicAdapter('https://router.requesty.ai', null, 'requesty');
+
+    expect(adapter.normalizeError({ statusCode: 404, message: '404 page not found' })).toEqual({
+      code: 'endpoint_not_found',
+      message: '404 page not found',
+      httpStatus: 404,
+      provider: 'requesty',
+      category: 'Model & resource',
+      upstreamBody: undefined,
+      retryAfterSeconds: undefined,
+    });
+  });
+
   it('assert: normalizeError covers 429, 402/403 with correct codes and httpStatus values', () => {
     const adapter = new AnthropicAdapter();
 
     // 429
     expect(adapter.normalizeError({ statusCode: 429 })).toEqual({
-      code: 'upstreamRateLimited',
+      code: 'rate_limit_exceeded',
       message: expect.any(String),
-      httpStatus: 503,
+      httpStatus: 429,
       provider: 'anthropic',
+      category: 'Rate limiting',
+      upstreamBody: undefined,
+      retryAfterSeconds: undefined,
     });
 
     // 402
     expect(adapter.normalizeError({ response: { status: 402 } })).toEqual({
-      code: 'quotaExhausted',
+      code: 'insufficient_quota',
       message: expect.any(String),
-      httpStatus: 503,
+      httpStatus: 402,
       provider: 'anthropic',
+      category: 'Auth & billing',
+      upstreamBody: undefined,
+      retryAfterSeconds: undefined,
     });
 
     // 403
     expect(adapter.normalizeError({ response: { status: 403 } })).toEqual({
-      code: 'quotaExhausted',
+      code: 'forbidden',
       message: expect.any(String),
-      httpStatus: 503,
+      httpStatus: 403,
       provider: 'anthropic',
+      category: 'Auth & billing',
+      upstreamBody: undefined,
+      retryAfterSeconds: undefined,
     });
 
     // other
     expect(adapter.normalizeError({ message: 'Unknown Error' })).toEqual({
-      code: 'upstreamError',
-      message: 'Unknown Error',
-      httpStatus: 502,
+      code: 'connect_timeout',
+      message: 'Upstream connection failed: Unknown Error',
+      httpStatus: 503,
       provider: 'anthropic',
+      category: 'Network/transport',
     });
   });
 

@@ -9,6 +9,9 @@
 /* eslint-disable no-restricted-syntax, generator-star-spacing, camelcase */
 import { sanitizeUrl, serializeHeaders, redactHeaders } from '../logging/requestLoggerUtils.js';
 import { NotImplementedError } from '../common/errors.js';
+import {
+  UpstreamError, classifyUpstreamError, ERROR_CATEGORIES, getClientHttpStatus,
+} from '../common/upstreamErrors.js';
 
 /**
  * @typedef {Object} UnifiedMessage
@@ -99,33 +102,79 @@ import { NotImplementedError } from '../common/errors.js';
  */
 export class BaseProvider {
   /**
-   * Map provider HTTP errors to internal registry behavior codes.
-   * @type {Object<number, {code: string, httpStatus: number}>}
-   */
-  static get ERROR_MAP() {
-    return {
-      429: { code: 'upstreamRateLimited', httpStatus: 503 },
-      402: { code: 'quotaExhausted', httpStatus: 503 },
-      403: { code: 'quotaExhausted', httpStatus: 503 },
-    };
-  }
-
-  /**
    * Normalizes an upstream provider error.
    *
    * @param {any} error - The caught upstream error object.
    * @param {string} providerName - Name of the provider.
+   * @param {Object} [req] - The normalized internal request.
    * @returns {NormalizedError} Mapped/standardized error payload.
    */
-  static normalizeProviderError(error, providerName) {
-    const status = error?.statusCode ?? error?.response?.status;
-    const { code, httpStatus } = BaseProvider.ERROR_MAP[status] ?? { code: 'upstreamError', httpStatus: 502 };
+  static normalizeProviderError(error, providerName, req = null) {
+    const status = error?.statusCode ?? error?.status ?? error?.response?.status;
+    if (error instanceof UpstreamError || status !== undefined) {
+      let errorCode = error?.errorCode;
+      let errorType = error?.errorType;
+      let category = error?.category;
+      const upstreamBody = error?.upstreamBody;
+      let retryAfterSeconds = error?.retryAfterSeconds;
+      let message = error?.message || String(error);
+
+      if (!(error instanceof UpstreamError)) {
+        const classification = classifyUpstreamError(status, error);
+        errorCode = classification.code;
+        errorType = classification.type;
+        category = classification.category;
+        retryAfterSeconds = classification.retryAfterSeconds;
+        message = classification.message || message;
+      }
+
+      if (category === ERROR_CATEGORIES.AUTH) {
+        if (errorCode === 'invalid_api_key') {
+          message = 'Authentication failed: Invalid upstream API key.';
+        } else if (errorCode === 'no_api_key') {
+          message = 'Authentication failed: No Authorization header sent to the upstream provider.';
+        } else if (errorCode === 'forbidden') {
+          const attemptedModel = req?.model || 'unknown';
+          message = `Permission denied: access forbidden. Model attempted: ${attemptedModel}. ${message}`;
+        }
+      }
+
+      return {
+        code: errorCode,
+        message,
+        httpStatus: getClientHttpStatus(status, category, errorCode),
+        provider: (error?.provider && error.provider !== 'unknown') ? error.provider : providerName,
+        retryAfterSeconds,
+        category,
+        upstreamBody,
+      };
+    }
+
+    // Classify generic errors (e.g. network/transport failures)
+    const category = ERROR_CATEGORIES.TRANSPORT;
+    let code = 'connect_timeout';
+    const message = error?.message || String(error);
+    const msgLower = message.toLowerCase();
+
+    if (msgLower.includes('ssl') || msgLower.includes('tls') || msgLower.includes('certificate') || msgLower.includes('cert') || msgLower.includes('handshake')) {
+      code = 'tls_error';
+    } else if (error?.name === 'TimeoutError' || msgLower.includes('timeout') || msgLower.includes('abort') || error?.code === 'ETIMEDOUT') {
+      code = 'read_timeout';
+    } else if (msgLower.includes('dns') || msgLower.includes('enotfound') || msgLower.includes('eaddrinfo') || msgLower.includes('econnrefused') || msgLower.includes('econnreset') || msgLower.includes('fetch failed')) {
+      code = 'connect_timeout';
+    }
+
+    let httpStatus = 503;
+    if (code === 'read_timeout') {
+      httpStatus = 504;
+    }
 
     return {
       code,
-      message: error?.message || String(error),
+      message: `Upstream connection failed: ${message}`,
       httpStatus,
       provider: providerName,
+      category,
     };
   }
 
@@ -144,8 +193,28 @@ export class BaseProvider {
     } catch (e) {
       errorJson = { message: errorText };
     }
-    const err = new Error(errorJson.error?.message || errorJson.message || fallbackMessage);
-    err.statusCode = response.status;
+
+    const headersObj = {};
+    if (response.headers) {
+      for (const [k, v] of response.headers.entries()) {
+        headersObj[k.toLowerCase()] = v;
+      }
+    }
+
+    const classification = classifyUpstreamError(response.status, errorJson, headersObj);
+
+    const err = new UpstreamError(errorJson.error?.message
+        || errorJson.message
+        || fallbackMessage, {
+      statusCode: response.status,
+      errorType: classification.type,
+      errorCode: classification.code,
+      upstreamBody: errorJson,
+      provider: 'unknown', // Will be filled by normalization or adapter
+      retryAfterSeconds: classification.retryAfterSeconds,
+      category: classification.category,
+    });
+
     err.response = response;
     return err;
   }
@@ -288,10 +357,11 @@ export class BaseProvider {
    * Normalizes an upstream API error to a standard representation.
    *
    * @param {any} error - The caught upstream error.
+   * @param {Object} [req] - The normalized request payload.
    * @returns {NormalizedError} Standardized internal error representation.
    * @throws {NotImplementedError} If subclasses do not override this method.
    */
-  normalizeError(error) {
+  normalizeError(error, req = null) {
     throw new NotImplementedError();
   }
 }

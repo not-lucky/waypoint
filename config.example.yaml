@@ -4,7 +4,7 @@
 gateway:
   # Port the proxy server will listen on (required, positive integer)
   port: 20128
-  
+
   # Maximum number of retry attempts for failed upstream calls (optional, positive integer)
   globalRetryLimit: 3
 
@@ -12,15 +12,15 @@ gateway:
   # This sets the MAXIMUM DURATION a single upstream request can take before Waypoint aborts it.
   # This differs from client rate limits (below), which control the frequency of requests over time.
   httpTimeoutMs: 120000
-  
+
   # Cooldown settings for rate-limiting exponential backoff (optional)
   cooldown:
     baseSeconds: 30       # Base cooldown for rate-limit exponential backoff
     maxSeconds: 3600      # Cap for exponential backoff cooldowns (1 hour)
-  
+
   # Maximum allowed payload size for requests (optional string)
   maxPayloadSize: "10mb"
-  
+
   # Routing configuration (optional)
   routing:
     # Supported strategies:
@@ -29,7 +29,7 @@ gateway:
     # - "fill-first": Exhausts primary key quota entirely before rotating to the next.
     #   Best when prompt cache locality matters more than RPM distribution.
     strategy: "round-robin"
-    
+
   # CORS configuration (optional)
   cors:
     allowedOrigins:
@@ -38,13 +38,13 @@ gateway:
 logging:
   # Enable console logging output (required boolean)
   enableConsole: true
-  
+
   # Enable logging to a file (required boolean)
   enableFile: true
-  
+
   # File path to output logs (required if enableFile is true)
   filePath: "./logs/Waypoint.log"
-  
+
   # Log format structure: "json" | "text" (required)
   format: "json"
 
@@ -163,6 +163,16 @@ providers:
         aliases: ["custom-sonnet"]
         reasoningSupported: true
         reasoningEffort: "high"
+
+  # Requesty Anthropic-compatible example
+  requesty:
+    type: "anthropic-compatible"
+    baseUrl: "https://router.requesty.ai/v1"
+    keys:
+      - "${REQUESTY_API_KEY_1}"
+    models:
+      - id: "nebius/nvidia/nemotron-3-nano-omni"
+        reasoningSupported: true
 
   # Local or self-hosted provider example (e.g. Ollama)
   local-ollama:

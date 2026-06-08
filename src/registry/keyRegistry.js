@@ -5,6 +5,7 @@
  * @module registry/KeyRegistry
  */
 
+import { isNonRetryableClientError } from '../common/errors.js';
 import { KeyObject, GENERIC_FAILURE_COOLDOWN_MS } from './keyObject.js';
 
 /**
@@ -135,10 +136,15 @@ export class KeyRegistry {
    * @param {string} provider - The provider name.
    * @param {string} keyStr - The raw key string that failed.
    * @param {number} statusCode - The HTTP status code returned by the provider.
+   * @param {number} [retryAfterSeconds] - Optional cooldown override.
    */
-  flagFailure(provider, keyStr, statusCode) {
+  flagFailure(provider, keyStr, statusCode, retryAfterSeconds = undefined) {
     const key = this.findKey(provider, keyStr);
     if (!key) return;
+
+    if (isNonRetryableClientError(statusCode)) {
+      return;
+    }
 
     switch (statusCode) {
       // HTTP 429: Too Many Requests (Rate Limit).
@@ -146,11 +152,16 @@ export class KeyRegistry {
       case 429: {
         key.consecutiveFailures += 1;
 
-        const cooldown = this.config.gateway?.cooldown;
-        const baseSeconds = cooldown?.baseSeconds ?? 30;
-        const maxSeconds = cooldown?.maxSeconds ?? 3600;
-        const exponent = key.consecutiveFailures - 1;
-        const backoffSeconds = Math.min(baseSeconds * (2 ** exponent), maxSeconds);
+        let backoffSeconds;
+        if (retryAfterSeconds !== undefined && retryAfterSeconds > 0) {
+          backoffSeconds = retryAfterSeconds;
+        } else {
+          const cooldown = this.config.gateway?.cooldown;
+          const baseSeconds = cooldown?.baseSeconds ?? 30;
+          const maxSeconds = cooldown?.maxSeconds ?? 3600;
+          const exponent = key.consecutiveFailures - 1;
+          backoffSeconds = Math.min(baseSeconds * (2 ** exponent), maxSeconds);
+        }
 
         key.active = false;
         this.setCooldown(key, backoffSeconds * 1000, true);

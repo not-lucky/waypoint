@@ -154,9 +154,10 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
     expect(geminiAdapter.callCount).toBe(0);
     expect(openaiAdapter.callCount).toBe(1);
     expect(res.error).toBeDefined();
-    expect(res.error.code).toBe('allKeysExhausted');
+    expect(res.error.code).toBe('mock_error');
+    expect(res.error.message).toBe('OpenAI transient error');
     expect(res.error.provider).toBe('openai');
-    expect(res.error.httpStatus).toBe(503);
+    expect(res.error.httpStatus).toBe(500);
   });
 
   it('assert: request arrives with isFallback:true -> fallback logic is entirely skipped', async () => {
@@ -443,8 +444,9 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
 
     expect(geminiAdapter.callCount).toBe(1);
     expect(res.error).toBeDefined();
-    expect(res.error.code).toBe('allKeysExhausted');
+    expect(res.error.code).toBe('mock_error');
+    expect(res.error.message).toBe('Rate Limited');
     expect(res.error.provider).toBe('gemini');
-    expect(res.error.httpStatus).toBe(503);
+    expect(res.error.httpStatus).toBe(429);
   });
 });

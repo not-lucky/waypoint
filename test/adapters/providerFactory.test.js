@@ -66,6 +66,7 @@ describe('ProviderFactory Tests', () => {
     const adapter = factory.get('custom-anthropic');
     expect(adapter).toBeInstanceOf(AnthropicAdapter);
     expect(adapter.baseUrl).toBe('https://my-custom-anthropic.api/v1');
+    expect(adapter.providerName).toBe('custom-anthropic');
   });
 
   it('assert: register() a stub, get() returns that same instance (manual override still works)', () => {

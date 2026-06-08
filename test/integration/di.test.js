@@ -424,12 +424,12 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
         model: 'gemini/gemini-pro',
         messages: [{ role: 'user', content: 'trigger error' }],
       })
-      .expect(503);
+      .expect(502);
 
     expect(mockAdapter.callCount).toBe(1);
-    expect(res.body.error.code).toBe('allKeysExhausted');
-    expect(res.body.error.message).toContain("All keys for provider 'gemini' are currently in cooldown");
-    expect(res.body.error.httpStatus).toBe(503);
+    expect(res.body.error.code).toBe('mock_error');
+    expect(res.body.error.message).toBe('Custom mock provider internal error');
+    expect(res.body.error.httpStatus).toBe(502);
 
     await close();
   });

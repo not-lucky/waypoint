@@ -78,17 +78,16 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
     expect(mockAdapter.keysUsed[0]).toBe('key-1');
     expect(mockAdapter.keysUsed[1]).toBe('key-2');
 
-    // Check final error normalized
+    // Check final error surfaces the last upstream failure
     expect(res.error).toEqual({
-      code: 'allKeysExhausted',
-      message: expect.stringContaining("All keys for provider 'mock-provider' are currently in cooldown."),
-      retryAfterSeconds: expect.any(Number),
+      code: 'mock_error',
+      message: 'Failure 2',
       provider: 'mock-provider',
-      httpStatus: 503,
+      httpStatus: 500,
     });
   });
 
-  it('assert: exits early if keys are exhausted mid-loop and returns standard exhaustion error', async () => {
+  it('assert: exits early if keys are exhausted mid-loop and returns the upstream error', async () => {
     const config = {
       gateway: {
         globalRetryLimit: 3,
@@ -116,11 +115,10 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
     // Should call adapter exactly once and then stop because no keys are left
     expect(mockAdapter.callCount).toBe(1);
     expect(res.error).toEqual({
-      code: 'allKeysExhausted',
-      message: expect.stringContaining("All keys for provider 'mock-provider' are currently in cooldown."),
-      retryAfterSeconds: expect.any(Number),
+      code: 'mock_error',
+      message: 'Rate Limited',
       provider: 'mock-provider',
-      httpStatus: 503,
+      httpStatus: 429,
     });
   });
 
@@ -167,14 +165,12 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
     expect(primaryMock.callCount).toBe(1);
     expect(fallbackMock.callCount).toBe(1);
 
-    // Returns exhaustion error of the fallback provider
-    // (since fallback provider loop also exhausted)
+    // Returns the fallback provider's upstream error
     expect(res.error).toEqual({
-      code: 'allKeysExhausted',
-      message: expect.stringContaining("All keys for provider 'fallback-provider' are currently in cooldown."),
-      retryAfterSeconds: expect.any(Number),
-      provider: 'fallback-provider',
-      httpStatus: 503,
+      code: 'mock_error',
+      message: 'Fallback Error',
+      provider: 'mock-provider',
+      httpStatus: 500,
     });
   });
 

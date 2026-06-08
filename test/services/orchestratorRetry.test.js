@@ -31,7 +31,7 @@ class MockAdapter {
     return {
       code: 'mock_error',
       message: error.message,
-      httpStatus: error.status || 500,
+      httpStatus: error.status || error.statusCode || error.response?.status || 500,
       provider: 'mock-provider',
     };
   }
@@ -122,14 +122,13 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     const req = { provider: 'mock-provider', actualModelId: 'test-model' };
     const res = await orchestrator.executeCompletion(req, {});
 
-    // Assert 503 NormalizedError
+    // Assert last upstream error is surfaced to the caller
     expect(res).toEqual({
       error: {
-        code: 'allKeysExhausted',
-        message: expect.stringContaining("All keys for provider 'mock-provider' are currently in cooldown."),
-        retryAfterSeconds: expect.any(Number),
+        code: 'mock_error',
+        message: 'Error 3',
         provider: 'mock-provider',
-        httpStatus: 503,
+        httpStatus: 402,
       },
     });
 
@@ -180,8 +179,9 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     const res = await orchestrator.executeCompletion(req, {});
 
     expect(mockAdapter.callCount).toBe(1);
-    expect(res.error.code).toBe('allKeysExhausted');
-    expect(res.error.httpStatus).toBe(503);
+    expect(res.error.code).toBe('mock_error');
+    expect(res.error.message).toBe('Failure');
+    expect(res.error.httpStatus).toBe(500);
   });
 
   it('assert: cooldown calculation ignores permanently exhausted keys and selects earliest active cooldown', async () => {
@@ -330,11 +330,10 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     expect(primaryAdapter.callCount).toBe(2);
     expect(fallbackAdapter.callCount).toBe(2);
     expect(res.error).toEqual({
-      code: 'allKeysExhausted',
-      message: expect.stringContaining("All keys for provider 'fallback-provider' are currently in cooldown."),
-      retryAfterSeconds: expect.any(Number),
-      provider: 'fallback-provider',
-      httpStatus: 503,
+      code: 'mock_error',
+      message: 'F2 Failed',
+      provider: 'mock-provider',
+      httpStatus: 500,
     });
   });
 });

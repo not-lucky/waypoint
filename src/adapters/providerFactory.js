@@ -98,7 +98,11 @@ ProviderFactory.registerStrategy({
 // Anthropic Strategy
 ProviderFactory.registerStrategy({
   match: (name, provider) => name === 'anthropic' || provider?.type === 'anthropic-compatible',
-  create: (name, provider, timeoutMs) => new AnthropicAdapter(name === 'anthropic' ? null : provider?.baseUrl, timeoutMs),
+  create: (name, provider, timeoutMs) => new AnthropicAdapter(
+    name === 'anthropic' ? null : provider?.baseUrl,
+    timeoutMs,
+    name,
+  ),
 });
 
 // Default OpenAI & Custom Strategy

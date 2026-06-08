@@ -282,7 +282,7 @@ describe('Streaming End-to-End Tests', () => {
     expect(firstResult.done).toBe(false);
     expect(firstResult.value.choices[0].delta.content).toBe('hello');
     expect(failingAdapter.callCount).toBe(2);
-    expect(flagFailureSpy).toHaveBeenCalledWith('mock-provider', 'key-1', 500);
+    expect(flagFailureSpy).toHaveBeenCalledWith('mock-provider', 'key-1', 503);
     expect(flagSuccessSpy).toHaveBeenCalledWith('mock-provider', 'key-2');
   });
 

@@ -153,7 +153,7 @@ describe('Dry Run Endpoints Integration Tests', () => {
           model: 'openai/gpt-4o',
           messages: [{ role: 'user', content: 'no logs' }],
         })
-        .expect(503);
+        .expect(502);
     } finally {
       await close();
       await removeTempDir(dir);

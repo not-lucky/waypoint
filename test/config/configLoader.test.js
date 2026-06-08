@@ -66,6 +66,7 @@ describe('Configuration Loader Tests', () => {
     process.env.GEMINI_API_KEY_2 = 'gemini-key-2';
     process.env.ANTHROPIC_API_KEY_1 = 'anthropic-key-1';
     process.env.OPENAI_API_KEY_1 = 'openai-key-1';
+    process.env.REQUESTY_API_KEY_1 = 'requesty-key-1';
 
     // Point the path environment variable to config.example.yaml
     process.env.WAYPOINT_CONFIG_PATH = 'config.example.yaml';

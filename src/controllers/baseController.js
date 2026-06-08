@@ -20,14 +20,23 @@ export class BaseController {
     const finalStatus = statusCode || error.httpStatus || 500;
     this.logger.debug('Handling controller error', { code: error.code, status: finalStatus });
 
-    const errorBody = {
-      error: {
-        code: error.code || 'internalServerError',
-        message: error.message || String(error),
-        httpStatus: finalStatus,
-        provider: error.provider,
-      },
-    };
+    if (error.retryAfterSeconds !== undefined) {
+      res.setHeader('Retry-After', String(error.retryAfterSeconds));
+    }
+
+    let errorBody;
+    if (error.upstreamBody) {
+      errorBody = error.upstreamBody;
+    } else {
+      errorBody = {
+        error: {
+          code: error.code || 'internalServerError',
+          message: error.message || String(error),
+          httpStatus: finalStatus,
+          provider: error.provider,
+        },
+      };
+    }
 
     if (reqLog) {
       reqLog.logClientResponse(finalStatus, errorBody);
@@ -51,6 +60,13 @@ export class BaseController {
     const reqLog = createRequestLog(req, this.orchestrator.config);
 
     try {
+      if (req.isDryRun && !this.orchestrator.config?.logging?.logRequests) {
+        const error = new Error('Dry run requires request logging to be enabled');
+        error.httpStatus = 502;
+        error.code = 'dryRunDisabled';
+        return this.handleError(res, reqLog, error);
+      }
+
       const body = req.body || {};
       const providersConfig = this.orchestrator.config?.providers || {};
 

@@ -7,6 +7,7 @@
 
 /* eslint-disable max-len */
 /* eslint-disable no-restricted-syntax, no-await-in-loop */
+import { isRetryable, shouldCooldownKey } from '../common/errors.js';
 import { logDebug, logWarning } from '../logging/loggerHelpers.js';
 
 /**
@@ -46,6 +47,36 @@ function buildAllKeysExhaustedError(provider, keyRegistry) {
 }
 
 /**
+ * Builds the final error response after retries are exhausted.
+ * Surfaces the last upstream failure when one occurred; otherwise reports key pool exhaustion.
+ *
+ * @param {string} provider - The provider name.
+ * @param {Object} keyRegistry - Stateful API key registry instance.
+ * @param {Object} adapter - The provider adapter instance.
+ * @param {Error|null} lastError - The most recent upstream error, if any.
+ * @returns {Object} Normalized error payload.
+ */
+function buildFinalError(provider, keyRegistry, adapter, lastError, req) {
+  if (lastError) {
+    const normalized = adapter.normalizeError(lastError, req);
+    return {
+      error: {
+        code: normalized.code,
+        message: normalized.message || lastError.message || String(lastError),
+        httpStatus: normalized.httpStatus,
+        provider: normalized.provider || provider,
+        ...(normalized.retryAfterSeconds !== undefined
+          ? { retryAfterSeconds: normalized.retryAfterSeconds }
+          : {}),
+        ...(normalized.upstreamBody ? { upstreamBody: normalized.upstreamBody } : {}),
+      },
+    };
+  }
+
+  return buildAllKeysExhaustedError(provider, keyRegistry);
+}
+
+/**
  * Abstracts the retry/key-rotation loop for a single provider.
  * Rotates through keys, invokes the adapter, and tracks success/failure.
  *
@@ -73,6 +104,7 @@ export const executeWithRetry = async ({
   onStreamResponse,
 }) => {
   let attempt = 0;
+  let lastError = null;
 
   // Inner retry loop: rotates keys within the current provider up to the global retry limit.
   while (attempt < retryLimit) {
@@ -101,7 +133,7 @@ export const executeWithRetry = async ({
       logDebug(logger, 'No active keys available in pool for provider', { provider });
       if (req.isFallback) {
         // If we are already on a fallback provider, we halt and fail immediately.
-        return buildAllKeysExhaustedError(provider, keyRegistry);
+        return buildFinalError(provider, keyRegistry, adapter, lastError, req);
       }
       if (req.fallbackModel) {
         // Return a signal to switch the orchestrator to the designated fallback provider/model.
@@ -208,11 +240,23 @@ export const executeWithRetry = async ({
           },
         };
       }
-      // Parse error status code to apply the correct cooldown/backoff in key registry.
-      const statusCode = error?.status || error?.statusCode || error?.response?.status || 500;
-      keyRegistry.flagFailure(provider, apiKey, statusCode);
-      const msg = `Attempt ${attempt} of ${retryLimit} for provider '${provider}' failed. Reason: ${error?.message || error}`;
+      lastError = error;
+      const normalized = adapter.normalizeError(error, req);
+      const reasonMsg = normalized.message || error?.message || String(error);
+      const msg = `Attempt ${attempt} of ${retryLimit} for provider '${provider}' failed. Reason: ${reasonMsg}`;
       logWarning(logger, msg);
+
+      if (!isRetryable(normalized.category, normalized.code, normalized.httpStatus)) {
+        return buildFinalError(provider, keyRegistry, adapter, lastError, req);
+      }
+
+      if (shouldCooldownKey(normalized.category, normalized.code, normalized.httpStatus)) {
+        if (normalized.retryAfterSeconds !== undefined) {
+          keyRegistry.flagFailure(provider, apiKey, normalized.httpStatus, normalized.retryAfterSeconds);
+        } else {
+          keyRegistry.flagFailure(provider, apiKey, normalized.httpStatus);
+        }
+      }
     }
   }
 
@@ -221,6 +265,5 @@ export const executeWithRetry = async ({
     return { triggerFallback: true };
   }
 
-  // Return final exhausted error.
-  return buildAllKeysExhaustedError(provider, keyRegistry);
+  return buildFinalError(provider, keyRegistry, adapter, lastError, req);
 };

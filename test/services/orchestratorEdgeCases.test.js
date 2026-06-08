@@ -420,7 +420,7 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
     expect(result.error.code).toBe('requestCancelled');
   });
 
-  it('assert: retryExecutor buildAllKeysExhaustedError handles missing provider keys gracefully', async () => {
+  it('assert: retryExecutor buildPoolUnavailableError handles missing provider keys gracefully', async () => {
     const config = {
       providers: {}, // no keys for mock-provider
     };
@@ -433,7 +433,7 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
     const req = { provider: 'mock-provider', actualModelId: 'test-model' };
     const res = await orchestrator.executeCompletion(req, {});
 
-    expect(res.error.code).toBe('allKeysExhausted');
+    expect(res.error.code).toBe('poolUnavailable');
     expect(res.error.retryAfterSeconds).toBe(0);
   });
 

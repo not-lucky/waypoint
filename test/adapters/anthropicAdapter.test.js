@@ -231,6 +231,7 @@ describe('AnthropicAdapter Tests', () => {
 
     expect(adapter.normalizeError({ statusCode: 404, message: '404 page not found' })).toEqual({
       code: 'endpoint_not_found',
+      type: 'not_found_error',
       message: '404 page not found',
       httpStatus: 404,
       provider: 'requesty',
@@ -246,6 +247,7 @@ describe('AnthropicAdapter Tests', () => {
     // 429
     expect(adapter.normalizeError({ statusCode: 429 })).toEqual({
       code: 'rate_limit_exceeded',
+      type: 'rate_limit_error',
       message: expect.any(String),
       httpStatus: 429,
       provider: 'anthropic',
@@ -257,6 +259,7 @@ describe('AnthropicAdapter Tests', () => {
     // 402
     expect(adapter.normalizeError({ response: { status: 402 } })).toEqual({
       code: 'insufficient_quota',
+      type: 'billing_error',
       message: expect.any(String),
       httpStatus: 402,
       provider: 'anthropic',
@@ -268,6 +271,7 @@ describe('AnthropicAdapter Tests', () => {
     // 403
     expect(adapter.normalizeError({ response: { status: 403 } })).toEqual({
       code: 'forbidden',
+      type: 'permission_denied_error',
       message: expect.any(String),
       httpStatus: 403,
       provider: 'anthropic',

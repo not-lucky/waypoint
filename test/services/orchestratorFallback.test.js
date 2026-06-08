@@ -212,7 +212,7 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
     expect(geminiAdapter.callCount).toBe(0);
     expect(openaiAdapter.callCount).toBe(0);
     expect(res.error).toBeDefined();
-    expect(res.error.code).toBe('allKeysExhausted');
+    expect(res.error.code).toBe('poolUnavailable');
     expect(res.error.provider).toBe('gemini');
     expect(res.error.httpStatus).toBe(503);
   });

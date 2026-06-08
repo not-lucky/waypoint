@@ -20,7 +20,7 @@ describe('retryExecutor upstream error propagation', () => {
     global.fetch = mockFetch;
   });
 
-  it('returns upstream error instead of allKeysExhausted when baseUrl is misconfigured', async () => {
+  it('returns upstream error instead of poolUnavailable when baseUrl is misconfigured', async () => {
     const config = {
       gateway: { globalRetryLimit: 3 },
       providers: {
@@ -92,12 +92,10 @@ describe('retryExecutor upstream error propagation', () => {
     expect(mockFetch).toHaveBeenCalledTimes(2);
     expect(first.error).toEqual({
       code: 'endpoint_not_found',
+      type: 'not_found_error',
       message: '404 page not found',
       httpStatus: 404,
       provider: 'requesty',
-      upstreamBody: {
-        message: '404 page not found',
-      },
     });
     expect(second.error).toEqual(first.error);
     expect(keyRegistry.pools.requesty.keys[0].cooldownUntil).toBeNull();
@@ -135,7 +133,7 @@ describe('retryExecutor upstream error propagation', () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
-  it('returns allKeysExhausted when no keys are available and no upstream call was made', async () => {
+  it('returns poolUnavailable when no keys are available and no upstream call was made', async () => {
     const config = {
       gateway: { globalRetryLimit: 3 },
       providers: {
@@ -161,7 +159,7 @@ describe('retryExecutor upstream error propagation', () => {
     }, {});
 
     expect(mockFetch).not.toHaveBeenCalled();
-    expect(res.error.code).toBe('allKeysExhausted');
+    expect(res.error.code).toBe('poolUnavailable');
     expect(res.error.httpStatus).toBe(503);
     expect(res.error.provider).toBe('requesty');
   });

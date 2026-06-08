@@ -2,12 +2,19 @@ import { getAppLogger } from '../logging/logger.js';
 import { createRequestLog } from '../logging/requestLogger.js';
 import { resolveModel } from '../domain/modelRouter.js';
 import { transformRequest } from '../domain/requestTransformer.js';
+import { buildClientErrorEnvelope } from '../common/errors.js';
 
 /**
  * Base class for all protocol controllers.
  * Provides shared logic for request lifecycle management, logging, and error handling.
  */
 export class BaseController {
+  /**
+   * Creates a new BaseController instance.
+   *
+   * @param {Object} orchestrator - The orchestrator instance for request execution.
+   * @param {string} protocolName - The name of the protocol (e.g., 'openai', 'anthropic').
+   */
   constructor(orchestrator, protocolName) {
     this.orchestrator = orchestrator;
     this.logger = getAppLogger(protocolName);
@@ -15,6 +22,12 @@ export class BaseController {
 
   /**
    * Standardized error response handler.
+   *
+   * @param {Object} res - Express response object.
+   * @param {Object} reqLog - Request logger instance.
+   * @param {Object} error - Error object with code, message, and optional httpStatus.
+   * @param {number} [statusCode=null] - Optional override HTTP status code.
+   * @returns {Object} Express response with error JSON body.
    */
   async handleError(res, reqLog, error, statusCode = null) {
     const finalStatus = statusCode || error.httpStatus || 500;
@@ -24,19 +37,16 @@ export class BaseController {
       res.setHeader('Retry-After', String(error.retryAfterSeconds));
     }
 
-    let errorBody;
-    if (error.upstreamBody) {
-      errorBody = error.upstreamBody;
-    } else {
-      errorBody = {
-        error: {
-          code: error.code || 'internalServerError',
-          message: error.message || String(error),
-          httpStatus: finalStatus,
-          provider: error.provider,
-        },
-      };
-    }
+    const errorBody = buildClientErrorEnvelope(
+      {
+        code: error.code || 'internalServerError',
+        type: error.type,
+        message: error.message || String(error),
+        provider: error.provider,
+        retryAfterSeconds: error.retryAfterSeconds,
+      },
+      finalStatus,
+    );
 
     if (reqLog) {
       reqLog.logClientResponse(finalStatus, errorBody);
@@ -48,6 +58,15 @@ export class BaseController {
 
   /**
    * Core request execution logic shared across controllers.
+   *
+   * @param {Object} req - Express request object.
+   * @param {Object} res - Express response object.
+   * @param {Object} options - Execution options.
+   * @param {Function} [options.translateReq] - Optional function to translate request format.
+   * @param {Function} [options.translateRes] - Optional function to translate response format.
+   * @param {Function} options.handleStream - Function to handle streaming responses.
+   * @param {string} options.protocolName - Name of the protocol for logging.
+   * @returns {Promise<Object>} Express response or stream.
    */
   async executeRequest(req, res, options) {
     const {

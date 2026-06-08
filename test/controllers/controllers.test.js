@@ -91,7 +91,7 @@ describe('Protocol Controllers', () => {
     it('forwards orchestrator errors and handles thrown exceptions', async () => {
       mockOrchestrator.executeCompletion.mockResolvedValueOnce({
         error: {
-          code: 'allKeysExhausted',
+          code: 'poolUnavailable',
           message: 'All keys in cooldown',
           httpStatus: 503,
         },

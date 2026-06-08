@@ -95,6 +95,8 @@ const messageSchema = z.union([
  * parameters to pass through, clients can send provider-specific features (like `logit_bias`
  * or `top_p`) without Waypoint needing to hardcode every proprietary parameter. This
  * "open-closed" approach guarantees long-term gateway extensibility.
+ *
+ * @type {z.ZodObject}
  */
 export const completionSchema = z.object({
   /**
@@ -209,6 +211,11 @@ const anthropicMessageSchema = z.object({
   ]),
 }).passthrough();
 
+/**
+ * Zod schema for validating Anthropic Messages API request bodies.
+ *
+ * @type {z.ZodObject}
+ */
 export const anthropicMessagesSchema = z.object({
   model: z.string({
     required_error: 'model is required and must be a string',
@@ -248,6 +255,13 @@ export const anthropicMessagesSchema = z.object({
   }).optional(),
 }).passthrough();
 
+/**
+ * Responds with a validation error when Zod schema validation fails.
+ *
+ * @param {Object} res - Express response object.
+ * @param {Object} result - Zod safeParse result containing error information.
+ * @returns {Object} Express response with 400 status and error details.
+ */
 const respondValidationError = (res, result) => {
   const issues = result.error.issues || [];
   const details = issues.map((err) => ({
@@ -261,6 +275,7 @@ const respondValidationError = (res, result) => {
     error: {
       code: 'validationError',
       message: 'Payload validation failed',
+      httpStatus: 400,
       details,
     },
   });

@@ -418,6 +418,6 @@ describe('Streaming End-to-End Tests', () => {
       stream: true,
     }, {});
 
-    expect(res.error.code).toBe('allKeysExhausted');
+    expect(res.error.code).toBe('poolUnavailable');
   });
 });

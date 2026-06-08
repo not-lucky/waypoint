@@ -156,7 +156,7 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     const res = await orchestrator.executeCompletion(req, {});
 
     expect(mockAdapter.callCount).toBe(0);
-    expect(res.error.code).toBe('allKeysExhausted');
+    expect(res.error.code).toBe('poolUnavailable');
     expect(res.error.httpStatus).toBe(503);
   });
 
@@ -212,7 +212,7 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     const req = { provider: 'mock-provider', actualModelId: 'test-model' };
     const res = await orchestrator.executeCompletion(req, {});
 
-    expect(res.error.code).toBe('allKeysExhausted');
+    expect(res.error.code).toBe('poolUnavailable');
     expect(res.error.provider).toBe('mock-provider');
     // It should pick 10 seconds (key-3) over 60 seconds (key-2) and ignore key-1
     expect(res.error.retryAfterSeconds).toBeLessThanOrEqual(10);
@@ -245,7 +245,7 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     const req = { provider: 'mock-provider', actualModelId: 'test-model' };
     const res = await orchestrator.executeCompletion(req, {});
 
-    expect(res.error.code).toBe('allKeysExhausted');
+    expect(res.error.code).toBe('poolUnavailable');
     expect(res.error.retryAfterSeconds).toBe(0);
   });
 

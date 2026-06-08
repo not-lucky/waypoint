@@ -90,6 +90,7 @@ import {
  * @typedef {Object} NormalizedError
  * @property {string} code - The mapped error code
  *    (e.g., 'upstreamRateLimited', 'quotaExhausted', 'upstreamError')
+ * @property {string} [type] - Provider-style error type (e.g., 'rate_limit_error')
  * @property {string} message - Descriptive error message
  * @property {number} httpStatus - Target HTTP status to return to client (e.g., 502, 503)
  * @property {string} provider - The name of the provider where the error occurred
@@ -141,6 +142,7 @@ export class BaseProvider {
 
       return {
         code: errorCode,
+        type: errorType,
         message,
         httpStatus: getClientHttpStatus(status, category, errorCode),
         provider: (error?.provider && error.provider !== 'unknown') ? error.provider : providerName,

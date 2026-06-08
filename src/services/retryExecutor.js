@@ -7,7 +7,7 @@
 
 /* eslint-disable max-len */
 /* eslint-disable no-restricted-syntax, no-await-in-loop */
-import { isRetryable, shouldCooldownKey } from '../common/errors.js';
+import { buildClientErrorEnvelope, isRetryable, shouldCooldownKey } from '../common/errors.js';
 import { logDebug, logWarning } from '../logging/loggerHelpers.js';
 
 /**
@@ -18,7 +18,7 @@ import { logDebug, logWarning } from '../logging/loggerHelpers.js';
  * @param {Object} keyRegistry - Stateful API key registry instance.
  * @returns {Object} Normalized 503 error payload with retry duration.
  */
-function buildAllKeysExhaustedError(provider, keyRegistry) {
+function buildPoolUnavailableError(provider, keyRegistry) {
   let retryAfterSeconds = 0;
   const keys = keyRegistry.pools[provider]?.keys;
   if (keys) {
@@ -35,15 +35,15 @@ function buildAllKeysExhaustedError(provider, keyRegistry) {
     }
   }
 
-  return {
-    error: {
-      code: 'allKeysExhausted',
-      message: `All keys for provider '${provider}' are currently in cooldown. Retry after ${retryAfterSeconds} seconds.`,
-      retryAfterSeconds,
+  return buildClientErrorEnvelope(
+    {
+      code: 'poolUnavailable',
+      message: `All keys for provider '${provider}' are in cooldown.`,
       provider,
-      httpStatus: 503,
+      retryAfterSeconds,
     },
-  };
+    503,
+  );
 }
 
 /**
@@ -59,21 +59,19 @@ function buildAllKeysExhaustedError(provider, keyRegistry) {
 function buildFinalError(provider, keyRegistry, adapter, lastError, req) {
   if (lastError) {
     const normalized = adapter.normalizeError(lastError, req);
-    return {
-      error: {
+    return buildClientErrorEnvelope(
+      {
         code: normalized.code,
+        type: normalized.type,
         message: normalized.message || lastError.message || String(lastError),
-        httpStatus: normalized.httpStatus,
         provider: normalized.provider || provider,
-        ...(normalized.retryAfterSeconds !== undefined
-          ? { retryAfterSeconds: normalized.retryAfterSeconds }
-          : {}),
-        ...(normalized.upstreamBody ? { upstreamBody: normalized.upstreamBody } : {}),
+        retryAfterSeconds: normalized.retryAfterSeconds,
       },
-    };
+      normalized.httpStatus,
+    );
   }
 
-  return buildAllKeysExhaustedError(provider, keyRegistry);
+  return buildPoolUnavailableError(provider, keyRegistry);
 }
 
 /**

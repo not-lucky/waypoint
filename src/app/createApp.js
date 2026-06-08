@@ -1,11 +1,23 @@
 import express from 'express';
 import cors from 'cors';
+import { buildClientErrorEnvelope } from '../common/errors.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { dryRunMiddleware } from '../middleware/dryRun.js';
 import { createHealthRouter } from '../routes/health.js';
 import { createOpenaiRouter } from '../routes/openai.js';
 import { createAnthropicRouter } from '../routes/anthropic.js';
 
+/**
+ * Mounts protocol-specific routes (OpenAI and Anthropic) to the Express app.
+ *
+ * @param {Object} app - Express application instance.
+ * @param {Object} logger - Logger instance for debug output.
+ * @param {Object} dependencies - Route dependencies.
+ * @param {Object} dependencies.auth - Authentication middleware.
+ * @param {Object} dependencies.openAIController - OpenAI controller instance.
+ * @param {Object} dependencies.anthropicController - Anthropic controller instance.
+ * @param {Object} dependencies.modelCache - Model cache instance.
+ */
 function mountProtocolRoutes(app, logger, {
   auth, openAIController, anthropicController, modelCache,
 }) {
@@ -25,6 +37,12 @@ function mountProtocolRoutes(app, logger, {
   app.use(['/dryrun/anthropic/v1', '/dryrun/anthropic'], dryRunMiddleware, createAnthropicRouter(anthropicDeps));
 }
 
+/**
+ * Creates an Express error handler middleware.
+ *
+ * @param {Object} logger - Logger instance for error reporting.
+ * @returns {Function} Express error handler middleware function.
+ */
 function errorHandler(logger) {
   // eslint-disable-next-line no-unused-vars
   return (err, req, res, next) => {
@@ -33,12 +51,27 @@ function errorHandler(logger) {
     let code = 'internalServerError';
     if (status === 413) code = 'payloadTooLarge';
     else if (status === 400) code = 'badRequest';
-    res.status(status).json({
-      error: { code, message: err.message, httpStatus: status },
-    });
+    res.status(status).json(buildClientErrorEnvelope(
+      { code, message: err.message },
+      status,
+    ));
   };
 }
 
+/**
+ * Creates and configures the Express application for the Waypoint gateway.
+ *
+ * @param {Object} config - Application configuration object.
+ * @param {Object} config.gateway - Gateway-specific configuration.
+ * @param {Array} [config.gateway.cors.allowedOrigins=['*']] - CORS allowed origins.
+ * @param {string} [config.gateway.maxPayloadSize='10mb'] - Maximum request body size.
+ * @param {Object} services - Service instances.
+ * @param {Object} services.openAIController - OpenAI controller instance.
+ * @param {Object} services.anthropicController - Anthropic controller instance.
+ * @param {Object} services.modelCache - Model cache instance.
+ * @param {Object} logger - Logger instance.
+ * @returns {Object} Configured Express application.
+ */
 export function createApp(config, services, logger) {
   const app = express();
   const auth = authMiddleware(config);

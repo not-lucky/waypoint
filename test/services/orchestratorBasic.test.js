@@ -93,7 +93,7 @@ describe('UnifiedOrchestrator Basic Tests', () => {
 
     expect(res).toEqual({
       error: {
-        code: 'allKeysExhausted',
+        code: 'poolUnavailable',
         message: expect.stringContaining('cooldown'),
         retryAfterSeconds: expect.any(Number),
         provider: 'mock-provider',

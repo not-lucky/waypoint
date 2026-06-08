@@ -122,6 +122,7 @@ describe('GeminiAdapter Tests', () => {
     // 429
     expect(adapter.normalizeError({ statusCode: 429 })).toEqual({
       code: 'rate_limit_exceeded',
+      type: 'rate_limit_error',
       message: expect.any(String),
       httpStatus: 429,
       provider: 'gemini',
@@ -133,6 +134,7 @@ describe('GeminiAdapter Tests', () => {
     // 402
     expect(adapter.normalizeError({ response: { status: 402 } })).toEqual({
       code: 'insufficient_quota',
+      type: 'billing_error',
       message: expect.any(String),
       httpStatus: 402,
       provider: 'gemini',
@@ -144,6 +146,7 @@ describe('GeminiAdapter Tests', () => {
     // 403
     expect(adapter.normalizeError({ response: { status: 403 } })).toEqual({
       code: 'forbidden',
+      type: 'permission_denied_error',
       message: expect.any(String),
       httpStatus: 403,
       provider: 'gemini',
@@ -155,6 +158,7 @@ describe('GeminiAdapter Tests', () => {
     // Other error
     expect(adapter.normalizeError({ message: 'Internal Server Error', statusCode: 500 })).toEqual({
       code: 'internal_server_error',
+      type: 'api_error',
       message: 'Internal Server Error',
       httpStatus: 502,
       provider: 'gemini',

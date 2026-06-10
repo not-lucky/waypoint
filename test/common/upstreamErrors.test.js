@@ -137,6 +137,12 @@ describe('upstreamErrors.js Tests', () => {
       expect(isRetryable(ERROR_CATEGORIES.VALIDATION, 'context_length_exceeded')).toBe(false);
       expect(isRetryable(ERROR_CATEGORIES.CONTENT_POLICY, 'content_filter')).toBe(false);
     });
+
+    it('should return false when category or code is missing', () => {
+      expect(isRetryable(undefined, 'rate_limit_exceeded')).toBe(false);
+      expect(isRetryable(ERROR_CATEGORIES.RATE_LIMIT, undefined)).toBe(false);
+      expect(isRetryable(undefined, undefined)).toBe(false);
+    });
   });
 
   describe('shouldCooldownKey', () => {
@@ -151,6 +157,12 @@ describe('upstreamErrors.js Tests', () => {
     it('should return false for validation or content policy errors', () => {
       expect(shouldCooldownKey(ERROR_CATEGORIES.VALIDATION, 'context_length_exceeded')).toBe(false);
       expect(shouldCooldownKey(ERROR_CATEGORIES.CONTENT_POLICY, 'content_filter')).toBe(false);
+    });
+
+    it('should return false when category or code is missing', () => {
+      expect(shouldCooldownKey(undefined, 'rate_limit_exceeded')).toBe(false);
+      expect(shouldCooldownKey(ERROR_CATEGORIES.RATE_LIMIT, undefined)).toBe(false);
+      expect(shouldCooldownKey(undefined, undefined)).toBe(false);
     });
   });
 

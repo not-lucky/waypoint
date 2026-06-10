@@ -7,7 +7,8 @@
 
 /* eslint-disable max-len */
 /* eslint-disable no-restricted-syntax, no-await-in-loop */
-import { buildClientErrorEnvelope, isRetryable, shouldCooldownKey } from '../common/errors.js';
+import { buildClientErrorEnvelope } from '../common/errors.js';
+import { isRetryable, shouldCooldownKey } from '../common/upstreamErrors.js';
 import { logDebug, logWarning } from '../logging/loggerHelpers.js';
 
 /**
@@ -244,11 +245,11 @@ export const executeWithRetry = async ({
       const msg = `Attempt ${attempt} of ${retryLimit} for provider '${provider}' failed. Reason: ${reasonMsg}`;
       logWarning(logger, msg);
 
-      if (!isRetryable(normalized.category, normalized.code, normalized.httpStatus)) {
+      if (!isRetryable(normalized.category, normalized.code)) {
         return buildFinalError(provider, keyRegistry, adapter, lastError, req);
       }
 
-      if (shouldCooldownKey(normalized.category, normalized.code, normalized.httpStatus)) {
+      if (shouldCooldownKey(normalized.category, normalized.code)) {
         if (normalized.retryAfterSeconds !== undefined) {
           keyRegistry.flagFailure(provider, apiKey, normalized.httpStatus, normalized.retryAfterSeconds);
         } else {

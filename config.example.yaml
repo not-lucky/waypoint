@@ -13,10 +13,37 @@ gateway:
   # This differs from client rate limits (below), which control the frequency of requests over time.
   httpTimeoutMs: 120000
 
-  # Cooldown settings for rate-limiting exponential backoff (optional)
+  # Cooldown settings for tiered key lifecycle (optional).
+  # When a key fails upstream, Waypoint puts it in cooldown for a tier-specific
+  # duration instead of exhausting it. The key auto-reactivates when the timer
+  # expires.
   cooldown:
-    baseSeconds: 30       # Base cooldown for rate-limit exponential backoff
-    maxSeconds: 3600      # Cap for exponential backoff cooldowns (1 hour)
+    # T3 — Rate limit (RPM/TPM/concurrent 429).
+    # Starting delay, in seconds, used as the base of the exponential backoff
+    # when Retry-After is absent: backoff = baseSeconds * 2^consecutiveFailures.
+    baseSeconds: 30
+    # T3 — Rate limit (RPM/TPM/concurrent 429).
+    # Hard cap, in seconds, for the exponential backoff above (default 1 hour).
+    maxSeconds: 3600
+    # T1 — Billing recovery (HTTP 402, insufficient_quota, billing hard limit,
+    # and quota-style 429 such as daily_tokens_exceeded).
+    # Cooldown applied to a key that hit a billing/quota wall. Overridden by
+    # Retry-After if the upstream provides a longer value.
+    billingSeconds: 3600
+    # T2 — Permission recovery (HTTP 403, fixable 401 such as region_not_supported,
+    # org_membership_required, ip_not_supported).
+    # Cooldown for keys blocked by authorization/region/org issues that may clear
+    # on their own. Overridden by Retry-After if the upstream provides a longer value.
+    permissionSeconds: 1800
+    # T4 — Transient server errors (HTTP 500/502/503/504, engine_overloaded, etc.).
+    # Default cooldown for transient upstream failures when Retry-After is absent.
+    # Short by design; these errors usually clear quickly.
+    serverSeconds: 60
+    # T4b — OpenAI "Slow Down" / rate_reduction_required (HTTP 503 with the
+    # slow-down message). Effective cooldown is max(retryAfterSeconds, slowDownMinimumSeconds),
+    # so this value is a floor that prevents over-aggressive retries even when
+    # Retry-After is short. Default 15 minutes.
+    slowDownMinimumSeconds: 900
 
   # Maximum allowed payload size for requests (optional string)
   maxPayloadSize: "10mb"

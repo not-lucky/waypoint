@@ -9,6 +9,7 @@ import {
 import { UnifiedOrchestrator } from '../../src/services/unifiedOrchestrator.js';
 import { KeyRegistry } from '../../src/registry/keyRegistry.js';
 import { ProviderFactory } from '../../src/adapters/providerFactory.js';
+import { normalizeTestError } from '../helpers/normalizeTestError.js';
 
 class MockAdapter {
   constructor() {
@@ -31,12 +32,7 @@ class MockAdapter {
   }
 
   normalizeError(error) {
-    return {
-      code: 'mock_error',
-      message: error.message,
-      httpStatus: error.statusCode || 500,
-      provider: 'mock-provider',
-    };
+    return normalizeTestError(error, 'mock-provider');
   }
 }
 
@@ -80,10 +76,11 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
 
     // Check final error surfaces the last upstream failure
     expect(res.error).toEqual({
-      code: 'mock_error',
+      code: 'internal_server_error',
+      type: 'api_error',
       message: 'Failure 2',
       provider: 'mock-provider',
-      httpStatus: 500,
+      httpStatus: 502,
     });
   });
 
@@ -115,7 +112,8 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
     // Should call adapter exactly once and then stop because no keys are left
     expect(mockAdapter.callCount).toBe(1);
     expect(res.error).toEqual({
-      code: 'mock_error',
+      code: 'rate_limit_exceeded',
+      type: 'rate_limit_error',
       message: 'Rate Limited',
       provider: 'mock-provider',
       httpStatus: 429,
@@ -167,10 +165,11 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
 
     // Returns the fallback provider's upstream error
     expect(res.error).toEqual({
-      code: 'mock_error',
+      code: 'internal_server_error',
+      type: 'api_error',
       message: 'Fallback Error',
       provider: 'mock-provider',
-      httpStatus: 500,
+      httpStatus: 502,
     });
   });
 

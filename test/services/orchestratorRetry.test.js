@@ -7,6 +7,7 @@ import {
 import { UnifiedOrchestrator } from '../../src/services/unifiedOrchestrator.js';
 import { KeyRegistry } from '../../src/registry/keyRegistry.js';
 import { ProviderFactory } from '../../src/adapters/providerFactory.js';
+import { normalizeTestError } from '../helpers/normalizeTestError.js';
 
 class MockAdapter {
   constructor() {
@@ -28,12 +29,7 @@ class MockAdapter {
 
   /* eslint-disable-next-line class-methods-use-this */
   normalizeError(error) {
-    return {
-      code: 'mock_error',
-      message: error.message,
-      httpStatus: error.status || error.statusCode || error.response?.status || 500,
-      provider: 'mock-provider',
-    };
+    return normalizeTestError(error, 'mock-provider');
   }
 }
 
@@ -85,7 +81,7 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     // Assert that the registry was updated correctly
     expect(flagFailureSpy).toHaveBeenCalledTimes(2);
     expect(flagFailureSpy).toHaveBeenNthCalledWith(1, 'mock-provider', 'key-1', 429);
-    expect(flagFailureSpy).toHaveBeenNthCalledWith(2, 'mock-provider', 'key-2', 500);
+    expect(flagFailureSpy).toHaveBeenNthCalledWith(2, 'mock-provider', 'key-2', 502);
     expect(flagSuccessSpy).toHaveBeenCalledWith('mock-provider', 'key-3');
   });
 
@@ -125,7 +121,8 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     // Assert last upstream error is surfaced to the caller
     expect(res).toEqual({
       error: {
-        code: 'mock_error',
+        code: 'insufficient_quota',
+        type: 'billing_error',
         message: 'Error 3',
         provider: 'mock-provider',
         httpStatus: 402,
@@ -137,7 +134,7 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     // Assert each failure triggers flagFailure spy with correct args
     expect(flagFailureSpy).toHaveBeenCalledTimes(3);
     expect(flagFailureSpy).toHaveBeenNthCalledWith(1, 'mock-provider', 'key-1', 429);
-    expect(flagFailureSpy).toHaveBeenNthCalledWith(2, 'mock-provider', 'key-2', 500);
+    expect(flagFailureSpy).toHaveBeenNthCalledWith(2, 'mock-provider', 'key-2', 502);
     expect(flagFailureSpy).toHaveBeenNthCalledWith(3, 'mock-provider', 'key-3', 402);
   });
 
@@ -179,9 +176,9 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     const res = await orchestrator.executeCompletion(req, {});
 
     expect(mockAdapter.callCount).toBe(1);
-    expect(res.error.code).toBe('mock_error');
+    expect(res.error.code).toBe('internal_server_error');
     expect(res.error.message).toBe('Failure');
-    expect(res.error.httpStatus).toBe(500);
+    expect(res.error.httpStatus).toBe(502);
   });
 
   it('assert: cooldown calculation ignores permanently exhausted keys and selects earliest active cooldown', async () => {
@@ -284,7 +281,7 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     expect(flagFailureSpy).toHaveBeenNthCalledWith(1, 'mock-provider', 'key-1', 401);
     expect(flagFailureSpy).toHaveBeenNthCalledWith(2, 'mock-provider', 'key-2', 403);
     expect(flagFailureSpy).toHaveBeenNthCalledWith(3, 'mock-provider', 'key-3', 429);
-    expect(flagFailureSpy).toHaveBeenNthCalledWith(4, 'mock-provider', 'key-4', 500);
+    expect(flagFailureSpy).toHaveBeenNthCalledWith(4, 'mock-provider', 'key-4', 502);
   });
 
   it('assert: fallback model exhaustion yields all_keys_exhausted for the fallback provider', async () => {
@@ -330,10 +327,11 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     expect(primaryAdapter.callCount).toBe(2);
     expect(fallbackAdapter.callCount).toBe(2);
     expect(res.error).toEqual({
-      code: 'mock_error',
+      code: 'internal_server_error',
+      type: 'api_error',
       message: 'F2 Failed',
       provider: 'mock-provider',
-      httpStatus: 500,
+      httpStatus: 502,
     });
   });
 });

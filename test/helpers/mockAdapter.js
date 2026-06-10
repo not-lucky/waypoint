@@ -1,5 +1,6 @@
 /* eslint-disable class-methods-use-this, no-unused-vars */
 /* eslint-disable no-restricted-syntax, generator-star-spacing */
+import { normalizeTestError } from './normalizeTestError.js';
 
 /**
  * Test double implementing the BaseProvider interface for DI integration tests.
@@ -88,11 +89,7 @@ export class MockAdapter {
   }
 
   normalizeError(error) {
-    return {
-      code: 'mock_error',
-      message: error.message || String(error),
-      httpStatus: error.status || error.statusCode || 500,
-    };
+    return normalizeTestError(error, 'mock-provider');
   }
 }
 

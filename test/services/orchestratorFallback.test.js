@@ -4,6 +4,7 @@ import {
   expect,
 } from 'vitest';
 import { UnifiedOrchestrator } from '../../src/services/unifiedOrchestrator.js';
+import { normalizeTestError } from '../helpers/normalizeTestError.js';
 import { KeyRegistry } from '../../src/registry/keyRegistry.js';
 import { ProviderFactory } from '../../src/adapters/providerFactory.js';
 
@@ -31,12 +32,7 @@ class MockAdapter {
   }
 
   normalizeError(error) {
-    return {
-      code: 'mock_error',
-      message: error.message,
-      httpStatus: error.statusCode || 500,
-      provider: this.providerName,
-    };
+    return normalizeTestError(error, this.providerName);
   }
 }
 
@@ -154,10 +150,10 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
     expect(geminiAdapter.callCount).toBe(0);
     expect(openaiAdapter.callCount).toBe(1);
     expect(res.error).toBeDefined();
-    expect(res.error.code).toBe('mock_error');
+    expect(res.error.code).toBe('internal_server_error');
     expect(res.error.message).toBe('OpenAI transient error');
     expect(res.error.provider).toBe('openai');
-    expect(res.error.httpStatus).toBe(500);
+    expect(res.error.httpStatus).toBe(502);
   });
 
   it('assert: request arrives with isFallback:true -> fallback logic is entirely skipped', async () => {
@@ -444,7 +440,7 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
 
     expect(geminiAdapter.callCount).toBe(1);
     expect(res.error).toBeDefined();
-    expect(res.error.code).toBe('mock_error');
+    expect(res.error.code).toBe('rate_limit_exceeded');
     expect(res.error.message).toBe('Rate Limited');
     expect(res.error.provider).toBe('gemini');
     expect(res.error.httpStatus).toBe(429);

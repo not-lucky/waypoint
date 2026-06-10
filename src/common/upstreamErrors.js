@@ -274,14 +274,11 @@ export function classifyUpstreamError(statusCode, errorBody, headers = {}) {
 
 /**
  * Determines if an error is retryable.
+ * Requires structured category and code from the classifier.
  */
-export function isRetryable(category, code, httpStatus = null) {
-  if (category === undefined && httpStatus !== null) {
-    // Backward compatibility for mock / legacy adapters
-    const NON_RETRYABLE_CLIENT_STATUS_CODES = new Set([
-      400, 404, 405, 410, 413, 414, 415, 422,
-    ]);
-    return !NON_RETRYABLE_CLIENT_STATUS_CODES.has(httpStatus);
+export function isRetryable(category, code) {
+  if (!category || !code) {
+    return false;
   }
 
   if (category === ERROR_CATEGORIES.VALIDATION || category === ERROR_CATEGORIES.CONTENT_POLICY) {
@@ -295,14 +292,11 @@ export function isRetryable(category, code, httpStatus = null) {
 
 /**
  * Determines if an error should trigger key cooldown.
+ * Requires structured category and code from the classifier.
  */
-export function shouldCooldownKey(category, code, httpStatus = null) {
-  if (category === undefined && httpStatus !== null) {
-    // Backward compatibility for mock / legacy adapters
-    const NON_RETRYABLE_CLIENT_STATUS_CODES = new Set([
-      400, 404, 405, 410, 413, 414, 415, 422,
-    ]);
-    return !NON_RETRYABLE_CLIENT_STATUS_CODES.has(httpStatus);
+export function shouldCooldownKey(category, code) {
+  if (!category || !code) {
+    return false;
   }
 
   // Key configuration/auth issues

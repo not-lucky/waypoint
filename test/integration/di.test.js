@@ -4,6 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
 import { createTestApp } from '../helpers/testServer.js';
+import { normalizeTestError } from '../helpers/normalizeTestError.js';
 
 const baseLogging = {
   logging: { enableConsole: false, enableFile: false, format: 'json' },
@@ -107,11 +108,7 @@ class MockAdapter {
   }
 
   normalizeError(error) {
-    return {
-      code: 'mock_error',
-      message: error.message || String(error),
-      httpStatus: error.status || error.statusCode || 500,
-    };
+    return normalizeTestError(error, 'mock-provider');
   }
 }
 
@@ -427,7 +424,7 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
       .expect(502);
 
     expect(mockAdapter.callCount).toBe(1);
-    expect(res.body.error.code).toBe('mock_error');
+    expect(res.body.error.code).toBe('bad_gateway');
     expect(res.body.error.message).toBe('Custom mock provider internal error');
     expect(res.body.error.httpStatus).toBe(502);
 

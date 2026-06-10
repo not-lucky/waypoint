@@ -13,6 +13,7 @@ import { UnifiedOrchestrator, activeControllers } from '../../src/services/unifi
 import { KeyRegistry } from '../../src/registry/keyRegistry.js';
 import { ProviderFactory } from '../../src/adapters/providerFactory.js';
 import { teardown } from '../../src/lifecycle/lifecycle.js';
+import { normalizeTestError } from '../helpers/normalizeTestError.js';
 
 class MockAdapter {
   constructor() {
@@ -22,12 +23,7 @@ class MockAdapter {
   }
 
   normalizeError(error) {
-    return {
-      code: 'mock_error',
-      message: error.message,
-      httpStatus: 500,
-      provider: 'mock-provider',
-    };
+    return normalizeTestError(error, 'mock-provider');
   }
 
   async generateCompletion(req, apiKey, signal) {

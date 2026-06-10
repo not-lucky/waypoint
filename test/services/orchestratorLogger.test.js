@@ -7,6 +7,7 @@ import {
   afterEach,
 } from 'vitest';
 import { UnifiedOrchestrator } from '../../src/services/unifiedOrchestrator.js';
+import { normalizeTestError } from '../helpers/normalizeTestError.js';
 import { KeyRegistry } from '../../src/registry/keyRegistry.js';
 import { ProviderFactory } from '../../src/adapters/providerFactory.js';
 
@@ -33,12 +34,7 @@ class MockAdapter {
 
   /* eslint-disable-next-line class-methods-use-this */
   normalizeError(error) {
-    return {
-      code: 'mock_error',
-      message: error.message,
-      httpStatus: error.status || 500,
-      provider: 'mock-provider',
-    };
+    return normalizeTestError(error, 'mock-provider');
   }
 }
 

@@ -5,7 +5,7 @@
  * @module registry/KeyRegistry
  */
 
-import { isNonRetryableClientError } from '../common/errors.js';
+import { classifyUpstreamError, shouldCooldownKey } from '../common/upstreamErrors.js';
 import { KeyObject, GENERIC_FAILURE_COOLDOWN_MS } from './keyObject.js';
 
 /**
@@ -142,7 +142,8 @@ export class KeyRegistry {
     const key = this.findKey(provider, keyStr);
     if (!key) return;
 
-    if (isNonRetryableClientError(statusCode)) {
+    const classified = classifyUpstreamError(statusCode, {});
+    if (!shouldCooldownKey(classified.category, classified.code)) {
       return;
     }
 

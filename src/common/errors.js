@@ -4,26 +4,6 @@
  */
 
 /**
- * HTTP status codes where retrying with a different API key cannot succeed.
- * These indicate request or endpoint configuration problems shared by every key.
- */
-const NON_RETRYABLE_CLIENT_STATUS_CODES = new Set([
-  400, 404, 405, 410, 413, 414, 415, 422,
-]);
-
-/**
- * Returns true when an upstream client error should not trigger key cooldown or rotation.
- *
- * @param {number} statusCode - HTTP status code from the upstream provider.
- * @returns {boolean} True if the status code is non-retryable.
- */
-export function isNonRetryableClientError(statusCode) {
-  return NON_RETRYABLE_CLIENT_STATUS_CODES.has(statusCode);
-}
-
-export { isRetryable, shouldCooldownKey } from './upstreamErrors.js';
-
-/**
  * Builds the v1 client-facing error response envelope.
  *
  * @param {Object} error - Error descriptor with code, message, and optional fields.

@@ -97,6 +97,10 @@ function processGateway(gateway) {
     let cooldown = { ...processed.cooldown };
     cooldown = coerceToInt(cooldown, 'baseSeconds');
     cooldown = coerceToInt(cooldown, 'maxSeconds');
+    cooldown = coerceToInt(cooldown, 'billingSeconds');
+    cooldown = coerceToInt(cooldown, 'permissionSeconds');
+    cooldown = coerceToInt(cooldown, 'serverSeconds');
+    cooldown = coerceToInt(cooldown, 'slowDownMinimumSeconds');
     processed = { ...processed, cooldown };
   }
 

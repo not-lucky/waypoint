@@ -44,12 +44,31 @@ export class GatewayValidator {
         logErrorAndExitOrThrow("Invalid 'gateway.cooldown'. Must be an object.", shouldExit, customLogger);
       }
 
-      const { baseSeconds, maxSeconds } = gateway.cooldown;
+      const {
+        baseSeconds,
+        maxSeconds,
+        billingSeconds,
+        permissionSeconds,
+        serverSeconds,
+        slowDownMinimumSeconds,
+      } = gateway.cooldown;
       if (baseSeconds !== undefined && !isPositiveInteger(baseSeconds)) {
         logErrorAndExitOrThrow("Invalid 'gateway.cooldown.baseSeconds'. Must be a positive integer.", shouldExit, customLogger);
       }
       if (maxSeconds !== undefined && !isPositiveInteger(maxSeconds)) {
         logErrorAndExitOrThrow("Invalid 'gateway.cooldown.maxSeconds'. Must be a positive integer.", shouldExit, customLogger);
+      }
+      if (billingSeconds !== undefined && !isPositiveInteger(billingSeconds)) {
+        logErrorAndExitOrThrow("Invalid 'gateway.cooldown.billingSeconds'. Must be a positive integer.", shouldExit, customLogger);
+      }
+      if (permissionSeconds !== undefined && !isPositiveInteger(permissionSeconds)) {
+        logErrorAndExitOrThrow("Invalid 'gateway.cooldown.permissionSeconds'. Must be a positive integer.", shouldExit, customLogger);
+      }
+      if (serverSeconds !== undefined && !isPositiveInteger(serverSeconds)) {
+        logErrorAndExitOrThrow("Invalid 'gateway.cooldown.serverSeconds'. Must be a positive integer.", shouldExit, customLogger);
+      }
+      if (slowDownMinimumSeconds !== undefined && !isPositiveInteger(slowDownMinimumSeconds)) {
+        logErrorAndExitOrThrow("Invalid 'gateway.cooldown.slowDownMinimumSeconds'. Must be a positive integer.", shouldExit, customLogger);
       }
     }
 

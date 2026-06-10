@@ -78,10 +78,13 @@ Waypoint enforces strict **Separation of Concerns** using a layered Clean Archit
 - **Routing Strategies**:
   - `round-robin`: Rotates keys sequentially per request to balance load evenly across active keys.
   - `fill-first`: Uses the first available key and fails over only when exhausted, optimizing for upstream **prompt cache locality**.
-- **Circuit Breaking**:
-  - **429 Rate Limits**: Cooldowns key with exponential backoff (`baseSeconds × 2ⁿ`, capped at `maxSeconds`), then auto-reactivates it.
-  - **402/403 Quota Errors**: Marks the key as permanently exhausted.
-  - **Other errors**: Briefly disables the key under a transient cooldown period.
+- **Circuit Breaking** (tiered lifecycle):
+  - **T0 (`invalid_api_key`)**: Permanently exhausts the key — the only terminal credential failure.
+  - **T1 (billing/quota)**: Long billing cooldown (`billingSeconds`, default 3600s); key recovers automatically.
+  - **T2 (permission)**: Permission cooldown (`permissionSeconds`, default 1800s); key recovers automatically.
+  - **T3 (rate limits)**: Exponential backoff (`baseSeconds × 2ⁿ`, capped at `maxSeconds`), honoring `Retry-After`.
+  - **T4/T4b (server transient / slow-down)**: Server cooldown (`serverSeconds` or `slowDownMinimumSeconds`).
+  - **T5 (validation/content)**: No key action — request problem, not a key health issue.
 
 ### 3. Unified Reasoning Model
 - Normalizes reasoning/thinking efforts using standard levels (`minimal`, `low`, `medium`, `high`, `xhigh`, `max`).
@@ -220,10 +223,14 @@ gateway:
   # Size limit on inbound requests to prevent memory exhaustion
   maxPayloadSize: "10mb"
 
-  # Cooldown limits for rate-limiting exponential backoffs
+  # Tiered cooldown settings (see docs/key-lifecycle-policy.md)
   cooldown:
     baseSeconds: 30
     maxSeconds: 3600
+    billingSeconds: 3600
+    permissionSeconds: 1800
+    serverSeconds: 60
+    slowDownMinimumSeconds: 900
 
   # Routing algorithm: "round-robin" or "fill-first"
   routing:

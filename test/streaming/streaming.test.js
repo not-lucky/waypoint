@@ -14,6 +14,7 @@ import { AnthropicController } from '../../src/controllers/anthropicController.j
 import { UnifiedOrchestrator } from '../../src/services/unifiedOrchestrator.js';
 import { KeyRegistry } from '../../src/registry/keyRegistry.js';
 import { ProviderFactory } from '../../src/adapters/providerFactory.js';
+import { normalizeTestError } from '../helpers/normalizeTestError.js';
 
 class MockAdapter {
   constructor() {
@@ -23,12 +24,7 @@ class MockAdapter {
   }
 
   normalizeError(error) {
-    return {
-      code: 'mock_error',
-      message: error.message,
-      httpStatus: 500,
-      provider: 'mock-provider',
-    };
+    return normalizeTestError(error, 'mock-provider');
   }
 
   async* generateStream(req, apiKey, signal) {
@@ -260,7 +256,11 @@ describe('Streaming End-to-End Tests', () => {
         yield { id: 'success-chunk', choices: [{ index: 0, delta: { content: 'hello' } }] };
       },
       normalizeError(error) {
-        return { code: 'rateLimited', httpStatus: 503, provider: 'mock-provider' };
+        const err = error;
+        if (err.status === undefined && err.statusCode === undefined) {
+          err.status = 503;
+        }
+        return normalizeTestError(err, 'mock-provider');
       },
     };
 
@@ -311,7 +311,11 @@ describe('Streaming End-to-End Tests', () => {
         throw new Error('Primary key rate limit');
       },
       normalizeError(error) {
-        return { code: 'rateLimited', httpStatus: 503, provider: 'primary-provider' };
+        const err = error;
+        if (err.status === undefined && err.statusCode === undefined) {
+          err.status = 503;
+        }
+        return normalizeTestError(err, 'primary-provider');
       },
     };
 
@@ -404,7 +408,11 @@ describe('Streaming End-to-End Tests', () => {
         throw new Error('Primary failed');
       },
       normalizeError(error) {
-        return { code: 'rateLimited', httpStatus: 503, provider: 'primary-provider' };
+        const err = error;
+        if (err.status === undefined && err.statusCode === undefined) {
+          err.status = 503;
+        }
+        return normalizeTestError(err, 'primary-provider');
       },
     };
 

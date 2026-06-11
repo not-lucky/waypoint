@@ -277,11 +277,11 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     const req = { provider: 'mock-provider', actualModelId: 'test-model' };
     await orchestrator.executeCompletion(req, {});
 
-    expect(flagFailureSpy).toHaveBeenCalledTimes(4);
+    // Plain errors without HTTP status are transport failures (no key cooldown)
+    expect(flagFailureSpy).toHaveBeenCalledTimes(3);
     expect(flagFailureSpy).toHaveBeenNthCalledWith(1, 'mock-provider', 'key-1', 401);
     expect(flagFailureSpy).toHaveBeenNthCalledWith(2, 'mock-provider', 'key-2', 403);
     expect(flagFailureSpy).toHaveBeenNthCalledWith(3, 'mock-provider', 'key-3', 429);
-    expect(flagFailureSpy).toHaveBeenNthCalledWith(4, 'mock-provider', 'key-4', 502);
   });
 
   it('assert: fallback model exhaustion yields all_keys_exhausted for the fallback provider', async () => {

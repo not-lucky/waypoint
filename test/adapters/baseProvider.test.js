@@ -2,7 +2,7 @@ import {
   describe, it, expect,
 } from 'vitest';
 import { BaseProvider } from '../../src/adapters/baseProvider.js';
-import { NotImplementedError } from '../../src/common/errors.js';
+import { NotImplementedError } from '../../src/common/notImplementedError.js';
 
 describe('BaseProvider Tests', () => {
   it('should throw NotImplementedError on base class methods', async () => {
@@ -40,11 +40,18 @@ describe('BaseProvider Tests', () => {
       expect(quota.httpStatus).toBe(403);
     });
 
-    it('should map unknown errors to connect_timeout', () => {
+    it('should map unknown errors to connect_timeout with full canonical shape', () => {
       const res = BaseProvider.normalizeProviderError(new Error('boom'), 'gemini');
-      expect(res.code).toBe('connect_timeout');
-      expect(res.httpStatus).toBe(503);
-      expect(res.message).toContain('boom');
+      expect(res).toEqual({
+        code: 'connect_timeout',
+        type: undefined,
+        message: 'Upstream connection failed: boom',
+        httpStatus: 503,
+        provider: 'gemini',
+        category: 'transport',
+        retryAfterSeconds: undefined,
+        upstreamBody: undefined,
+      });
     });
   });
 });

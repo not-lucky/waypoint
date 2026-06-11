@@ -1,18 +1,32 @@
 /**
- * @fileoverview Single-source-of-truth error classification and mapping for upstream providers.
+ * @fileoverview Single authority for upstream error classification, policy, and client envelopes.
  */
 
 export const ERROR_CATEGORIES = {
-  AUTH: 'Auth & billing',
-  BILLING: 'Auth & billing',
-  VALIDATION: 'Request validation',
-  RATE_LIMIT: 'Rate limiting',
-  MODEL_RESOURCE: 'Model & resource',
-  CONTENT_POLICY: 'Content policy',
-  SERVER: 'Server errors',
-  STREAMING: 'Streaming',
-  TRANSPORT: 'Network/transport',
+  AUTH: 'auth',
+  BILLING: 'billing',
+  VALIDATION: 'validation',
+  RATE_LIMIT: 'rate_limit',
+  MODEL_RESOURCE: 'model_resource',
+  CONTENT_POLICY: 'content_policy',
+  SERVER: 'server',
+  STREAMING: 'streaming',
+  TRANSPORT: 'transport',
 };
+
+/**
+ * Attaches retryAfterSeconds to a classification result when the header was present.
+ *
+ * @param {Object} result - Classifier result object.
+ * @param {number|undefined} retryAfterSeconds - Parsed Retry-After value.
+ * @returns {Object} Result with retryAfterSeconds when defined.
+ */
+function withRetryAfter(result, retryAfterSeconds) {
+  if (retryAfterSeconds !== undefined) {
+    return { ...result, retryAfterSeconds };
+  }
+  return result;
+}
 
 export class UpstreamError extends Error {
   constructor(message, options = {}) {
@@ -63,23 +77,31 @@ export function classifyUpstreamError(statusCode, errorBody, headers = {}) {
     let errorCode = 'invalid_api_key';
     if (msgLower.includes('no authorization') || msgLower.includes('missing') || codeLower === 'no_api_key') {
       errorCode = 'no_api_key';
+    } else if (msgLower.includes('member of an organization') || codeLower === 'org_membership_required') {
+      errorCode = 'org_membership_required';
+    } else if (msgLower.includes('ip not authorized') || codeLower === 'ip_not_authorized') {
+      errorCode = 'ip_not_authorized';
     }
-    return {
+    return withRetryAfter({
       type: 'authentication_error',
       code: errorCode,
       category: ERROR_CATEGORIES.AUTH,
       message,
-    };
+    }, retryAfterSeconds);
   }
 
   // 2. HTTP 403 - Permission Denied
   if (statusCode === 403) {
-    return {
+    let errorCode = 'forbidden';
+    if (msgLower.includes('country') || msgLower.includes('region') || msgLower.includes('territory not supported') || codeLower === 'region_not_supported') {
+      errorCode = 'region_not_supported';
+    }
+    return withRetryAfter({
       type: 'permission_denied_error',
-      code: 'forbidden',
+      code: errorCode,
       category: ERROR_CATEGORIES.AUTH,
       message,
-    };
+    }, retryAfterSeconds);
   }
 
   // 3. HTTP 402 - Billing / Insufficient Quota
@@ -103,16 +125,15 @@ export function classifyUpstreamError(statusCode, errorBody, headers = {}) {
       errorCode = 'tokens_per_minute_exceeded';
     } else if (msgLower.includes('concurrent') || codeLower.includes('concurrent')) {
       errorCode = 'concurrent_requests_exceeded';
-    } else if (msgLower.includes('daily') || msgLower.includes('monthly') || codeLower.includes('daily') || codeLower.includes('quota')) {
+    } else if (msgLower.includes('exceeded your current quota') || msgLower.includes('daily') || msgLower.includes('monthly') || codeLower.includes('daily') || codeLower.includes('quota')) {
       errorCode = 'daily_tokens_exceeded';
     }
-    return {
+    return withRetryAfter({
       type: 'rate_limit_error',
       code: errorCode,
       category: ERROR_CATEGORIES.RATE_LIMIT,
       message,
-      retryAfterSeconds,
-    };
+    }, retryAfterSeconds);
   }
 
   // 5. HTTP 404 - Not Found / Endpoint
@@ -215,52 +236,60 @@ export function classifyUpstreamError(statusCode, errorBody, headers = {}) {
     };
   }
 
-  // 10. HTTP 503 - Engine Overloaded vs Service Unavailable
+  // 10. HTTP 503 - Slow down vs Engine Overloaded vs Service Unavailable
   if (statusCode === 503) {
+    if (msgLower.includes('slow down') || codeLower === 'rate_reduction_required') {
+      return withRetryAfter({
+        type: 'api_error',
+        code: 'rate_reduction_required',
+        category: ERROR_CATEGORIES.SERVER,
+        message,
+      }, retryAfterSeconds);
+    }
     if (msgLower.includes('overloaded') || msgLower.includes('capacity') || codeLower === 'engine_overloaded') {
-      return {
+      return withRetryAfter({
         type: 'overloaded_error',
         code: 'engine_overloaded',
         category: ERROR_CATEGORIES.MODEL_RESOURCE,
         message,
-      };
+      }, retryAfterSeconds);
     }
-    return {
+    return withRetryAfter({
       type: 'api_error',
       code: 'service_unavailable',
       category: ERROR_CATEGORIES.SERVER,
       message,
-    };
+    }, retryAfterSeconds);
   }
 
   // 11. HTTP 504 - Gateway Timeout
   if (statusCode === 504) {
-    return {
+    return withRetryAfter({
       type: 'api_error',
       code: 'gateway_timeout',
       category: ERROR_CATEGORIES.SERVER,
       message,
-    };
+    }, retryAfterSeconds);
   }
 
   // 12. HTTP 502 - Bad Gateway
   if (statusCode === 502) {
-    return {
+    return withRetryAfter({
       type: 'api_error',
       code: 'bad_gateway',
       category: ERROR_CATEGORIES.SERVER,
       message,
-    };
+    }, retryAfterSeconds);
   }
 
   // Default server error for other 5xx
   if (statusCode >= 500) {
-    return {
+    return withRetryAfter({
       type: 'api_error',
       code: 'internal_server_error',
       category: ERROR_CATEGORIES.SERVER,
       message,
-    };
+    }, retryAfterSeconds);
   }
 
   // Generic fallback error
@@ -281,6 +310,10 @@ export function isRetryable(category, code) {
     return false;
   }
 
+  if (code === 'no_api_key') {
+    return false;
+  }
+
   if (category === ERROR_CATEGORIES.VALIDATION || category === ERROR_CATEGORIES.CONTENT_POLICY) {
     return false;
   }
@@ -296,6 +329,10 @@ export function isRetryable(category, code) {
  */
 export function shouldCooldownKey(category, code) {
   if (!category || !code) {
+    return false;
+  }
+
+  if (code === 'no_api_key') {
     return false;
   }
 
@@ -322,7 +359,7 @@ export function shouldCooldownKey(category, code) {
  * Maps upstream status code and category/code to the status code we return to the client.
  */
 export function getClientHttpStatus(upstreamStatus, category, code) {
-  if (code === 'forbidden') {
+  if (code === 'forbidden' || code === 'region_not_supported') {
     return 403;
   }
   if (code === 'insufficient_quota' || code === 'billing_hard_limit_reached') {
@@ -353,4 +390,136 @@ export function getClientHttpStatus(upstreamStatus, category, code) {
   }
 
   return upstreamStatus || 502;
+}
+
+/**
+ * Classifies network/transport failures that have no HTTP status from the provider.
+ *
+ * @param {any} error - Caught transport error.
+ * @returns {{ code: string, category: string, message: string, httpStatus: number }}
+ */
+export function classifyTransportError(error) {
+  const message = error?.message || String(error);
+  const msgLower = message.toLowerCase();
+  let code = 'connect_timeout';
+
+  if (msgLower.includes('ssl') || msgLower.includes('tls') || msgLower.includes('certificate') || msgLower.includes('cert') || msgLower.includes('handshake')) {
+    code = 'tls_error';
+  } else if (error?.name === 'TimeoutError' || msgLower.includes('timeout') || msgLower.includes('abort') || error?.code === 'ETIMEDOUT') {
+    code = 'read_timeout';
+  } else if (msgLower.includes('dns') || msgLower.includes('enotfound') || msgLower.includes('eaddrinfo') || msgLower.includes('econnrefused') || msgLower.includes('econnreset') || msgLower.includes('fetch failed')) {
+    code = 'connect_timeout';
+  }
+
+  let httpStatus = 503;
+  if (code === 'read_timeout') {
+    httpStatus = 504;
+  }
+
+  return {
+    code,
+    category: ERROR_CATEGORIES.TRANSPORT,
+    message: `Upstream connection failed: ${message}`,
+    httpStatus,
+  };
+}
+
+/**
+ * Normalizes any upstream or transport error into the canonical provider error shape.
+ *
+ * @param {any} error - Caught error from adapter or fetch.
+ * @param {string} providerName - Provider name for the normalized error.
+ * @param {Object} [req] - Normalized internal request (for auth message context).
+ * @returns {Object} Normalized error with code, category, type, message, httpStatus, provider.
+ */
+export function normalizeUpstreamError(error, providerName, req = null) {
+  const status = error?.statusCode ?? error?.status ?? error?.response?.status;
+  if (error instanceof UpstreamError || status !== undefined) {
+    let errorCode = error?.errorCode;
+    let errorType = error?.errorType;
+    let category = error?.category;
+    const upstreamBody = error?.upstreamBody;
+    let retryAfterSeconds = error?.retryAfterSeconds;
+    let message = error?.message || String(error);
+
+    if (!(error instanceof UpstreamError)) {
+      const classification = classifyUpstreamError(status, error);
+      errorCode = classification.code;
+      errorType = classification.type;
+      category = classification.category;
+      retryAfterSeconds = classification.retryAfterSeconds;
+      message = classification.message || message;
+    }
+
+    if (category === ERROR_CATEGORIES.AUTH) {
+      if (errorCode === 'invalid_api_key') {
+        message = 'Authentication failed: Invalid upstream API key.';
+      } else if (errorCode === 'no_api_key') {
+        message = 'Authentication failed: No Authorization header sent to the upstream provider.';
+      } else if (errorCode === 'forbidden') {
+        const attemptedModel = req?.model || 'unknown';
+        message = `Permission denied: access forbidden. Model attempted: ${attemptedModel}. ${message}`;
+      }
+    }
+
+    return {
+      code: errorCode,
+      type: errorType,
+      message,
+      httpStatus: getClientHttpStatus(status, category, errorCode),
+      provider: (error?.provider && error.provider !== 'unknown') ? error.provider : providerName,
+      retryAfterSeconds,
+      category,
+      upstreamBody,
+    };
+  }
+
+  const transport = classifyTransportError(error);
+  return {
+    code: transport.code,
+    type: undefined,
+    message: transport.message,
+    httpStatus: transport.httpStatus,
+    provider: providerName,
+    category: transport.category,
+    retryAfterSeconds: undefined,
+    upstreamBody: undefined,
+  };
+}
+
+/**
+ * Whether a key failure should be recorded for lifecycle/cooldown purposes.
+ * Uses structured classification — not bare HTTP status alone.
+ *
+ * @param {number} statusCode - Upstream HTTP status.
+ * @param {any} [errorBody] - Parsed upstream error body.
+ * @param {Object} [headers] - Response headers.
+ * @returns {boolean}
+ */
+export function shouldFlagKeyFailure(statusCode, errorBody = {}, headers = {}) {
+  const classified = classifyUpstreamError(statusCode, errorBody, headers);
+  return shouldCooldownKey(classified.category, classified.code);
+}
+
+/**
+ * Builds the v1 client-facing error response envelope.
+ *
+ * @param {Object} error - Error descriptor with code, message, and optional fields.
+ * @param {number} finalStatus - HTTP status code to return to the client.
+ * @returns {{ error: Object }} v1 error envelope.
+ */
+export function buildClientErrorEnvelope(error, finalStatus) {
+  return {
+    error: {
+      code: error.code ?? 'upstream_error',
+      message: error.message ?? 'Request failed',
+      httpStatus: finalStatus,
+      ...(error.type ? { type: error.type } : {}),
+      ...(error.provider ? { provider: error.provider } : {}),
+      ...(error.retryAfterSeconds !== undefined
+        ? { retryAfterSeconds: error.retryAfterSeconds }
+        : {}),
+      ...(error.details ? { details: error.details } : {}),
+    },
+  };
 }

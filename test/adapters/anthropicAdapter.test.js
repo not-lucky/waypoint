@@ -235,7 +235,7 @@ describe('AnthropicAdapter Tests', () => {
       message: '404 page not found',
       httpStatus: 404,
       provider: 'requesty',
-      category: 'Model & resource',
+      category: 'model_resource',
       upstreamBody: undefined,
       retryAfterSeconds: undefined,
     });
@@ -251,7 +251,7 @@ describe('AnthropicAdapter Tests', () => {
       message: expect.any(String),
       httpStatus: 429,
       provider: 'anthropic',
-      category: 'Rate limiting',
+      category: 'rate_limit',
       upstreamBody: undefined,
       retryAfterSeconds: undefined,
     });
@@ -263,7 +263,7 @@ describe('AnthropicAdapter Tests', () => {
       message: expect.any(String),
       httpStatus: 402,
       provider: 'anthropic',
-      category: 'Auth & billing',
+      category: 'billing',
       upstreamBody: undefined,
       retryAfterSeconds: undefined,
     });
@@ -275,7 +275,7 @@ describe('AnthropicAdapter Tests', () => {
       message: expect.any(String),
       httpStatus: 403,
       provider: 'anthropic',
-      category: 'Auth & billing',
+      category: 'auth',
       upstreamBody: undefined,
       retryAfterSeconds: undefined,
     });
@@ -283,10 +283,13 @@ describe('AnthropicAdapter Tests', () => {
     // other
     expect(adapter.normalizeError({ message: 'Unknown Error' })).toEqual({
       code: 'connect_timeout',
+      type: undefined,
       message: 'Upstream connection failed: Unknown Error',
       httpStatus: 503,
       provider: 'anthropic',
-      category: 'Network/transport',
+      category: 'transport',
+      retryAfterSeconds: undefined,
+      upstreamBody: undefined,
     });
   });
 

@@ -126,7 +126,7 @@ describe('GeminiAdapter Tests', () => {
       message: expect.any(String),
       httpStatus: 429,
       provider: 'gemini',
-      category: 'Rate limiting',
+      category: 'rate_limit',
       upstreamBody: undefined,
       retryAfterSeconds: undefined,
     });
@@ -138,7 +138,7 @@ describe('GeminiAdapter Tests', () => {
       message: expect.any(String),
       httpStatus: 402,
       provider: 'gemini',
-      category: 'Auth & billing',
+      category: 'billing',
       upstreamBody: undefined,
       retryAfterSeconds: undefined,
     });
@@ -150,7 +150,7 @@ describe('GeminiAdapter Tests', () => {
       message: expect.any(String),
       httpStatus: 403,
       provider: 'gemini',
-      category: 'Auth & billing',
+      category: 'auth',
       upstreamBody: undefined,
       retryAfterSeconds: undefined,
     });
@@ -162,7 +162,7 @@ describe('GeminiAdapter Tests', () => {
       message: 'Internal Server Error',
       httpStatus: 502,
       provider: 'gemini',
-      category: 'Server errors',
+      category: 'server',
       upstreamBody: undefined,
       retryAfterSeconds: undefined,
     });

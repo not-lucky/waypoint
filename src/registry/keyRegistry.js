@@ -5,7 +5,7 @@
  * @module registry/KeyRegistry
  */
 
-import { classifyUpstreamError, shouldCooldownKey } from '../common/upstreamErrors.js';
+import { shouldFlagKeyFailure } from '../common/upstreamErrors.js';
 import { KeyObject, GENERIC_FAILURE_COOLDOWN_MS } from './keyObject.js';
 
 /**
@@ -142,8 +142,7 @@ export class KeyRegistry {
     const key = this.findKey(provider, keyStr);
     if (!key) return;
 
-    const classified = classifyUpstreamError(statusCode, {});
-    if (!shouldCooldownKey(classified.category, classified.code)) {
+    if (!shouldFlagKeyFailure(statusCode)) {
       return;
     }
 

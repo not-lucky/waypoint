@@ -2,7 +2,7 @@ import { getAppLogger } from '../logging/logger.js';
 import { createRequestLog } from '../logging/requestLogger.js';
 import { resolveModel } from '../domain/modelRouter.js';
 import { transformRequest } from '../domain/requestTransformer.js';
-import { buildClientErrorEnvelope } from '../common/errors.js';
+import { buildClientErrorEnvelope } from '../common/upstreamErrors.js';
 
 /**
  * Base class for all protocol controllers.

@@ -139,9 +139,10 @@ describe('Protocol Route Mounting Integration Tests', () => {
     it('maps orchestrator errors to correct HTTP status on both protocols', async () => {
       const errorBody = {
         error: {
-          code: 'upstreamRateLimited',
-          message: 'All keys cooling',
+          code: 'poolUnavailable',
+          message: 'All keys for provider \'openai\' are in cooldown.',
           provider: 'openai',
+          retryAfterSeconds: 60,
           httpStatus: 503,
         },
       };

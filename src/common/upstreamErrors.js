@@ -14,6 +14,13 @@ export const ERROR_CATEGORIES = {
   TRANSPORT: 'transport',
 };
 
+/** Billing/quota codes (T1) — including quota-style HTTP 429 responses. */
+export const BILLING_CODES = new Set([
+  'insufficient_quota',
+  'billing_hard_limit_reached',
+  'daily_tokens_exceeded',
+]);
+
 /**
  * Attaches retryAfterSeconds to a classification result when the header was present.
  *
@@ -128,10 +135,11 @@ export function classifyUpstreamError(statusCode, errorBody, headers = {}) {
     } else if (msgLower.includes('exceeded your current quota') || msgLower.includes('daily') || msgLower.includes('monthly') || codeLower.includes('daily') || codeLower.includes('quota')) {
       errorCode = 'daily_tokens_exceeded';
     }
+    const isQuotaExhausted = errorCode === 'daily_tokens_exceeded';
     return withRetryAfter({
-      type: 'rate_limit_error',
+      type: isQuotaExhausted ? 'billing_error' : 'rate_limit_error',
       code: errorCode,
-      category: ERROR_CATEGORIES.RATE_LIMIT,
+      category: isQuotaExhausted ? ERROR_CATEGORIES.BILLING : ERROR_CATEGORIES.RATE_LIMIT,
       message,
     }, retryAfterSeconds);
   }
@@ -336,6 +344,10 @@ export function shouldCooldownKey(category, code) {
     return false;
   }
 
+  if (BILLING_CODES.has(code)) {
+    return true;
+  }
+
   // Key configuration/auth issues
   if (category === ERROR_CATEGORIES.AUTH) {
     return true;
@@ -489,16 +501,14 @@ export function normalizeUpstreamError(error, providerName, req = null) {
 
 /**
  * Whether a key failure should be recorded for lifecycle/cooldown purposes.
- * Uses structured classification — not bare HTTP status alone.
+ * Uses structured category and code — not bare HTTP status alone.
  *
- * @param {number} statusCode - Upstream HTTP status.
- * @param {any} [errorBody] - Parsed upstream error body.
- * @param {Object} [headers] - Response headers.
+ * @param {string} category - Error category slug.
+ * @param {string} code - Machine-readable error code.
  * @returns {boolean}
  */
-export function shouldFlagKeyFailure(statusCode, errorBody = {}, headers = {}) {
-  const classified = classifyUpstreamError(statusCode, errorBody, headers);
-  return shouldCooldownKey(classified.category, classified.code);
+export function shouldFlagKeyFailure(category, code) {
+  return shouldCooldownKey(category, code);
 }
 
 /**

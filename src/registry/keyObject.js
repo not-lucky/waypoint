@@ -45,7 +45,7 @@ export class KeyObject {
     this.consecutiveFailures = 0;
 
     /**
-     * Permanently set to true if the key hits a hard 402/403 quota exhaustion.
+     * Permanently set to true only for invalid_api_key (T0 terminal credential).
      * @type {boolean}
      */
     this.exhausted = false;

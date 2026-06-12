@@ -53,7 +53,10 @@ describe('Key Registry Fill-First Strategy Tests', () => {
     expect(registry.getKey('gemini')).toBe('Key_A');
 
     // Key_A enters cooldown
-    registry.flagFailure('gemini', 'Key_A', 429);
+    registry.flagFailure('gemini', 'Key_A', {
+      category: 'rate_limit',
+      code: 'rate_limit_exceeded',
+    });
 
     // Next request should return Key_B (first active/non-cooling key, not Key_C)
     expect(registry.getKey('gemini')).toBe('Key_B');

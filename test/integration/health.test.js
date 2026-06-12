@@ -118,23 +118,26 @@ describe('Health Endpoint Integration Tests', () => {
     });
   });
 
-  it('should transition to degraded when a key is exhausted (402)', async () => {
+  it('should transition to degraded when a key is on billing cooldown (402)', async () => {
     // Check initial health is ok
     let res = await getHealth().expect(200);
     expect(res.body.status).toBe('ok');
     expect(res.body.providers.gemini.activeKeys).toBe(2);
     expect(res.body.providers.gemini.exhaustedKeys).toBe(0);
 
-    // Trigger 402 against a key in the gemini pool
-    keyRegistry.flagFailure('gemini', 'gemini-key-1', 402);
+    // Trigger billing failure against a key in the gemini pool
+    keyRegistry.flagFailure('gemini', 'gemini-key-1', {
+      category: 'billing',
+      code: 'insufficient_quota',
+    });
 
-    // Check status becomes degraded and exhaustedKeys is 1
+    // Check status becomes degraded with cooling, not exhaustion
     res = await getHealth().expect(200);
     expect(res.body.status).toBe('degraded');
     expect(res.body.providers.gemini.activeKeys).toBe(1);
-    expect(res.body.providers.gemini.exhaustedKeys).toBe(1);
-    expect(res.body.providers.gemini.coolingKeys).toBe(0);
-    expect(res.body.providers.gemini.coolingUntil).toBeNull();
+    expect(res.body.providers.gemini.exhaustedKeys).toBe(0);
+    expect(res.body.providers.gemini.coolingKeys).toBe(1);
+    expect(res.body.providers.gemini.coolingUntil).not.toBeNull();
   });
 
   it('should transition to degraded when a key is cooling (429)', async () => {
@@ -144,7 +147,10 @@ describe('Health Endpoint Integration Tests', () => {
 
     // Trigger 429 against a key in the gemini pool
     const beforeTime = Date.now();
-    keyRegistry.flagFailure('gemini', 'gemini-key-1', 429);
+    keyRegistry.flagFailure('gemini', 'gemini-key-1', {
+      category: 'rate_limit',
+      code: 'rate_limit_exceeded',
+    });
 
     // Check status becomes degraded and coolingKeys is 1
     res = await getHealth().expect(200);
@@ -169,14 +175,20 @@ describe('Health Endpoint Integration Tests', () => {
 
   it('should report the earliest coolingUntil timestamp when multiple keys are cooling', async () => {
     // Trigger 429 on gemini-key-1
-    keyRegistry.flagFailure('gemini', 'gemini-key-1', 429);
+    keyRegistry.flagFailure('gemini', 'gemini-key-1', {
+      category: 'rate_limit',
+      code: 'rate_limit_exceeded',
+    });
     const key1CooldownTime = keyRegistry.pools.gemini.keys[0].cooldownUntil;
 
     // Advance time slightly
     await vi.advanceTimersByTimeAsync(5000);
 
     // Trigger 429 on gemini-key-2 (will have a later cooldown time)
-    keyRegistry.flagFailure('gemini', 'gemini-key-2', 429);
+    keyRegistry.flagFailure('gemini', 'gemini-key-2', {
+      category: 'rate_limit',
+      code: 'rate_limit_exceeded',
+    });
     const key2CooldownTime = keyRegistry.pools.gemini.keys[1].cooldownUntil;
 
     expect(key2CooldownTime).toBeGreaterThan(key1CooldownTime);
@@ -213,17 +225,20 @@ describe('Health Endpoint Integration Tests', () => {
     let res = await getHealth().expect(200);
     expect(res.body.status).toBe('ok');
 
-    // Trigger a generic 500 failure for key 1
-    keyRegistry.flagFailure('gemini', 'gemini-key-1', 500);
+    // Trigger a server transient failure for key 1
+    keyRegistry.flagFailure('gemini', 'gemini-key-1', {
+      category: 'server',
+      code: 'internal_server_error',
+    });
 
     res = await getHealth().expect(200);
-    // A 500 error triggers a short cooldown (5000ms), making the registry degraded
+    // A 500-class error triggers serverSeconds cooldown (60s), making the registry degraded
     expect(res.body.status).toBe('degraded');
     expect(res.body.providers.gemini.activeKeys).toBe(1);
     expect(res.body.providers.gemini.coolingKeys).toBe(1);
 
-    // Advance time past the 5000ms generic cooldown
-    await vi.advanceTimersByTimeAsync(5000);
+    // Advance time past the 60s server cooldown
+    await vi.advanceTimersByTimeAsync(60000);
 
     res = await getHealth().expect(200);
     // Registry should return to ok status

@@ -72,9 +72,10 @@ describe('Server Route Integration Tests', () => {
   it('POST /openai/chat/completions - status code mapping on error', async () => {
     const mockErrorResponse = {
       error: {
-        code: 'upstreamRateLimited',
-        message: 'All keys are in cooldown',
+        code: 'poolUnavailable',
+        message: 'All keys for provider \'openai\' are in cooldown.',
         provider: 'openai',
+        retryAfterSeconds: 30,
         httpStatus: 503,
       },
     };

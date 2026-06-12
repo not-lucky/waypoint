@@ -5,13 +5,41 @@
  * @module registry/KeyRegistry
  */
 
-import { shouldFlagKeyFailure } from '../common/upstreamErrors.js';
-import { KeyObject, GENERIC_FAILURE_COOLDOWN_MS } from './keyObject.js';
+import { ERROR_CATEGORIES } from '../common/upstreamErrors.js';
+import { COOLDOWN_DEFAULTS } from '../config/cooldownDefaults.js';
+import { KeyObject } from './keyObject.js';
 
 /**
  * @const {string}
  */
 const DEFAULT_ROUTING_STRATEGY = 'round-robin';
+
+const BILLING_CODES = new Set([
+  'insufficient_quota',
+  'billing_hard_limit_reached',
+  'daily_tokens_exceeded',
+]);
+
+const PERMISSION_CODES = new Set([
+  'forbidden',
+  'region_not_supported',
+  'org_membership_required',
+  'ip_not_authorized',
+]);
+
+const RATE_LIMIT_CODES = new Set([
+  'rate_limit_exceeded',
+  'tokens_per_minute_exceeded',
+  'concurrent_requests_exceeded',
+]);
+
+const SERVER_CODES = new Set([
+  'internal_server_error',
+  'engine_overloaded',
+  'service_unavailable',
+  'gateway_timeout',
+  'bad_gateway',
+]);
 
 /**
  * Factory for creating a stateful pool of keys for a specific provider.
@@ -131,56 +159,87 @@ export class KeyRegistry {
   }
 
   /**
-   * Flags a key as failed and adjusts its lifecycle status based on the HTTP status code.
+   * Flags a key as failed and applies tiered lifecycle policy (T0–T5)
+   * from structured error meaning.
    *
    * @param {string} provider - The provider name.
    * @param {string} keyStr - The raw key string that failed.
-   * @param {number} statusCode - The HTTP status code returned by the provider.
-   * @param {number} [retryAfterSeconds] - Optional cooldown override.
+   * @param {Object} descriptor - Structured failure descriptor.
+   * @param {string} descriptor.category - Error category slug.
+   * @param {string} descriptor.code - Machine-readable error code.
+   * @param {number} [descriptor.retryAfterSeconds] - Optional cooldown override from Retry-After.
    */
-  flagFailure(provider, keyStr, statusCode, retryAfterSeconds = undefined) {
+  flagFailure(provider, keyStr, { category, code, retryAfterSeconds }) {
     const key = this.findKey(provider, keyStr);
     if (!key) return;
 
-    if (!shouldFlagKeyFailure(statusCode)) {
+    if (code === 'no_api_key') {
       return;
     }
 
-    switch (statusCode) {
-      // HTTP 429: Too Many Requests (Rate Limit).
-      // Apply exponential backoff to relieve pressure on the upstream provider.
-      case 429: {
-        key.consecutiveFailures += 1;
-
-        let backoffSeconds;
-        if (retryAfterSeconds !== undefined && retryAfterSeconds > 0) {
-          backoffSeconds = retryAfterSeconds;
-        } else {
-          const cooldown = this.config.gateway?.cooldown;
-          const baseSeconds = cooldown?.baseSeconds ?? 30;
-          const maxSeconds = cooldown?.maxSeconds ?? 3600;
-          const exponent = key.consecutiveFailures - 1;
-          backoffSeconds = Math.min(baseSeconds * (2 ** exponent), maxSeconds);
-        }
-
-        key.active = false;
-        this.setCooldown(key, backoffSeconds * 1000, true);
-        break;
-      }
-      // HTTP 402/403: Payment Required / Forbidden (Quota Exhausted or Banned).
-      // Hard fail the key. It requires manual administrative intervention to fix.
-      case 402:
-      case 403: {
-        key.exhausted = true;
-        key.active = false;
-        break;
-      }
-      // Generic internal/network errors get a standard small timeout window.
-      default: {
-        this.setCooldown(key, GENERIC_FAILURE_COOLDOWN_MS, false);
-        break;
-      }
+    // T0 — Terminal credential: only invalid_api_key permanently exhausts a key.
+    if (code === 'invalid_api_key') {
+      key.exhausted = true;
+      key.active = false;
+      return;
     }
+
+    const cooldown = { ...COOLDOWN_DEFAULTS, ...this.config.gateway?.cooldown };
+
+    // T1 — Billing recovery.
+    if (BILLING_CODES.has(code)) {
+      const seconds = retryAfterSeconds ?? cooldown.billingSeconds;
+      key.active = false;
+      this.setCooldown(key, seconds * 1000, true);
+      return;
+    }
+
+    // T2 — Permission recovery.
+    if (PERMISSION_CODES.has(code)) {
+      const seconds = retryAfterSeconds ?? cooldown.permissionSeconds;
+      key.active = false;
+      this.setCooldown(key, seconds * 1000, true);
+      return;
+    }
+
+    // T4b — Slow down.
+    if (code === 'rate_reduction_required') {
+      const seconds = Math.max(
+        retryAfterSeconds ?? 0,
+        cooldown.slowDownMinimumSeconds,
+      );
+      key.active = false;
+      this.setCooldown(key, seconds * 1000, true);
+      return;
+    }
+
+    // T3 — Rate limit: exponential backoff with optional Retry-After override.
+    if (RATE_LIMIT_CODES.has(code)) {
+      key.consecutiveFailures += 1;
+
+      let backoffSeconds;
+      if (retryAfterSeconds !== undefined && retryAfterSeconds > 0) {
+        backoffSeconds = retryAfterSeconds;
+      } else {
+        const { baseSeconds } = cooldown;
+        const { maxSeconds } = cooldown;
+        const exponent = key.consecutiveFailures - 1;
+        backoffSeconds = Math.min(baseSeconds * (2 ** exponent), maxSeconds);
+      }
+
+      key.active = false;
+      this.setCooldown(key, backoffSeconds * 1000, true);
+      return;
+    }
+
+    // T4 — Server transient.
+    if (SERVER_CODES.has(code) || category === ERROR_CATEGORIES.SERVER) {
+      const seconds = retryAfterSeconds ?? cooldown.serverSeconds;
+      key.active = false;
+      this.setCooldown(key, seconds * 1000, true);
+    }
+
+    // T5 — No key action for validation, content policy, model/resource, etc.
   }
 
   /**

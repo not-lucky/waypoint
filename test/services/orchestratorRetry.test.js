@@ -80,8 +80,16 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
 
     // Assert that the registry was updated correctly
     expect(flagFailureSpy).toHaveBeenCalledTimes(2);
-    expect(flagFailureSpy).toHaveBeenNthCalledWith(1, 'mock-provider', 'key-1', 429);
-    expect(flagFailureSpy).toHaveBeenNthCalledWith(2, 'mock-provider', 'key-2', 502);
+    expect(flagFailureSpy).toHaveBeenNthCalledWith(1, 'mock-provider', 'key-1', {
+      category: 'rate_limit',
+      code: 'rate_limit_exceeded',
+      retryAfterSeconds: undefined,
+    });
+    expect(flagFailureSpy).toHaveBeenNthCalledWith(2, 'mock-provider', 'key-2', {
+      category: 'server',
+      code: 'internal_server_error',
+      retryAfterSeconds: undefined,
+    });
     expect(flagSuccessSpy).toHaveBeenCalledWith('mock-provider', 'key-3');
   });
 
@@ -133,12 +141,58 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
 
     // Assert each failure triggers flagFailure spy with correct args
     expect(flagFailureSpy).toHaveBeenCalledTimes(3);
-    expect(flagFailureSpy).toHaveBeenNthCalledWith(1, 'mock-provider', 'key-1', 429);
-    expect(flagFailureSpy).toHaveBeenNthCalledWith(2, 'mock-provider', 'key-2', 502);
-    expect(flagFailureSpy).toHaveBeenNthCalledWith(3, 'mock-provider', 'key-3', 402);
+    expect(flagFailureSpy).toHaveBeenNthCalledWith(1, 'mock-provider', 'key-1', {
+      category: 'rate_limit',
+      code: 'rate_limit_exceeded',
+      retryAfterSeconds: undefined,
+    });
+    expect(flagFailureSpy).toHaveBeenNthCalledWith(2, 'mock-provider', 'key-2', {
+      category: 'server',
+      code: 'internal_server_error',
+      retryAfterSeconds: undefined,
+    });
+    expect(flagFailureSpy).toHaveBeenNthCalledWith(3, 'mock-provider', 'key-3', {
+      category: 'billing',
+      code: 'insufficient_quota',
+      retryAfterSeconds: undefined,
+    });
   });
 
-  it('assert: globalRetryLimit of 0 does not call adapter and returns all_keys_exhausted error', async () => {
+  it('assert: quota-style HTTP 429 is classified as billing and flagged with daily_tokens_exceeded', async () => {
+    const config = {
+      gateway: { globalRetryLimit: 2 },
+      providers: { 'mock-provider': { keys: ['key-1', 'key-2'] } },
+    };
+    const keyRegistry = new KeyRegistry(config);
+    const providerFactory = new ProviderFactory(config);
+    const mockAdapter = new MockAdapter();
+    providerFactory.register('mock-provider', mockAdapter);
+
+    const quotaErr = new Error('You exceeded your current quota, please check your plan and billing details');
+    quotaErr.status = 429;
+    const rateErr = new Error('Rate limit reached');
+    rateErr.status = 429;
+    mockAdapter.enqueue(quotaErr);
+    mockAdapter.enqueue(rateErr);
+
+    const flagFailureSpy = vi.spyOn(keyRegistry, 'flagFailure');
+    const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
+    const req = { provider: 'mock-provider', actualModelId: 'test-model' };
+    await orchestrator.executeCompletion(req, {});
+
+    expect(flagFailureSpy).toHaveBeenNthCalledWith(1, 'mock-provider', 'key-1', {
+      category: 'billing',
+      code: 'daily_tokens_exceeded',
+      retryAfterSeconds: undefined,
+    });
+    expect(flagFailureSpy).toHaveBeenNthCalledWith(2, 'mock-provider', 'key-2', {
+      category: 'rate_limit',
+      code: 'rate_limit_exceeded',
+      retryAfterSeconds: undefined,
+    });
+  });
+
+  it('assert: globalRetryLimit of 0 does not call adapter and returns poolUnavailable error', async () => {
     const config = {
       gateway: { globalRetryLimit: 0 },
       providers: { 'mock-provider': { keys: ['key-1'] } },
@@ -279,12 +333,24 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
 
     // Plain errors without HTTP status are transport failures (no key cooldown)
     expect(flagFailureSpy).toHaveBeenCalledTimes(3);
-    expect(flagFailureSpy).toHaveBeenNthCalledWith(1, 'mock-provider', 'key-1', 401);
-    expect(flagFailureSpy).toHaveBeenNthCalledWith(2, 'mock-provider', 'key-2', 403);
-    expect(flagFailureSpy).toHaveBeenNthCalledWith(3, 'mock-provider', 'key-3', 429);
+    expect(flagFailureSpy).toHaveBeenNthCalledWith(1, 'mock-provider', 'key-1', {
+      category: 'auth',
+      code: 'invalid_api_key',
+      retryAfterSeconds: undefined,
+    });
+    expect(flagFailureSpy).toHaveBeenNthCalledWith(2, 'mock-provider', 'key-2', {
+      category: 'auth',
+      code: 'forbidden',
+      retryAfterSeconds: undefined,
+    });
+    expect(flagFailureSpy).toHaveBeenNthCalledWith(3, 'mock-provider', 'key-3', {
+      category: 'rate_limit',
+      code: 'rate_limit_exceeded',
+      retryAfterSeconds: undefined,
+    });
   });
 
-  it('assert: fallback model exhaustion yields all_keys_exhausted for the fallback provider', async () => {
+  it('assert: fallback model exhaustion yields poolUnavailable for the fallback provider', async () => {
     const config = {
       gateway: { globalRetryLimit: 2 },
       providers: {

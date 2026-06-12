@@ -1,6 +1,7 @@
 import {
   describe, it, expect, vi, beforeEach, afterEach,
 } from 'vitest';
+import { ERROR_CATEGORIES } from '../../src/common/upstreamErrors.js';
 import { KeyRegistry } from '../../src/registry/keyRegistry.js';
 
 describe('Key Registry Health & Edge Cases', () => {
@@ -30,21 +31,27 @@ describe('Key Registry Health & Edge Cases', () => {
       expect(stats.routing.strategy).toBe('round-robin');
     });
 
-    it('should return degraded when a key is exhausted or cooling', () => {
+    it('should return degraded when keys are on billing or rate-limit cooldown', () => {
       const config = {
         gateway: { cooldown: { baseSeconds: 10 } },
         providers: { gemini: { keys: ['Key_A', 'Key_B'] } },
       };
       const registry = new KeyRegistry(config);
 
-      registry.flagFailure('gemini', 'Key_A', 402);
+      registry.flagFailure('gemini', 'Key_A', {
+        category: ERROR_CATEGORIES.BILLING,
+        code: 'insufficient_quota',
+      });
       expect(registry.getHealthStats().status).toBe('degraded');
-      expect(registry.getHealthStats().providers.gemini.exhaustedKeys).toBe(1);
+      expect(registry.getHealthStats().providers.gemini.coolingKeys).toBe(1);
 
-      registry.flagFailure('gemini', 'Key_B', 429);
+      registry.flagFailure('gemini', 'Key_B', {
+        category: ERROR_CATEGORIES.RATE_LIMIT,
+        code: 'rate_limit_exceeded',
+      });
       const coolingStats = registry.getHealthStats();
       expect(coolingStats.status).toBe('degraded');
-      expect(coolingStats.providers.gemini.coolingKeys).toBe(1);
+      expect(coolingStats.providers.gemini.coolingKeys).toBe(2);
     });
 
     it('should treat expired cooldowns as active in health stats', () => {
@@ -54,7 +61,10 @@ describe('Key Registry Health & Edge Cases', () => {
       };
       const registry = new KeyRegistry(config);
 
-      registry.flagFailure('gemini', 'Key_A', 429);
+      registry.flagFailure('gemini', 'Key_A', {
+        category: ERROR_CATEGORIES.RATE_LIMIT,
+        code: 'rate_limit_exceeded',
+      });
       vi.advanceTimersByTime(10001);
 
       const stats = registry.getHealthStats();
@@ -76,7 +86,10 @@ describe('Key Registry Health & Edge Cases', () => {
     it('should handle missing providers and unknown keys gracefully', () => {
       const registry = new KeyRegistry({});
       expect(registry.getKey('missing')).toBeNull();
-      expect(registry.flagFailure('missing', 'key', 500)).toBeUndefined();
+      expect(registry.flagFailure('missing', 'key', {
+        category: ERROR_CATEGORIES.SERVER,
+        code: 'internal_server_error',
+      })).toBeUndefined();
     });
   });
 });

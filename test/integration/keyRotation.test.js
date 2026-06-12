@@ -86,7 +86,10 @@ describe('Key Rotation Strategy Integration Tests', () => {
     await send();
     expect(mockAdapter.apiKeysUsed).toEqual(['key-primary', 'key-primary', 'key-primary']);
 
-    services.keyRegistry.flagFailure('gemini', 'key-primary', 429);
+    services.keyRegistry.flagFailure('gemini', 'key-primary', {
+      category: 'rate_limit',
+      code: 'rate_limit_exceeded',
+    });
 
     await send();
     expect(mockAdapter.apiKeysUsed[3]).toBe('key-secondary');
@@ -131,7 +134,10 @@ describe('Key Rotation Strategy Integration Tests', () => {
       (factory) => factory.register('gemini', mockAdapter),
     );
 
-    services.keyRegistry.flagFailure('gemini', 'key-a', 429);
+    services.keyRegistry.flagFailure('gemini', 'key-a', {
+      category: 'rate_limit',
+      code: 'rate_limit_exceeded',
+    });
 
     await request(app)
       .post('/openai/chat/completions')

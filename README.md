@@ -80,7 +80,7 @@ Waypoint enforces strict **Separation of Concerns** using a layered Clean Archit
   - `fill-first`: Uses the first available key and fails over only when exhausted, optimizing for upstream **prompt cache locality**.
 - **Circuit Breaking** (tiered lifecycle):
   - **T0 (`invalid_api_key`)**: Permanently exhausts the key — the only terminal credential failure.
-  - **T1 (billing/quota)**: Long billing cooldown (`billingSeconds`, default 3600s); key recovers automatically.
+  - **T1 (billing/quota)**: Long billing cooldown (`billingSeconds`, default 3600s) for HTTP 402, `insufficient_quota`, and quota-style HTTP 429 (`daily_tokens_exceeded`); key recovers automatically.
   - **T2 (permission)**: Permission cooldown (`permissionSeconds`, default 1800s); key recovers automatically.
   - **T3 (rate limits)**: Exponential backoff (`baseSeconds × 2ⁿ`, capped at `maxSeconds`), honoring `Retry-After`.
   - **T4/T4b (server transient / slow-down)**: Server cooldown (`serverSeconds` or `slowDownMinimumSeconds`).
@@ -225,12 +225,12 @@ gateway:
 
   # Tiered cooldown settings (see docs/key-lifecycle-policy.md)
   cooldown:
-    baseSeconds: 30
-    maxSeconds: 3600
-    billingSeconds: 3600
-    permissionSeconds: 1800
-    serverSeconds: 60
-    slowDownMinimumSeconds: 900
+    baseSeconds: 30              # T3: rate-limit exponential base
+    maxSeconds: 3600             # T3: exponential cap
+    billingSeconds: 3600         # T1: billing/quota (402, daily_tokens_exceeded)
+    permissionSeconds: 1800      # T2: permission recovery
+    serverSeconds: 60            # T4: transient server errors
+    slowDownMinimumSeconds: 900  # T4b: OpenAI "Slow Down" minimum
 
   # Routing algorithm: "round-robin" or "fill-first"
   routing:

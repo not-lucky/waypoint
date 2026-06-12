@@ -68,9 +68,13 @@ describe('upstreamErrors.js Tests', () => {
 
       const res4 = classifyUpstreamError(429, { error: { message: 'daily token quota' } });
       expect(res4.code).toBe('daily_tokens_exceeded');
+      expect(res4.type).toBe('billing_error');
+      expect(res4.category).toBe(ERROR_CATEGORIES.BILLING);
 
       const res5 = classifyUpstreamError(429, { error: { message: 'You exceeded your current quota, please check your plan and billing details' } });
       expect(res5.code).toBe('daily_tokens_exceeded');
+      expect(res5.type).toBe('billing_error');
+      expect(res5.category).toBe(ERROR_CATEGORIES.BILLING);
     });
 
     it('should extract Retry-After header if present', () => {
@@ -253,14 +257,15 @@ describe('upstreamErrors.js Tests', () => {
   });
 
   describe('shouldFlagKeyFailure', () => {
-    it('should return false for T5 statuses and no_api_key gateway faults', () => {
-      expect(shouldFlagKeyFailure(404)).toBe(false);
-      expect(shouldFlagKeyFailure(401, { error: { message: 'no authorization header' } })).toBe(false);
+    it('should return false for T5 codes and no_api_key gateway faults', () => {
+      expect(shouldFlagKeyFailure(ERROR_CATEGORIES.MODEL_RESOURCE, 'model_not_found')).toBe(false);
+      expect(shouldFlagKeyFailure(ERROR_CATEGORIES.AUTH, 'no_api_key')).toBe(false);
     });
 
     it('should return true for cooldown-bearing upstream failures', () => {
-      expect(shouldFlagKeyFailure(429)).toBe(true);
-      expect(shouldFlagKeyFailure(402)).toBe(true);
+      expect(shouldFlagKeyFailure(ERROR_CATEGORIES.RATE_LIMIT, 'rate_limit_exceeded')).toBe(true);
+      expect(shouldFlagKeyFailure(ERROR_CATEGORIES.BILLING, 'insufficient_quota')).toBe(true);
+      expect(shouldFlagKeyFailure(ERROR_CATEGORIES.BILLING, 'daily_tokens_exceeded')).toBe(true);
     });
   });
 

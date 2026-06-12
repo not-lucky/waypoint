@@ -253,11 +253,11 @@ export const executeWithRetry = async ({
       }
 
       if (shouldCooldownKey(normalized.category, normalized.code)) {
-        if (normalized.retryAfterSeconds !== undefined) {
-          keyRegistry.flagFailure(provider, apiKey, normalized.httpStatus, normalized.retryAfterSeconds);
-        } else {
-          keyRegistry.flagFailure(provider, apiKey, normalized.httpStatus);
-        }
+        keyRegistry.flagFailure(provider, apiKey, {
+          category: normalized.category,
+          code: normalized.code,
+          retryAfterSeconds: normalized.retryAfterSeconds,
+        });
       }
     }
   }

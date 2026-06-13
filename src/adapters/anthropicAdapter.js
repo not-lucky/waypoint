@@ -4,7 +4,7 @@ import { parseSSEStream } from '../streaming/sseParser.js';
 import {
   FORMATS, translateRequest, translateResponse, translateStreamChunk,
 } from '../translators/index.js';
-import { UpstreamError, ERROR_CATEGORIES } from '../common/upstreamErrors.js';
+import { createStreamUpstreamError } from '../common/upstreamErrors.js';
 
 /**
  * Provider adapter for Anthropic's Claude API endpoints.
@@ -251,14 +251,12 @@ export class AnthropicAdapter extends BaseProvider {
 
         if (sseEvent.event === 'error' || dataJson?.type === 'error') {
           const errorDetails = dataJson?.error || dataJson || {};
-          throw new UpstreamError(errorDetails.message || 'Anthropic stream error', {
-            statusCode: 502,
-            errorType: errorDetails.type || 'stream_error',
-            errorCode: errorDetails.code || 'stream_error',
-            upstreamBody: dataJson || { message: sseEvent.data },
-            provider: this.providerName,
-            category: ERROR_CATEGORIES.STREAMING,
-          });
+          const statusCode = typeof errorDetails.status === 'number' ? errorDetails.status : 502;
+          createStreamUpstreamError(
+            dataJson || { error: errorDetails },
+            statusCode,
+            this.providerName,
+          );
         }
 
         state = this.processSSEEvent(sseEvent, state, requestLog);

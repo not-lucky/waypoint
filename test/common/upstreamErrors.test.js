@@ -8,7 +8,11 @@ import {
   getClientHttpStatus,
   buildClientErrorEnvelope,
   normalizeUpstreamError,
+  parseRetryAfter,
+  formatOpenAiSseError,
+  normalizeStreamFailure,
   ERROR_CATEGORIES,
+  UpstreamError,
 } from '../../src/common/upstreamErrors.js';
 
 describe('upstreamErrors.js Tests', () => {
@@ -87,6 +91,25 @@ describe('upstreamErrors.js Tests', () => {
       const slowDown = classifyUpstreamError(503, { error: { message: 'Slow down' } }, { 'retry-after': '120' });
       expect(slowDown.code).toBe('rate_reduction_required');
       expect(slowDown.retryAfterSeconds).toBe(120);
+    });
+
+    it('should attach Retry-After to 402 billing errors', () => {
+      const res = classifyUpstreamError(
+        402,
+        { error: { message: 'Insufficient quota' } },
+        { 'retry-after': '3600' },
+      );
+      expect(res.code).toBe('insufficient_quota');
+      expect(res.retryAfterSeconds).toBe(3600);
+    });
+
+    it('should attach Retry-After to generic fallback errors', () => {
+      const res = classifyUpstreamError(
+        418,
+        { error: { type: 'api_error', code: 'upstream_error', message: 'Teapot' } },
+        { 'retry-after': '15' },
+      );
+      expect(res.retryAfterSeconds).toBe(15);
     });
 
     it('should classify 404 Not Found errors', () => {
@@ -280,6 +303,54 @@ describe('upstreamErrors.js Tests', () => {
       expect(body.error.code).toBe('rate_limit_exceeded');
       expect(body.error.httpStatus).toBe(429);
       expect(body.error.retryAfterSeconds).toBe(30);
+    });
+  });
+
+  describe('parseRetryAfter', () => {
+    it('should parse numeric delay-seconds', () => {
+      expect(parseRetryAfter('30')).toBe(30);
+      expect(parseRetryAfter('0')).toBe(0);
+    });
+
+    it('should parse HTTP-date values', () => {
+      const future = new Date(Date.now() + 120000).toUTCString();
+      const seconds = parseRetryAfter(future);
+      expect(seconds).toBeGreaterThanOrEqual(119);
+      expect(seconds).toBeLessThanOrEqual(121);
+    });
+
+    it('should return undefined for unparseable values', () => {
+      expect(parseRetryAfter('not-a-date')).toBeUndefined();
+      expect(parseRetryAfter('')).toBeUndefined();
+    });
+  });
+
+  describe('stream error helpers', () => {
+    it('should normalize stream failures into v1 envelopes', () => {
+      const err = new UpstreamError('Rate limit exceeded', {
+        statusCode: 429,
+        errorType: 'rate_limit_error',
+        errorCode: 'rate_limit_exceeded',
+        provider: 'openai',
+        category: ERROR_CATEGORIES.STREAMING,
+        retryAfterSeconds: 30,
+      });
+      const envelope = normalizeStreamFailure(err, 'openai');
+      expect(envelope.error.code).toBe('rate_limit_exceeded');
+      expect(envelope.error.httpStatus).toBe(429);
+      expect(envelope.error.retryAfterSeconds).toBe(30);
+    });
+
+    it('should format OpenAI SSE error frames with v1 envelope', () => {
+      const sse = formatOpenAiSseError({
+        error: {
+          code: 'stream_error',
+          message: 'Stream failed',
+          httpStatus: 502,
+        },
+      });
+      expect(sse).toContain('data: {"error":');
+      expect(sse).toContain('data: [DONE]');
     });
   });
 

@@ -1,4 +1,5 @@
 /* eslint-disable max-len */
+import { formatAnthropicSseError } from '../common/upstreamErrors.js';
 import { FORMATS, translateRequest, translateResponse } from '../translators/index.js';
 import { StreamAccumulator } from '../streaming/streamAccumulator.js';
 import { BaseController } from './baseController.js';
@@ -218,12 +219,7 @@ export class AnthropicController extends BaseController {
       });
     } catch (err) {
       this.logger.debug('Anthropic SSE response stream aborted or failed', { chunkCount, error: err.message });
-      reqLog.logClientResponse(0, {
-        _streamed: true,
-        _aborted: true,
-        _eventCount: chunkCount,
-        error: err.message,
-      });
+      this.emitStreamError(res, reqLog, err, formatAnthropicSseError, 'anthropic', chunkCount);
     } finally {
       await reqLog.finalize();
       res.end();

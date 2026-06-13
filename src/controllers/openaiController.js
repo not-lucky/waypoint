@@ -1,3 +1,4 @@
+import { formatOpenAiSseError } from '../common/upstreamErrors.js';
 import { StreamAccumulator } from '../streaming/streamAccumulator.js';
 import { BaseController } from './baseController.js';
 
@@ -68,12 +69,7 @@ export class OpenAIController extends BaseController {
       });
     } catch (err) {
       this.logger.debug('OpenAI SSE response stream aborted or failed', { chunkCount, error: err.message });
-      reqLog.logClientResponse(0, {
-        _streamed: true,
-        _aborted: true,
-        _eventCount: chunkCount,
-        error: err.message,
-      });
+      this.emitStreamError(res, reqLog, err, formatOpenAiSseError, 'openai', chunkCount);
     } finally {
       await reqLog.finalize();
       res.end();

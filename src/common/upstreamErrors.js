@@ -35,6 +35,80 @@ function withRetryAfter(result, retryAfterSeconds) {
   return result;
 }
 
+/**
+ * Parses a Retry-After header value per RFC 7231 (delay-seconds or HTTP-date).
+ *
+ * @param {string|number} headerValue - Raw Retry-After header value.
+ * @returns {number|undefined} Seconds until retry, or undefined if unparseable.
+ */
+export function parseRetryAfter(headerValue) {
+  if (headerValue === undefined || headerValue === null) {
+    return undefined;
+  }
+
+  const trimmed = String(headerValue).trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  if (/^\d+$/.test(trimmed)) {
+    return Math.max(0, parseInt(trimmed, 10));
+  }
+
+  const dateMs = Date.parse(trimmed);
+  if (!Number.isNaN(dateMs)) {
+    return Math.max(0, Math.ceil((dateMs - Date.now()) / 1000));
+  }
+
+  return undefined;
+}
+
+/**
+ * Resolves an HTTP status code from a stream error payload.
+ *
+ * @param {any} errorPayload - Parsed SSE error JSON.
+ * @param {number} [fallback=502] - Default status when none is present.
+ * @returns {number}
+ */
+function resolveStreamErrorStatus(errorPayload, fallback = 502) {
+  const err = errorPayload?.error || errorPayload;
+  if (typeof err?.code === 'number' && err.code >= 100 && err.code < 600) {
+    return err.code;
+  }
+  if (typeof err?.status_code === 'number' && err.status_code >= 100 && err.status_code < 600) {
+    return err.status_code;
+  }
+  if (typeof err?.status === 'number' && err.status >= 100 && err.status < 600) {
+    return err.status;
+  }
+
+  const code = String(err?.code || '').toLowerCase();
+  const type = String(err?.type || '').toLowerCase();
+  if (type.includes('rate_limit') || code.includes('rate_limit')) {
+    return 429;
+  }
+  if (type.includes('authentication') || code.includes('api_key') || code === 'no_api_key') {
+    return 401;
+  }
+  if (type.includes('permission') || code === 'forbidden' || code === 'region_not_supported') {
+    return 403;
+  }
+  if (type.includes('billing') || code.includes('quota') || code.includes('billing')) {
+    return 402;
+  }
+  if (type.includes('invalid_request') || code.includes('invalid_')) {
+    return 400;
+  }
+  if (type.includes('not_found') || code.includes('not_found')) {
+    return 404;
+  }
+  if (type.includes('overloaded') || code === 'engine_overloaded') {
+    return 503;
+  }
+
+  return fallback;
+}
+
 export class UpstreamError extends Error {
   constructor(message, options = {}) {
     super(message);
@@ -71,12 +145,7 @@ export function classifyUpstreamError(statusCode, errorBody, headers = {}) {
   let retryAfterSeconds;
   if (headers) {
     const retryAfterHeader = headers['retry-after'] || headers['Retry-After'];
-    if (retryAfterHeader) {
-      const parsed = parseInt(retryAfterHeader, 10);
-      if (!Number.isNaN(parsed)) {
-        retryAfterSeconds = parsed;
-      }
-    }
+    retryAfterSeconds = parseRetryAfter(retryAfterHeader);
   }
 
   // 1. HTTP 401 - Auth
@@ -117,12 +186,12 @@ export function classifyUpstreamError(statusCode, errorBody, headers = {}) {
     if (msgLower.includes('hard limit') || codeLower.includes('hard_limit')) {
       errorCode = 'billing_hard_limit_reached';
     }
-    return {
+    return withRetryAfter({
       type: 'billing_error',
       code: errorCode,
       category: ERROR_CATEGORIES.BILLING,
       message,
-    };
+    }, retryAfterSeconds);
   }
 
   // 4. HTTP 429 - Rate Limiting
@@ -301,12 +370,64 @@ export function classifyUpstreamError(statusCode, errorBody, headers = {}) {
   }
 
   // Generic fallback error
-  return {
+  return withRetryAfter({
     type: type || 'api_error',
     code: code || 'upstream_error',
     category: ERROR_CATEGORIES.SERVER,
     message,
-  };
+  }, retryAfterSeconds);
+}
+
+/**
+ * Classifies and throws an UpstreamError for a mid-stream SSE failure.
+ *
+ * @param {any} upstreamBody - Parsed SSE error payload.
+ * @param {number} statusCode - HTTP status for classification.
+ * @param {string} provider - Provider name.
+ * @param {Object} [headers] - Optional response headers (Retry-After).
+ * @throws {UpstreamError}
+ */
+export function createStreamUpstreamError(upstreamBody, statusCode, provider, headers = {}) {
+  const classification = classifyUpstreamError(statusCode, upstreamBody, headers);
+  throw new UpstreamError(classification.message || 'Stream error', {
+    statusCode,
+    errorType: classification.type,
+    errorCode: classification.code,
+    upstreamBody,
+    provider,
+    category: ERROR_CATEGORIES.STREAMING,
+    retryAfterSeconds: classification.retryAfterSeconds,
+  });
+}
+
+/**
+ * Detects and throws on inline stream error payloads (OpenAI-compatible shape).
+ *
+ * @param {any} parsedData - Parsed SSE event data.
+ * @param {string} provider - Provider name.
+ * @param {Object} [headers] - Optional response headers.
+ */
+export function throwIfStreamErrorPayload(parsedData, provider, headers = {}) {
+  if (!parsedData?.error) {
+    return;
+  }
+  const statusCode = resolveStreamErrorStatus(parsedData);
+  createStreamUpstreamError(parsedData, statusCode, provider, headers);
+}
+
+/**
+ * Detects and throws on Google Gemini native stream error payloads.
+ *
+ * @param {any} parsedData - Parsed SSE event data.
+ * @param {string} provider - Provider name.
+ * @param {Object} [headers] - Optional response headers.
+ */
+export function throwIfGeminiStreamError(parsedData, provider, headers = {}) {
+  if (!parsedData?.error) {
+    return;
+  }
+  const statusCode = resolveStreamErrorStatus(parsedData);
+  createStreamUpstreamError(parsedData, statusCode, provider, headers);
 }
 
 /**
@@ -532,4 +653,50 @@ export function buildClientErrorEnvelope(error, finalStatus) {
       ...(error.details ? { details: error.details } : {}),
     },
   };
+}
+
+/**
+ * Normalizes a stream failure into the v1 client error envelope.
+ *
+ * @param {any} err - Caught stream error.
+ * @param {string} provider - Provider name fallback.
+ * @returns {{ error: Object }} v1 error envelope.
+ */
+export function normalizeStreamFailure(err, provider) {
+  const normalized = normalizeUpstreamError(err, provider);
+  return buildClientErrorEnvelope(
+    {
+      code: normalized.code,
+      type: normalized.type,
+      message: normalized.message,
+      provider: normalized.provider,
+      retryAfterSeconds: normalized.retryAfterSeconds,
+    },
+    normalized.httpStatus,
+  );
+}
+
+/**
+ * Formats a v1 error envelope as OpenAI-compatible SSE frames.
+ *
+ * @param {{ error: Object }} envelope - v1 error envelope.
+ * @param {boolean} [includeDone=true] - Whether to append a [DONE] marker.
+ * @returns {string}
+ */
+export function formatOpenAiSseError(envelope, includeDone = true) {
+  const frames = [`data: ${JSON.stringify(envelope)}\n\n`];
+  if (includeDone) {
+    frames.push('data: [DONE]\n\n');
+  }
+  return frames.join('');
+}
+
+/**
+ * Formats a v1 error envelope as Anthropic-compatible SSE error event.
+ *
+ * @param {{ error: Object }} envelope - v1 error envelope.
+ * @returns {string}
+ */
+export function formatAnthropicSseError(envelope) {
+  return `event: error\ndata: ${JSON.stringify({ type: 'error', error: envelope.error })}\n\n`;
 }

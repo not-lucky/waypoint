@@ -7,7 +7,7 @@ import {
   mapOpenAICompletionResponse,
   mapOpenAIStreamChunk,
 } from './shared/openaiResponse.js';
-import { UpstreamError, ERROR_CATEGORIES } from '../common/upstreamErrors.js';
+import { throwIfStreamErrorPayload } from '../common/upstreamErrors.js';
 
 /**
  * Adapter for natively OpenAI-compatible APIs.
@@ -81,16 +81,7 @@ export class OpenAICompatibleAdapter extends BaseProvider {
           requestLog.appendStreamEvent('provider', parsedData);
         }
 
-        if (parsedData.error) {
-          throw new UpstreamError(parsedData.error.message || 'Stream error', {
-            statusCode: 502,
-            errorType: parsedData.error.type || 'stream_error',
-            errorCode: parsedData.error.code || 'stream_error',
-            upstreamBody: parsedData,
-            provider: this.providerName,
-            category: ERROR_CATEGORIES.STREAMING,
-          });
-        }
+        throwIfStreamErrorPayload(parsedData, this.providerName);
 
         accumulator.processChunk(parsedData);
         yield mapOpenAIStreamChunk(parsedData, chunkId);

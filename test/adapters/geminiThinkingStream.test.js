@@ -69,4 +69,45 @@ describe('executeThinkingStream', () => {
     expect(mockAdapter.performFetch).toHaveBeenCalledOnce();
     expect(mockAdapter.performFetch.mock.calls[0][0]).toContain('/chat/completions');
   });
+
+  it('throws on inline OpenAI-compatible stream error payloads', async () => {
+    const mockAdapter = {
+      baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+      timeoutMs: 30000,
+      performFetch: vi.fn().mockResolvedValue({
+        response: {
+          body: buildSseBody([
+            {
+              error: {
+                message: 'Rate limit exceeded',
+                type: 'rate_limit_error',
+                code: 'rate_limit_exceeded',
+              },
+            },
+          ]),
+        },
+        fetchSignal: new AbortController().signal,
+        cleanup: vi.fn(),
+      }),
+    };
+
+    const req = {
+      model: 'gemini/gemini-pro',
+      actualModelId: 'gemini-pro',
+      messages: [{ role: 'user', content: 'hi' }],
+    };
+
+    const iterator = executeThinkingStream(
+      req,
+      'test-key',
+      new AbortController().signal,
+      null,
+      mockAdapter,
+    )[Symbol.asyncIterator]();
+
+    await expect(iterator.next()).rejects.toMatchObject({
+      errorCode: 'rate_limit_exceeded',
+      provider: 'gemini',
+    });
+  });
 });

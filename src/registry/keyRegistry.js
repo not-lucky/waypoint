@@ -217,8 +217,12 @@ export class KeyRegistry {
     if (RATE_LIMIT_CODES.has(code)) {
       key.consecutiveFailures += 1;
 
+      if (retryAfterSeconds !== undefined && retryAfterSeconds === 0) {
+        return;
+      }
+
       let backoffSeconds;
-      if (retryAfterSeconds !== undefined && retryAfterSeconds > 0) {
+      if (retryAfterSeconds !== undefined) {
         backoffSeconds = retryAfterSeconds;
       } else {
         const { baseSeconds } = cooldown;

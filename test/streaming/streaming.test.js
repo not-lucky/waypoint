@@ -14,6 +14,7 @@ import { AnthropicController } from '../../src/controllers/anthropicController.j
 import { UnifiedOrchestrator } from '../../src/services/unifiedOrchestrator.js';
 import { KeyRegistry } from '../../src/registry/keyRegistry.js';
 import { ProviderFactory } from '../../src/adapters/providerFactory.js';
+import { ERROR_CATEGORIES, UpstreamError } from '../../src/common/upstreamErrors.js';
 import { normalizeTestError } from '../helpers/normalizeTestError.js';
 
 class MockAdapter {
@@ -214,8 +215,17 @@ describe('Streaming End-to-End Tests', () => {
     // Adapter that yields one chunk then throws mid-stream
     mockAdapter.generateStream = async function* (req, apiKey, signal) {
       yield { id: 'chunk-1', choices: [{ index: 0, delta: { content: 'chunk1' } }] };
-      throw new Error('Mid-stream failure');
+      throw new UpstreamError('Mid-stream failure', {
+        statusCode: 503,
+        errorCode: 'service_unavailable',
+        errorType: 'api_error',
+        category: ERROR_CATEGORIES.SERVER,
+        provider: 'mock-provider',
+      });
     };
+
+    const flagFailureSpy = vi.spyOn(keyRegistry, 'flagFailure');
+    const flagSuccessSpy = vi.spyOn(keyRegistry, 'flagSuccess');
 
     const orchestratorRes = await orchestrator.executeCompletion({
       model: 'mock-provider/test-model',
@@ -227,8 +237,15 @@ describe('Streaming End-to-End Tests', () => {
     const firstResult = await iterator.next();
     expect(firstResult.done).toBe(false);
     expect(firstResult.value.choices[0].delta.content).toBe('chunk1');
+    expect(flagSuccessSpy).not.toHaveBeenCalled();
 
     await expect(iterator.next()).rejects.toThrow('Mid-stream failure');
+    expect(flagFailureSpy).toHaveBeenCalledWith('mock-provider', 'mock-key-1', {
+      category: ERROR_CATEGORIES.SERVER,
+      code: 'service_unavailable',
+      retryAfterSeconds: undefined,
+    });
+    expect(flagSuccessSpy).not.toHaveBeenCalled();
   });
 
   it('assert: orchestrator retries next key if first key fails on first chunk initialization', async () => {
@@ -281,12 +298,16 @@ describe('Streaming End-to-End Tests', () => {
 
     expect(firstResult.done).toBe(false);
     expect(firstResult.value.choices[0].delta.content).toBe('hello');
+    expect(flagSuccessSpy).not.toHaveBeenCalled();
     expect(failingAdapter.callCount).toBe(2);
     expect(flagFailureSpy).toHaveBeenCalledWith('mock-provider', 'key-1', {
       category: 'server',
       code: 'service_unavailable',
       retryAfterSeconds: undefined,
     });
+
+    const secondResult = await iterator.next();
+    expect(secondResult.done).toBe(true);
     expect(flagSuccessSpy).toHaveBeenCalledWith('mock-provider', 'key-2');
   });
 

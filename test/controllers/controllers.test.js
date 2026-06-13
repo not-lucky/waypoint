@@ -161,6 +161,16 @@ describe('Protocol Controllers', () => {
 
       expect(res.write).toHaveBeenCalled();
       expect(res.end).toHaveBeenCalled();
+
+      const errorWrite = res.write.mock.calls.find(([payload]) => (
+        typeof payload === 'string' && payload.includes('"error"')
+      ));
+      expect(errorWrite).toBeDefined();
+      const jsonMatch = errorWrite[0].match(/^data: (.+?)\n\n/);
+      expect(jsonMatch).toBeTruthy();
+      const parsed = JSON.parse(jsonMatch[1]);
+      expect(parsed.error.code).toBeDefined();
+      expect(parsed.error.httpStatus).toBeDefined();
     });
   });
 

@@ -19,6 +19,25 @@ describe('Key Registry Failures & Cooldowns', () => {
     vi.useRealTimers();
   });
 
+  it('T3: Retry-After 0 applies no cooldown', () => {
+    const config = {
+      gateway: {
+        cooldown: { baseSeconds: 30, maxSeconds: 3600 },
+      },
+      providers: { gemini: { keys: ['Key_A'] } },
+    };
+    const registry = new KeyRegistry(config);
+    const key = registry.pools.gemini.keys[0];
+
+    registry.flagFailure('gemini', 'Key_A', {
+      ...rateLimitDescriptor,
+      retryAfterSeconds: 0,
+    });
+
+    expect(key.active).toBe(true);
+    expect(key.cooldownUntil).toBeNull();
+  });
+
   it('T3: rate limit -> key inactive + cooldownUntil set; timer restores key', () => {
     const config = {
       gateway: {

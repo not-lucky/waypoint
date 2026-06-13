@@ -2,7 +2,12 @@ import { getAppLogger } from '../logging/logger.js';
 import { createRequestLog } from '../logging/requestLogger.js';
 import { resolveModel } from '../domain/modelRouter.js';
 import { transformRequest } from '../domain/requestTransformer.js';
-import { buildClientErrorEnvelope } from '../common/upstreamErrors.js';
+import {
+  buildClientErrorEnvelope,
+  normalizeStreamFailure,
+  normalizeUpstreamError,
+  UpstreamError,
+} from '../common/upstreamErrors.js';
 
 /**
  * Base class for all protocol controllers.
@@ -54,6 +59,45 @@ export class BaseController {
     }
 
     return res.status(finalStatus).json(errorBody);
+  }
+
+  /**
+   * Emits a v1 error envelope over an active SSE stream before closing.
+   *
+   * @param {Object} res - Express response object.
+   * @param {Object} reqLog - Request logger instance.
+   * @param {any} err - Caught stream error.
+   * @param {Function} formatSseError - Provider-specific SSE formatter.
+   * @param {string} provider - Provider name fallback.
+   * @param {number} chunkCount - Chunks already sent to the client.
+   */
+  emitStreamError(res, reqLog, err, formatSseError, provider, chunkCount) {
+    const envelope = BaseController.normalizeStreamFailureForClient(err, provider);
+    if (envelope.error.retryAfterSeconds !== undefined) {
+      res.setHeader('Retry-After', String(envelope.error.retryAfterSeconds));
+    }
+    const sseData = formatSseError(envelope);
+    reqLog.appendStreamEvent('client', sseData);
+    res.write(sseData);
+    this.logger.debug('SSE stream error emitted to client', {
+      code: envelope.error.code,
+      chunkCount,
+    });
+    reqLog.logClientResponse(200, {
+      _streamed: true,
+      _aborted: true,
+      _eventCount: chunkCount,
+      error: envelope.error,
+    });
+  }
+
+  /**
+   * @param {any} err - Caught stream error.
+   * @param {string} provider - Provider name fallback.
+   * @returns {{ error: Object }}
+   */
+  static normalizeStreamFailureForClient(err, provider) {
+    return normalizeStreamFailure(err, err?.provider || provider);
   }
 
   /**
@@ -137,7 +181,18 @@ export class BaseController {
         return res.json(dryRunResponse);
       }
       this.logger.error(`Unexpected ${protocolName} completion error:`, err);
-      return this.handleError(res, reqLog, err);
+      if (err.code && err.httpStatus) {
+        return this.handleError(res, reqLog, err);
+      }
+      if (err instanceof UpstreamError || err.statusCode !== undefined) {
+        const normalized = normalizeUpstreamError(err, protocolName.toLowerCase());
+        return this.handleError(res, reqLog, normalized);
+      }
+      return this.handleError(res, reqLog, {
+        code: 'internalServerError',
+        message: 'An unexpected error occurred.',
+        httpStatus: 500,
+      });
     }
   }
 }

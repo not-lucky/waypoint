@@ -1,6 +1,7 @@
 /* eslint-disable no-restricted-syntax */
 import { FORMATS, translateRequest, translateStreamChunk } from '../../translators/index.js';
 import { parseSSEStream, parseSSEEventData } from '../../streaming/sseParser.js';
+import { throwIfGeminiStreamError } from '../../common/upstreamErrors.js';
 
 /**
  * Executes a streaming completion for standard Gemini models (without thinking enabled).
@@ -47,6 +48,8 @@ export async function* executeStandardStream(req, apiKey, signal, requestLog, ad
         requestLog.appendStreamEvent('provider', parsedData);
       }
       eventCount += 1;
+
+      throwIfGeminiStreamError(parsedData, 'gemini');
 
       if (parsedData.candidates?.[0]) {
         const candidate = parsedData.candidates[0];

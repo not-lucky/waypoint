@@ -1,5 +1,6 @@
 /* eslint-disable no-restricted-syntax */
 import { parseSSEStream, parseSSEEventData } from '../../streaming/sseParser.js';
+import { throwIfStreamErrorPayload } from '../../common/upstreamErrors.js';
 import { getThinkingLevel } from './geminiFormatter.js';
 import { mapUsage } from '../shared/openaiResponse.js';
 import { ThinkingBuffer } from '../../streaming/thinkingBuffer.js';
@@ -67,6 +68,8 @@ export async function* executeThinkingStream(req, apiKey, signal, requestLog, ad
         requestLog.appendStreamEvent('provider', parsedData);
       }
       eventCount += 1;
+
+      throwIfStreamErrorPayload(parsedData, 'gemini');
 
       if (parsedData.id) responseId = parsedData.id;
       if (parsedData.model) responseModel = parsedData.model;

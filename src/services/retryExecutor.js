@@ -113,14 +113,14 @@ export const executeWithRetry = async ({
     // Check if the client cancelled/disconnected before invoking the next provider attempt.
     if (abortController.signal.aborted) {
       logDebug(logger, 'Request aborted during retry loop check');
-      return {
-        error: {
+      return buildClientErrorEnvelope(
+        {
           code: 'requestCancelled',
           message: 'Request was cancelled by the client.',
           provider,
-          httpStatus: 499,
         },
-      };
+        499,
+      );
     }
 
     // Retrieve the next available API key according to the configured routing strategy (round-robin / fill-first).
@@ -163,7 +163,6 @@ export const executeWithRetry = async ({
 
         // Retrieve the first chunk to ensure connection succeeded and the key is valid.
         const firstResult = await iterator.next();
-        keyRegistry.flagSuccess(provider, apiKey);
 
         if (requestLog) {
           requestLog.logProviderResponse(
@@ -177,6 +176,7 @@ export const executeWithRetry = async ({
 
         // Wrap the stream iterator to continuously monitor client disconnection and clean up.
         const streamWrapper = async function* streamWrapper() {
+          let completedSuccessfully = false;
           try {
             if (!firstResult.done) {
               yield firstResult.value;
@@ -187,7 +187,10 @@ export const executeWithRetry = async ({
                   break;
                 }
                 const nextResult = await iterator.next();
-                if (nextResult.done) break;
+                if (nextResult.done) {
+                  completedSuccessfully = true;
+                  break;
+                }
                 // Abort check after chunk is retrieved but before yielding it to the client.
                 if (abortController.signal.aborted) {
                   logDebug(logger, 'Stream abort detected after chunk retrieval');
@@ -195,8 +198,26 @@ export const executeWithRetry = async ({
                 }
                 yield nextResult.value;
               }
+            } else {
+              completedSuccessfully = true;
             }
-            logDebug(logger, 'Streaming completion completed successfully', { provider, model: req.model });
+
+            if (completedSuccessfully && !abortController.signal.aborted) {
+              keyRegistry.flagSuccess(provider, apiKey);
+              logDebug(logger, 'Streaming completion completed successfully', { provider, model: req.model });
+            }
+          } catch (streamErr) {
+            if (!abortController.signal.aborted) {
+              const normalized = adapter.normalizeError(streamErr, req);
+              if (shouldCooldownKey(normalized.category, normalized.code)) {
+                keyRegistry.flagFailure(provider, apiKey, {
+                  category: normalized.category,
+                  code: normalized.code,
+                  retryAfterSeconds: normalized.retryAfterSeconds,
+                });
+              }
+            }
+            throw streamErr;
           } finally {
             // Ensure iterator resources are cleaned up.
             if (typeof iterator.return === 'function') {
@@ -233,14 +254,14 @@ export const executeWithRetry = async ({
       // Abort exception handling during raw fetch.
       if (abortController.signal.aborted) {
         logDebug(logger, 'Request aborted during adapter call exception handling');
-        return {
-          error: {
+        return buildClientErrorEnvelope(
+          {
             code: 'requestCancelled',
             message: 'Request was cancelled by the client.',
             provider,
-            httpStatus: 499,
           },
-        };
+          499,
+        );
       }
       lastError = error;
       const normalized = adapter.normalizeError(error, req);

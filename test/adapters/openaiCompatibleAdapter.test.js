@@ -18,7 +18,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
   });
 
   it('assert: constructed with a custom baseUrl behaves identically — same code path, different URL', async () => {
-    const customAdapter = new OpenAICompatibleAdapter('https://my-custom.api/v1', 'custom-provider');
+    const customAdapter = new OpenAICompatibleAdapter({ baseUrl: 'https://my-custom.api/v1', providerName: 'custom-provider' });
 
     mockFetch.mockResolvedValue({
       ok: true,
@@ -37,7 +37,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
   });
 
   it('assert: request body handles stream parameter correctly', async () => {
-    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+    const adapter = new OpenAICompatibleAdapter({ baseUrl: 'https://api.openai.com/v1', providerName: 'openai' });
 
     mockFetch.mockResolvedValue({
       ok: true,
@@ -82,7 +82,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
   });
 
   it("assert: generateCompletion with a mocked response -> NormalizedResponse id starts with 'waypoint-'", async () => {
-    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+    const adapter = new OpenAICompatibleAdapter({ baseUrl: 'https://api.openai.com/v1', providerName: 'openai' });
 
     mockFetch.mockResolvedValue({
       ok: true,
@@ -154,7 +154,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
   });
 
   it('assert: generateStream streams chunks per Section 6C schema', async () => {
-    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+    const adapter = new OpenAICompatibleAdapter({ baseUrl: 'https://api.openai.com/v1', providerName: 'openai' });
 
     const mockBody = {
       async* [Symbol.asyncIterator]() {
@@ -226,7 +226,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
   });
 
   it('assert: generateCompletion maps reasoningEffort to upstream reasoning_effort', async () => {
-    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+    const adapter = new OpenAICompatibleAdapter({ baseUrl: 'https://api.openai.com/v1', providerName: 'openai' });
 
     mockFetch.mockResolvedValue({
       ok: true,
@@ -250,7 +250,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
   });
 
   it('assert: generateCompletion handles fetch error and calls requestLog', async () => {
-    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+    const adapter = new OpenAICompatibleAdapter({ baseUrl: 'https://api.openai.com/v1', providerName: 'openai' });
     mockFetch.mockRejectedValue(new Error('Network error'));
 
     const requestLog = {
@@ -266,7 +266,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
   });
 
   it('assert: generateCompletion handles non-JSON error responses', async () => {
-    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+    const adapter = new OpenAICompatibleAdapter({ baseUrl: 'https://api.openai.com/v1', providerName: 'openai' });
     mockFetch.mockResolvedValue({
       ok: false,
       status: 502,
@@ -280,7 +280,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
   });
 
   it('assert: generateStream handles fetch error, non-JSON errors, and log stream summary', async () => {
-    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+    const adapter = new OpenAICompatibleAdapter({ baseUrl: 'https://api.openai.com/v1', providerName: 'openai' });
 
     // 1. Fetch error path
     mockFetch.mockRejectedValue(new Error('Stream Network Error'));
@@ -333,7 +333,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
   });
 
   it('asserts: trailing slash removal on baseUrl for url normalization', async () => {
-    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1/', 'openai');
+    const adapter = new OpenAICompatibleAdapter({ baseUrl: 'https://api.openai.com/v1/', providerName: 'openai' });
     mockFetch.mockResolvedValue({
       ok: true,
       json: async () => ({ id: '123', choices: [] }),
@@ -347,7 +347,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
   });
 
   it('asserts: generateStream sends reasoningEffort when thinking is enabled', async () => {
-    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+    const adapter = new OpenAICompatibleAdapter({ baseUrl: 'https://api.openai.com/v1', providerName: 'openai' });
     const mockBody = {
       async* [Symbol.asyncIterator]() {
         const encoder = new TextEncoder();
@@ -376,7 +376,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
   });
 
   it('assert: generateStream maps OpenRouter reasoning and reasoning_details to reasoning_content', async () => {
-    const adapter = new OpenAICompatibleAdapter('https://openrouter.ai/api/v1', 'openrouter');
+    const adapter = new OpenAICompatibleAdapter({ baseUrl: 'https://openrouter.ai/api/v1', providerName: 'openrouter' });
     const mockBody = {
       async* [Symbol.asyncIterator]() {
         const encoder = new TextEncoder();
@@ -418,7 +418,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
   });
 
   it('assert: generateCompletion maps OpenRouter message.reasoning to reasoning_content', async () => {
-    const adapter = new OpenAICompatibleAdapter('https://openrouter.ai/api/v1', 'openrouter');
+    const adapter = new OpenAICompatibleAdapter({ baseUrl: 'https://openrouter.ai/api/v1', providerName: 'openrouter' });
     mockFetch.mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -443,7 +443,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
   });
 
   it('assert: forwards tools and tool_choice to upstream chat/completions', async () => {
-    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+    const adapter = new OpenAICompatibleAdapter({ baseUrl: 'https://api.openai.com/v1', providerName: 'openai' });
     const tools = [{
       type: 'function',
       function: { name: 'bash', parameters: { type: 'object' } },
@@ -471,7 +471,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
   });
 
   it('assert: generateCompletion preserves assistant tool_calls in the response', async () => {
-    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+    const adapter = new OpenAICompatibleAdapter({ baseUrl: 'https://api.openai.com/v1', providerName: 'openai' });
     mockFetch.mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -505,7 +505,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
   });
 
   it('assert: generateStream passes through tool_calls deltas', async () => {
-    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+    const adapter = new OpenAICompatibleAdapter({ baseUrl: 'https://api.openai.com/v1', providerName: 'openai' });
     const mockBody = {
       async* [Symbol.asyncIterator]() {
         const encoder = new TextEncoder();
@@ -526,8 +526,25 @@ describe('OpenAICompatibleAdapter Tests', () => {
     expect(chunks[2].choices[0].finish_reason).toBe('tool_calls');
   });
 
+  it('throws on inline OpenAI-compatible stream error payloads', async () => {
+    const adapter = new OpenAICompatibleAdapter({ baseUrl: 'https://api.openai.com/v1', providerName: 'openai' });
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode('data: {"error":{"message":"Rate limit exceeded","type":"rate_limit_error","code":"rate_limit_exceeded"}}\n\n');
+      },
+    };
+    mockFetch.mockResolvedValue({ ok: true, body: mockBody });
+
+    const iterator = adapter.generateStream({ messages: [] }, 'key')[Symbol.asyncIterator]();
+    await expect(iterator.next()).rejects.toMatchObject({
+      errorCode: 'rate_limit_exceeded',
+      category: 'streaming',
+    });
+  });
+
   it('asserts: generateStream handles stream abort and malformed sse chunks', async () => {
-    const adapter = new OpenAICompatibleAdapter('https://api.openai.com/v1', 'openai');
+    const adapter = new OpenAICompatibleAdapter({ baseUrl: 'https://api.openai.com/v1', providerName: 'openai' });
     const mockBody = {
       async* [Symbol.asyncIterator]() {
         const encoder = new TextEncoder();
@@ -552,5 +569,35 @@ describe('OpenAICompatibleAdapter Tests', () => {
     await expect(async () => {
       for await (const chunk of streamGen) {}
     }).rejects.toThrow('Stream aborted');
+  });
+
+  it('uses httpTimeoutMs for completions and streamTimeoutMs for streaming when both are set', async () => {
+    const adapter = new OpenAICompatibleAdapter({
+      baseUrl: 'https://api.openai.com/v1',
+      providerName: 'openai',
+      timeoutMs: 5000,
+      streamTimeoutMs: 300000,
+    });
+    const performFetchSpy = vi.spyOn(adapter, 'performFetch').mockResolvedValue({
+      response: {
+        json: async () => ({ id: 'chatcmpl-123', choices: [] }),
+        body: {
+          async* [Symbol.asyncIterator]() {
+            const encoder = new TextEncoder();
+            yield encoder.encode('data: [DONE]\n\n');
+          },
+        },
+      },
+      fetchSignal: new AbortController().signal,
+      cleanup: vi.fn(),
+    });
+
+    await adapter.generateCompletion({ messages: [] }, 'key');
+    expect(performFetchSpy.mock.calls[0][5]).toBe(5000);
+
+    for await (const chunk of adapter.generateStream({ messages: [] }, 'key', new AbortController().signal)) {
+      expect(chunk).toBeDefined();
+    }
+    expect(performFetchSpy.mock.calls[1][5]).toBe(300000);
   });
 });

@@ -45,7 +45,7 @@ describe('Request Logging', () => {
   });
 
   it('logs provider requests from adapters', async () => {
-    const adapter = new GeminiAdapter();
+    const adapter = new GeminiAdapter({});
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
       headers: new Map([['content-type', 'application/json']]),

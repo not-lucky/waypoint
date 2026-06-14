@@ -13,11 +13,17 @@ import { throwIfStreamErrorPayload } from '../common/upstreamErrors.js';
  * Adapter for natively OpenAI-compatible APIs.
  */
 export class OpenAICompatibleAdapter extends BaseProvider {
-  constructor(baseUrl, providerName, timeoutMs = null) {
+  constructor({
+    baseUrl,
+    providerName,
+    timeoutMs = null,
+    streamTimeoutMs = null,
+  } = {}) {
     super();
     this.baseUrl = baseUrl;
     this.providerName = providerName;
     this.timeoutMs = timeoutMs;
+    this.streamTimeoutMs = streamTimeoutMs;
   }
 
   async generateCompletion(req, apiKey, signal, requestLog = null) {
@@ -61,7 +67,7 @@ export class OpenAICompatibleAdapter extends BaseProvider {
       payload,
       signal,
       requestLog,
-      this.timeoutMs,
+      this.resolveStreamTimeoutMs(),
     );
 
     const chunkId = `waypoint-chunk-${Date.now()}`;

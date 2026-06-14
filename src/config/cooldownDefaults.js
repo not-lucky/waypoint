@@ -1,6 +1,6 @@
 /**
  * Default cooldown durations for tiered key lifecycle policy (T1–T4b).
- * Matches docs/key-lifecycle-policy.md and config.example.yaml.
+ * Matches README.md and config.example.yaml.
  */
 export const COOLDOWN_DEFAULTS = {
   baseSeconds: 30, // T3: rate-limit exponential base

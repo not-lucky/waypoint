@@ -26,6 +26,10 @@ describe('executeThinkingStream', () => {
     const mockAdapter = {
       baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
       timeoutMs: 30000,
+      streamTimeoutMs: null,
+      resolveStreamTimeoutMs() {
+        return this.streamTimeoutMs ?? this.timeoutMs ?? null;
+      },
       performFetch: vi.fn().mockResolvedValue({
         response: {
           body: buildSseBody([
@@ -74,6 +78,10 @@ describe('executeThinkingStream', () => {
     const mockAdapter = {
       baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
       timeoutMs: 30000,
+      streamTimeoutMs: null,
+      resolveStreamTimeoutMs() {
+        return this.streamTimeoutMs ?? this.timeoutMs ?? null;
+      },
       performFetch: vi.fn().mockResolvedValue({
         response: {
           body: buildSseBody([

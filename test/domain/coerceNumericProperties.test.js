@@ -17,6 +17,7 @@ describe('coerceNumericProperties', () => {
         port: '20128',
         globalRetryLimit: '5',
         httpTimeoutMs: '30000',
+        streamTimeoutMs: '600000',
         cooldown: {
           baseSeconds: '10',
           maxSeconds: '60',
@@ -31,6 +32,8 @@ describe('coerceNumericProperties', () => {
     expect(typeof result.gateway.globalRetryLimit).toBe('number');
     expect(result.gateway.httpTimeoutMs).toBe(30000);
     expect(typeof result.gateway.httpTimeoutMs).toBe('number');
+    expect(result.gateway.streamTimeoutMs).toBe(600000);
+    expect(typeof result.gateway.streamTimeoutMs).toBe('number');
     expect(result.gateway.cooldown.baseSeconds).toBe(10);
     expect(typeof result.gateway.cooldown.baseSeconds).toBe('number');
     expect(result.gateway.cooldown.maxSeconds).toBe(60);

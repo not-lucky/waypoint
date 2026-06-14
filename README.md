@@ -31,7 +31,7 @@ Waypoint enforces strict **Separation of Concerns** using a layered Clean Archit
                │          Ingress Validation & Security          │
                │  - Client Authentication - Token Rate Limiter   │
                │  - Zod/Payload Validator - Custom Header Parser │
-               │  - Tool/Multimodal Schema - Passthrough         │
+               │  - Tool/Multimodal Schema - Provider field passthrough │
                └────────────────────────┬────────────────────────┘
                                          │
                                          ▼
@@ -78,13 +78,8 @@ Waypoint enforces strict **Separation of Concerns** using a layered Clean Archit
 - **Routing Strategies**:
   - `round-robin`: Rotates keys sequentially per request to balance load evenly across active keys.
   - `fill-first`: Uses the first available key and fails over only when exhausted, optimizing for upstream **prompt cache locality**.
-- **Circuit Breaking** (tiered lifecycle):
-  - **T0 (`invalid_api_key`)**: Permanently exhausts the key — the only terminal credential failure.
-  - **T1 (billing/quota)**: Long billing cooldown (`billingSeconds`, default 3600s) for HTTP 402, `insufficient_quota`, and quota-style HTTP 429 (`daily_tokens_exceeded`); key recovers automatically.
-  - **T2 (permission)**: Permission cooldown (`permissionSeconds`, default 1800s); key recovers automatically.
-  - **T3 (rate limits)**: Exponential backoff (`baseSeconds × 2ⁿ`, capped at `maxSeconds`), honoring `Retry-After`.
-  - **T4/T4b (server transient / slow-down)**: Server cooldown (`serverSeconds` or `slowDownMinimumSeconds`).
-  - **T5 (validation/content)**: No key action — request problem, not a key health issue.
+- **Circuit Breaking & Tiered Cooldowns**:
+  Instead of permanently exhausting keys on all errors, Waypoint uses a tiered lifecycle policy (T0–T5) where keys automatically recover after a cooldown period. For details, see the [Key Lifecycle & Cooldown Policy](#-key-lifecycle--cooldown-policy) section below.
 
 ### 3. Unified Reasoning Model
 - Normalizes reasoning/thinking efforts using standard levels (`minimal`, `low`, `medium`, `high`, `xhigh`, `max`).
@@ -130,6 +125,236 @@ For OpenAI-compatible requests, `max_tokens` takes precedence when present; `max
 - **Health endpoint** (`GET /health`): requires authentication; returns `status` (`ok` or `degraded`), `uptimeSeconds`, per-provider key pool stats (`providers`), and routing state (`routing`).
 - **Dry-run endpoints**: mirror the live OpenAI and Anthropic routes under `/dryrun/openai/*` and `/dryrun/anthropic/*`. Requests are validated and logged but never sent upstream; the response includes `{ dryRun: true, ... }`. Requires `logging.logRequests: true` in config.
 
+### 9. Error Responses (v1)
+
+All client-visible failures use a single JSON envelope under an `error` object. Raw upstream response bodies are **never** returned as the root HTTP body. For the complete envelope structure, error codes, status forwarding, and streaming behaviors, see the [Client Error API Contract](#-client-error-api-contract) section below.
+
+---
+
+## 🔑 Key Lifecycle & Cooldown Policy
+
+Waypoint manages a pool of upstream API keys per provider. When an upstream request fails, the gateway decides whether to permanently exhaust a key, apply a tiered cooldown, or take no key action. Policy decisions use **structured error meaning** (`code` and `category`)—never bare HTTP status codes alone.
+
+### Core Rule
+- `KeyObject.exhausted = true` **only** when `code === 'invalid_api_key'` (revoked, disabled, or incorrect credential).
+- Billing, permission, quota, rate-limit, and transient server conditions use **tiered cooldowns**. Keys reactivate automatically after the cooldown timer expires.
+
+### Tier Matrix
+
+| Tier | Trigger codes / conditions | `exhausted` | Cooldown source | Reactivate after timer |
+|------|---------------------------|-------------|-----------------|------------------------|
+| **T0 — Terminal credential** | `invalid_api_key` | `true` | — | never |
+| **T1 — Billing recovery** | HTTP 402; `insufficient_quota`, `billing_hard_limit_reached`; quota-style 429 (`daily_tokens_exceeded`, message match *"exceeded your current quota"*) | `false` | `billingSeconds` (default 3600) or `Retry-After` | yes |
+| **T2 — Permission recovery** | `forbidden`, `region_not_supported`, `org_membership_required`, `ip_not_authorized` | `false` | `permissionSeconds` (default 1800) or `Retry-After` | yes |
+| **T3 — Rate limit** | RPM/TPM/concurrent 429: `rate_limit_exceeded`, `tokens_per_minute_exceeded`, `concurrent_requests_exceeded` | `false` | `Retry-After` or exponential (`baseSeconds` × 2^n, cap `maxSeconds`) | yes |
+| **T4 — Server transient** | 500, 502, 503, 504; `internal_server_error`, `engine_overloaded`, `service_unavailable`, `gateway_timeout`, `bad_gateway` | `false` | `serverSeconds` (default 60) or exponential | yes |
+| **T4b — Slow down** | `rate_reduction_required` (503 slow-down message) | `false` | `max(retryAfterSeconds, slowDownMinimumSeconds)` — default minimum 900s | yes |
+| **T5 — No key action** | 400, 404, 422; content policy codes (`content_filter`, `moderation_flagged`, `content_unavailable_legal`, etc.) | unchanged | none | — |
+
+### Tier Behavior Notes
+- **T0** is the only tier that permanently disables a key. Operators must replace or re-enable the credential out of band.
+- **T1–T4b** set `active = false` and schedule cooldown with `reactivate = true`. The key becomes available again when the timer fires.
+- **T5** errors indicate request or endpoint problems shared by every key. Retrying with a different key cannot succeed; no cooldown is applied.
+
+### Critical Distinction: Two Kinds of 429
+Upstream providers use HTTP 429 for both rate limiting and quota exhaustion. These must **not** share cooldown logic:
+
+| Kind | Tier | Behavior |
+|------|------|----------|
+| RPM / TPM / concurrent limits | **T3** | Rotate keys, honor `Retry-After`, apply exponential backoff |
+| Quota / billing exhaustion | **T1** | Long billing cooldown — do **not** aggressively rotate keys against a depleted account |
+
+Quota-style 429 is identified by codes such as `daily_tokens_exceeded` or message patterns including *"exceeded your current quota"*.
+
+### Gateway Misconfiguration (No Key Fault)
+Some error codes reflect gateway configuration problems, not upstream key health:
+- **`no_api_key`**: Skip `flagFailure` entirely. This indicates the gateway failed to send an Authorization header to the upstream provider (a gateway config bug, not an unhealthy credential).
+- **`poolUnavailable`**: Pool-level client error when no upstream call occurred; not a per-key lifecycle event.
+
+### Code-to-Tier Mapping
+Aligned with the OpenAI API error codes guide.
+
+| Upstream condition | HTTP | Classifier `code` | Tier |
+|--------------------|------|-------------------|------|
+| Invalid / incorrect API key | 401 | `invalid_api_key` | T0 |
+| Must be member of an organization | 401 | `org_membership_required` | T2 |
+| IP not authorized | 401 | `ip_not_authorized` | T2 |
+| Country, region, or territory not supported | 403 | `region_not_supported` | T2 |
+| Permission denied | 403 | `forbidden` | T2 |
+| Insufficient quota / billing | 402 | `insufficient_quota` | T1 |
+| Billing hard limit reached | 402 | `billing_hard_limit_reached` | T1 |
+| Rate limit (requests) | 429 | `rate_limit_exceeded` | T3 |
+| Tokens per minute exceeded | 429 | `tokens_per_minute_exceeded` | T3 |
+| Concurrent requests exceeded | 429 | `concurrent_requests_exceeded` | T3 |
+| Quota / daily tokens exceeded | 429 | `daily_tokens_exceeded` | **T1** |
+| Server error | 500 | `internal_server_error` | T4 |
+| Engine overloaded | 503 | `engine_overloaded` | T4 |
+| Slow down | 503 | `rate_reduction_required` | T4b |
+| Request validation / content policy | 400, 404, 422, 451 | validation and content policy codes | T5 |
+
+---
+
+## 🚨 Client Error API Contract
+
+Every client-visible failure uses a single JSON envelope under an `error` object. Raw upstream response bodies are **never** returned as the root HTTP body. Upstream debugging detail is retained in server-side logs only (with redaction).
+
+### Error Sources
+
+| Source | When | `provider` field |
+|--------|------|------------------|
+| **Gateway** | No upstream call — auth, validation, payload limits, dry-run guard, unhandled exceptions | Omitted |
+| **Pool** | No upstream call — all keys for a provider are in cooldown | Required |
+| **Upstream** | A provider request was attempted and failed | Required |
+
+### Response Envelope Structure
+
+```json
+{
+  "error": {
+    "code": "rate_limit_exceeded",
+    "type": "rate_limit_error",
+    "message": "Rate limit exceeded.",
+    "httpStatus": 429,
+    "provider": "openai",
+    "retryAfterSeconds": 30
+  }
+}
+```
+
+### Field Rules
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `code` | Yes | Stable machine-readable identifier; primary key for client branching |
+| `message` | Yes | Human-readable description |
+| `httpStatus` | Yes | HTTP status returned to the client (may differ from upstream) |
+| `type` | Upstream only | Provider-style category string from the classifier (e.g. `rate_limit_error`, `authentication_error`); omitted for gateway and pool errors |
+| `provider` | Upstream + pool | Provider name (e.g. `openai`, `anthropic`, `gemini`); omitted for pure gateway faults |
+| `retryAfterSeconds` | When relevant | Seconds until retry is advisable; also sets the `Retry-After` response header |
+| `details` | Gateway validation only | Optional array of field-level validation issues (gateway extension) |
+
+### Security Rules
+- Never replace the entire response body with a raw upstream payload.
+- Do not expose unredacted upstream trace tokens, account IDs, or internal policy details at the response root. Full upstream details are retained in server-side logs with redaction.
+
+### Machine-Readable Codes
+
+#### Pool Errors
+Returned when no upstream call occurs because every key for the provider is in cooldown.
+
+| `code` | HTTP | Fields |
+|--------|------|--------|
+| `poolUnavailable` | 503 | `provider`, `retryAfterSeconds` |
+
+#### Gateway Errors
+Returned when the gateway rejects or fails the request before contacting a provider.
+
+| `code` | HTTP | Notes |
+|--------|------|-------|
+| `unauthorized` | 401 | Missing or invalid client token |
+| `validationError` | 400 | Request body failed schema validation; includes `details` |
+| `payloadTooLarge` | 413 | Request body exceeds configured limit |
+| `badRequest` | 400 | Malformed request (Express-level) |
+| `internalServerError` | 500 | Unhandled gateway exception |
+| `dryRunDisabled` | 502 | Dry-run requested but request logging is disabled |
+| `requestCancelled` | 499 | Client disconnected during an in-flight request |
+
+#### Upstream Errors
+Returned when a provider request was attempted and failed. Codes are assigned by the internal error classifier.
+
+##### Authentication and permission
+| `code` | `type` | Typical HTTP |
+|--------|--------|--------------|
+| `invalid_api_key` | `authentication_error` | 401 |
+| `no_api_key` | `authentication_error` | 401 |
+| `forbidden` | `permission_denied_error` | 403 |
+
+##### Billing
+| `code` | `type` | Typical HTTP |
+|--------|--------|--------------|
+| `insufficient_quota` | `billing_error` | 402 |
+| `billing_hard_limit_reached` | `billing_error` | 402 |
+| `daily_tokens_exceeded` | `billing_error` | 429 (quota-style upstream status) |
+
+##### Rate limiting
+| `code` | `type` | Typical HTTP |
+|--------|--------|--------------|
+| `rate_limit_exceeded` | `rate_limit_error` | 429 |
+| `tokens_per_minute_exceeded` | `rate_limit_error` | 429 |
+| `concurrent_requests_exceeded` | `rate_limit_error` | 429 |
+
+##### Validation and content policy
+| `code` | `type` | Typical HTTP |
+|--------|--------|--------------|
+| `invalid_parameter_value` | `invalid_request_error` | 400 |
+| `context_length_exceeded` | `invalid_request_error` | 400 |
+| `max_tokens_too_large` | `invalid_request_error` | 400 |
+| `invalid_message_role` | `invalid_request_error` | 400 |
+| `invalid_tool_definition` | `invalid_request_error` | 400 |
+| `incompatible_params` | `invalid_request_error` | 400 |
+| `missing_required_param` | `invalid_request_error` | 400 |
+| `invalid_type` | `invalid_request_error` | 400 |
+| `unprocessable_entity` | `invalid_request_error` | 422 |
+| `request_too_large` | `invalid_request_error` | 413 |
+| `content_filter` | `content_policy_violation` | 400 |
+| `moderation_flagged` | `content_policy_violation` | 400 |
+| `content_unavailable_legal` | `content_policy_violation` | 451 |
+
+##### Model and resource
+| `code` | `type` | Typical HTTP |
+|--------|--------|--------------|
+| `model_not_found` | `not_found_error` | 404 |
+| `endpoint_not_found` | `not_found_error` | 404 |
+| `unsupported_feature` | `invalid_request_error` | 400 |
+| `engine_overloaded` | `overloaded_error` | 503 |
+
+##### Server and transport
+Transport errors omit `type` because they are not provider-classified responses.
+
+| `code` | `type` | Typical HTTP |
+|--------|--------|--------------|
+| `internal_server_error` | `api_error` | 502 |
+| `service_unavailable` | `api_error` | 503 |
+| `gateway_timeout` | `api_error` | 504 |
+| `bad_gateway` | `api_error` | 502 |
+| `upstream_error` | `api_error` | varies |
+| `connect_timeout` | — | 503 |
+| `read_timeout` | — | 504 |
+| `tls_error` | — | 503 |
+
+### Status Forwarding
+The client `httpStatus` may differ from the upstream HTTP status:
+
+| Upstream status | Client `httpStatus` | Notes |
+|-----------------|---------------------|-------|
+| 500 | 502 | Bad gateway semantics |
+| 401 / 402 / 403 / 429 | As classified | `code` is the stable machine identifier |
+| 400 / 404 / 422 | Forward | No key lifecycle action (T5) |
+| Other 5xx | 502 or forward | Per routing rules |
+
+### Retry-After Behavior
+When `retryAfterSeconds` is present in the error envelope:
+1. The value is included in the JSON body.
+2. The gateway sets the `Retry-After` response header to the same value (numeric delay-seconds or HTTP-date).
+
+### Streaming Errors
+Supported streaming providers include OpenAI-compatible, Anthropic, and Gemini. Streaming responses split failure delivery by timing:
+- **Pre-stream** (before headers are sent): HTTP error status + JSON envelope.
+- **Post-start** (after stream headers are sent): SSE error frames with the JSON envelope, followed by stream closure. HTTP status remains 200.
+
+#### OpenAI-compatible SSE error (post-start)
+```
+data: {"error":{"code":"rate_limit_exceeded","message":"Rate limit exceeded.","httpStatus":429,"type":"rate_limit_error","provider":"openai","retryAfterSeconds":30}}
+
+data: [DONE]
+```
+
+#### Anthropic SSE error (post-start)
+```
+event: error
+data: {"type":"error","error":{"code":"rate_limit_exceeded","message":"Rate limit exceeded.","httpStatus":429,"type":"rate_limit_error","provider":"anthropic","retryAfterSeconds":30}}
+```
+
 ---
 
 ## 🚀 Getting Started
@@ -160,7 +385,7 @@ npm start
 ```
 
 ### Running Tests
-Waypoint features a comprehensive test suite (375 unit, integration, and edge-case tests) executed via **Vitest**:
+Waypoint features a comprehensive test suite (464 unit, integration, and edge-case tests) executed via **Vitest**:
 ```bash
 npm test
 npm run test:watch   # watch mode
@@ -208,6 +433,12 @@ Waypoint reads configuration from `config/config.yaml` (copy from `config.exampl
 
 Custom providers must specify a `baseUrl`; they default to `openai-compatible` when `type` is omitted and can also be configured as `anthropic-compatible`.
 
+**Related documentation:**
+
+- Cooldown tiers and key lifecycle → [Key Lifecycle & Cooldown Policy](#-key-lifecycle--cooldown-policy)
+- Client error envelope and code taxonomy → [Client Error API Contract](#-client-error-api-contract)
+- Full configuration reference with tier comments → [config.example.yaml](config.example.yaml)
+
 ### Complete YAML Example
 ```yaml
 gateway:
@@ -220,10 +451,15 @@ gateway:
   # Maximum duration for a single upstream request before Waypoint aborts it
   httpTimeoutMs: 120000
 
+  # Optional timeout for streaming upstream calls only (see config.example.yaml).
+  # When omitted, streams inherit httpTimeoutMs. Set higher than httpTimeoutMs
+  # when long generations routinely exceed completion timeouts.
+  # streamTimeoutMs: 600000
+
   # Size limit on inbound requests to prevent memory exhaustion
   maxPayloadSize: "10mb"
 
-  # Tiered cooldown settings (see docs/key-lifecycle-policy.md)
+  # Tiered cooldown settings — see Key Lifecycle & Cooldown Policy section for T0–T5 tier mapping
   cooldown:
     baseSeconds: 30              # T3: rate-limit exponential base
     maxSeconds: 3600             # T3: exponential cap

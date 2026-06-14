@@ -1,4 +1,8 @@
-import { normalizeUpstreamError } from '../../src/common/upstreamErrors.js';
+import {
+  normalizeUpstreamError,
+  UpstreamError,
+  ERROR_CATEGORIES,
+} from '../../src/common/upstreamErrors.js';
 
 /**
  * Normalizes test/mock adapter errors through the production error authority.
@@ -10,3 +14,51 @@ import { normalizeUpstreamError } from '../../src/common/upstreamErrors.js';
 export function normalizeTestError(error, provider = 'test') {
   return normalizeUpstreamError(error, provider);
 }
+
+/**
+ * Builds an HTTP-shaped error that exercises the production classifier path.
+ * Prefer this over bare `err.status = N` shortcuts in test doubles.
+ *
+ * @param {string} message - Error message (used by classifier keyword matching).
+ * @param {number} statusCode - Upstream HTTP status code.
+ * @param {Object} [options] - Optional structured upstream fields.
+ * @param {string} [options.code] - Upstream error code hint.
+ * @param {string} [options.type] - Upstream error type hint.
+ * @param {number} [options.retryAfterSeconds] - Retry-After delay in seconds.
+ * @returns {Error}
+ */
+export function makeHttpError(message, statusCode, options = {}) {
+  const err = new Error(message);
+  err.statusCode = statusCode;
+
+  if (options.code || options.type) {
+    err.error = {
+      message,
+      ...(options.type ? { type: options.type } : {}),
+      ...(options.code ? { code: options.code } : {}),
+    };
+  }
+
+  if (options.retryAfterSeconds !== undefined) {
+    err.retryAfterSeconds = options.retryAfterSeconds;
+    err.response = {
+      status: statusCode,
+      headers: { 'retry-after': String(options.retryAfterSeconds) },
+    };
+  }
+
+  return err;
+}
+
+/**
+ * Builds a structured UpstreamError for tests that need explicit metadata.
+ *
+ * @param {string} message - Error message.
+ * @param {Object} options - UpstreamError constructor options.
+ * @returns {UpstreamError}
+ */
+export function makeUpstreamError(message, options) {
+  return new UpstreamError(message, options);
+}
+
+export { ERROR_CATEGORIES, UpstreamError };

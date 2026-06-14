@@ -10,10 +10,16 @@ import { createStreamUpstreamError } from '../common/upstreamErrors.js';
  * Provider adapter for Anthropic's Claude API endpoints.
  */
 export class AnthropicAdapter extends BaseProvider {
-  constructor(baseUrl = null, timeoutMs = null, providerName = 'anthropic') {
+  constructor({
+    baseUrl = null,
+    timeoutMs = null,
+    streamTimeoutMs = null,
+    providerName = 'anthropic',
+  } = {}) {
     super();
     this.baseUrl = baseUrl;
     this.timeoutMs = timeoutMs;
+    this.streamTimeoutMs = streamTimeoutMs;
     this.providerName = providerName;
   }
 
@@ -220,7 +226,7 @@ export class AnthropicAdapter extends BaseProvider {
       payload,
       signal,
       requestLog,
-      this.timeoutMs,
+      this.resolveStreamTimeoutMs(),
     );
 
     const chunkId = `waypoint-chunk-${Date.now()}`;

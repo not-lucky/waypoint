@@ -69,6 +69,42 @@ describe('ProviderFactory Tests', () => {
     expect(adapter.providerName).toBe('custom-anthropic');
   });
 
+  it('wires httpTimeoutMs and streamTimeoutMs from gateway config into adapters', () => {
+    const config = {
+      gateway: {
+        httpTimeoutMs: 5000,
+        streamTimeoutMs: 300000,
+      },
+      providers: {
+        openai: {
+          keys: ['test-key-openai'],
+        },
+      },
+    };
+    const factory = new ProviderFactory(config);
+    const adapter = factory.get('openai');
+    expect(adapter.timeoutMs).toBe(5000);
+    expect(adapter.streamTimeoutMs).toBe(300000);
+    expect(adapter.resolveStreamTimeoutMs()).toBe(300000);
+  });
+
+  it('falls back to httpTimeoutMs for streams when streamTimeoutMs is omitted', () => {
+    const config = {
+      gateway: {
+        httpTimeoutMs: 120000,
+      },
+      providers: {
+        openai: {
+          keys: ['test-key-openai'],
+        },
+      },
+    };
+    const factory = new ProviderFactory(config);
+    const adapter = factory.get('openai');
+    expect(adapter.streamTimeoutMs).toBeNull();
+    expect(adapter.resolveStreamTimeoutMs()).toBe(120000);
+  });
+
   it('assert: register() a stub, get() returns that same instance (manual override still works)', () => {
     const factory = new ProviderFactory();
     const stubAdapter = { name: 'stub-adapter' };

@@ -25,7 +25,7 @@ export class ProviderFactory {
    *
    * @param {Object} strategy - The strategy object.
    * @param {function(string, Object): boolean} strategy.match - Match checking if strategy applies.
-   * @param {function(string, Object, number): Object} strategy.create - Instantiation function.
+   * @param {function(string, Object, Object): Object} strategy.create - Instantiation function.
    * @returns {void}
    */
   static registerStrategy(strategy) {
@@ -41,7 +41,10 @@ export class ProviderFactory {
    */
   constructor(config = {}) {
     const providers = config.providers || {};
-    const timeoutMs = config.gateway?.httpTimeoutMs;
+    const timeouts = {
+      httpTimeoutMs: config.gateway?.httpTimeoutMs ?? null,
+      streamTimeoutMs: config.gateway?.streamTimeoutMs ?? null,
+    };
 
     // Pre-initialize all adapters during server boot.
     /**
@@ -54,7 +57,7 @@ export class ProviderFactory {
       let created = false;
       for (const strategy of ProviderFactory.strategies) {
         if (strategy.match(name, provider)) {
-          this.adapters.set(name, strategy.create(name, provider, timeoutMs));
+          this.adapters.set(name, strategy.create(name, provider, timeouts));
           created = true;
           break;
         }
@@ -92,25 +95,30 @@ export class ProviderFactory {
 // Gemini Strategy
 ProviderFactory.registerStrategy({
   match: (name) => name === 'gemini',
-  create: (name, provider, timeoutMs) => new GeminiAdapter(null, timeoutMs),
+  create: (name, provider, timeouts) => new GeminiAdapter({
+    timeoutMs: timeouts.httpTimeoutMs,
+    streamTimeoutMs: timeouts.streamTimeoutMs,
+  }),
 });
 
 // Anthropic Strategy
 ProviderFactory.registerStrategy({
   match: (name, provider) => name === 'anthropic' || provider?.type === 'anthropic-compatible',
-  create: (name, provider, timeoutMs) => new AnthropicAdapter(
-    name === 'anthropic' ? null : provider?.baseUrl,
-    timeoutMs,
-    name,
-  ),
+  create: (name, provider, timeouts) => new AnthropicAdapter({
+    baseUrl: name === 'anthropic' ? null : provider?.baseUrl,
+    timeoutMs: timeouts.httpTimeoutMs,
+    streamTimeoutMs: timeouts.streamTimeoutMs,
+    providerName: name,
+  }),
 });
 
 // Default OpenAI & Custom Strategy
 ProviderFactory.registerStrategy({
   match: () => true,
-  create: (name, provider, timeoutMs) => new OpenAICompatibleAdapter(
-    name === 'openai' ? 'https://api.openai.com/v1' : provider?.baseUrl,
-    name,
-    timeoutMs,
-  ),
+  create: (name, provider, timeouts) => new OpenAICompatibleAdapter({
+    baseUrl: name === 'openai' ? 'https://api.openai.com/v1' : provider?.baseUrl,
+    providerName: name,
+    timeoutMs: timeouts.httpTimeoutMs,
+    streamTimeoutMs: timeouts.streamTimeoutMs,
+  }),
 });

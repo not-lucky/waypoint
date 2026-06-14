@@ -7,7 +7,8 @@ import { normalizeTestError } from './normalizeTestError.js';
  * Tracks call counts, API keys used, and last request payload.
  */
 export class MockAdapter {
-  constructor() {
+  constructor(providerName = 'mock-provider') {
+    this.providerName = providerName;
     this.callCount = 0;
     this.streamCallCount = 0;
     this.apiKeysUsed = [];
@@ -89,7 +90,7 @@ export class MockAdapter {
   }
 
   normalizeError(error) {
-    return normalizeTestError(error, 'mock-provider');
+    return normalizeTestError(error, this.providerName);
   }
 }
 

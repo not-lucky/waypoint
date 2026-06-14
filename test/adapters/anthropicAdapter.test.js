@@ -18,7 +18,7 @@ describe('AnthropicAdapter Tests', () => {
   });
 
   it('assert: constructed without baseUrl -> Anthropic client uses default endpoint', async () => {
-    const adapter = new AnthropicAdapter();
+    const adapter = new AnthropicAdapter({});
     const req = {
       model: 'anthropic/claude-3-5-sonnet',
       actualModelId: 'claude-3-5-sonnet',
@@ -52,7 +52,7 @@ describe('AnthropicAdapter Tests', () => {
 
   it('assert: constructed with baseUrl -> Anthropic client receives that baseURL option', async () => {
     const customUrl = 'https://custom.anthropic.api/v1';
-    const adapter = new AnthropicAdapter(customUrl);
+    const adapter = new AnthropicAdapter({ baseUrl: customUrl });
     const req = {
       model: 'anthropic/claude-3-5-sonnet',
       actualModelId: 'claude-3-5-sonnet',
@@ -83,7 +83,7 @@ describe('AnthropicAdapter Tests', () => {
   });
 
   it('assert: forwards tools and tool_result history to upstream messages API', async () => {
-    const adapter = new AnthropicAdapter();
+    const adapter = new AnthropicAdapter({});
     mockFetch.mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -144,7 +144,7 @@ describe('AnthropicAdapter Tests', () => {
   });
 
   it('assert: maps upstream tool_use blocks to OpenAI tool_calls', async () => {
-    const adapter = new AnthropicAdapter();
+    const adapter = new AnthropicAdapter({});
     mockFetch.mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -174,7 +174,7 @@ describe('AnthropicAdapter Tests', () => {
   });
 
   it('assert: mock response with thinking block -> NormalizedResponse.choices[0].message.reasoning_content populated', async () => {
-    const adapter = new AnthropicAdapter();
+    const adapter = new AnthropicAdapter({});
 
     mockFetch.mockResolvedValue({
       ok: true,
@@ -227,7 +227,7 @@ describe('AnthropicAdapter Tests', () => {
   });
 
   it('assert: normalizeError uses the configured provider name for custom adapters', () => {
-    const adapter = new AnthropicAdapter('https://router.requesty.ai', null, 'requesty');
+    const adapter = new AnthropicAdapter({ baseUrl: 'https://router.requesty.ai', providerName: 'requesty' });
 
     expect(adapter.normalizeError({ statusCode: 404, message: '404 page not found' })).toEqual({
       code: 'endpoint_not_found',
@@ -237,12 +237,13 @@ describe('AnthropicAdapter Tests', () => {
       provider: 'requesty',
       category: 'model_resource',
       upstreamBody: undefined,
+      upstreamStatus: 404,
       retryAfterSeconds: undefined,
     });
   });
 
   it('assert: normalizeError covers 429, 402/403 with correct codes and httpStatus values', () => {
-    const adapter = new AnthropicAdapter();
+    const adapter = new AnthropicAdapter({});
 
     // 429
     expect(adapter.normalizeError({ statusCode: 429 })).toEqual({
@@ -253,6 +254,7 @@ describe('AnthropicAdapter Tests', () => {
       provider: 'anthropic',
       category: 'rate_limit',
       upstreamBody: undefined,
+      upstreamStatus: 429,
       retryAfterSeconds: undefined,
     });
 
@@ -265,6 +267,7 @@ describe('AnthropicAdapter Tests', () => {
       provider: 'anthropic',
       category: 'billing',
       upstreamBody: undefined,
+      upstreamStatus: 402,
       retryAfterSeconds: undefined,
     });
 
@@ -277,6 +280,7 @@ describe('AnthropicAdapter Tests', () => {
       provider: 'anthropic',
       category: 'auth',
       upstreamBody: undefined,
+      upstreamStatus: 403,
       retryAfterSeconds: undefined,
     });
 
@@ -294,7 +298,7 @@ describe('AnthropicAdapter Tests', () => {
   });
 
   it('assert: generateStream streams chunks per Section 6C schema', async () => {
-    const adapter = new AnthropicAdapter();
+    const adapter = new AnthropicAdapter({});
 
     const mockBody = {
       async* [Symbol.asyncIterator]() {
@@ -334,7 +338,7 @@ describe('AnthropicAdapter Tests', () => {
   });
 
   it('assert: reasoningSupported true without reasoningEffort uses default budget 2048', async () => {
-    const adapter = new AnthropicAdapter();
+    const adapter = new AnthropicAdapter({});
     const req = {
       model: 'anthropic/claude-3-5-sonnet',
       actualModelId: 'claude-3-5-sonnet',
@@ -361,7 +365,7 @@ describe('AnthropicAdapter Tests', () => {
   });
 
   it('assert: generateStream forwards thinking options and abortSignal correctly', async () => {
-    const adapter = new AnthropicAdapter();
+    const adapter = new AnthropicAdapter({});
     const req = {
       model: 'anthropic/claude-3-5-sonnet',
       actualModelId: 'claude-3-5-sonnet',
@@ -413,7 +417,7 @@ describe('AnthropicAdapter Tests', () => {
   });
 
   it('assert: generateCompletion forwards abortSignal correctly', async () => {
-    const adapter = new AnthropicAdapter();
+    const adapter = new AnthropicAdapter({});
     const req = {
       model: 'anthropic/claude-3-5-sonnet',
       actualModelId: 'claude-3-5-sonnet',
@@ -440,7 +444,7 @@ describe('AnthropicAdapter Tests', () => {
   });
 
   it('assert: generateCompletion handles fetch error and calls requestLog', async () => {
-    const adapter = new AnthropicAdapter();
+    const adapter = new AnthropicAdapter({});
     const req = { model: 'claude-3', actualModelId: 'claude-3', messages: [] };
     mockFetch.mockRejectedValue(new Error('Fetch failed'));
 

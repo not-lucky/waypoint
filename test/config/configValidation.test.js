@@ -128,6 +128,10 @@ describe('Configuration Validation Tests', () => {
     const badBillingCooldown = getBaseValidConfig();
     badBillingCooldown.gateway.cooldown = { billingSeconds: -1 };
     expect(() => validateConfig(badBillingCooldown)).toThrow('process.exit called');
+
+    const badStreamTimeout = getBaseValidConfig();
+    badStreamTimeout.gateway.streamTimeoutMs = 0;
+    expect(() => validateConfig(badStreamTimeout)).toThrow('process.exit called');
   });
 
   it('accepts tiered cooldown configuration fields', () => {

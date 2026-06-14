@@ -105,6 +105,16 @@ import {
  */
 export class BaseProvider {
   /**
+   * Resolves the timeout for streaming upstream calls.
+   * Falls back to the completion timeout when no stream-specific timeout is set.
+   *
+   * @returns {number|null}
+   */
+  resolveStreamTimeoutMs() {
+    return this.streamTimeoutMs ?? this.timeoutMs ?? null;
+  }
+
+  /**
    * Normalizes an upstream provider error.
    *
    * @param {any} error - The caught upstream error object.

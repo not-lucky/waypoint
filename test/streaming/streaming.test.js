@@ -15,7 +15,7 @@ import { UnifiedOrchestrator } from '../../src/services/unifiedOrchestrator.js';
 import { KeyRegistry } from '../../src/registry/keyRegistry.js';
 import { ProviderFactory } from '../../src/adapters/providerFactory.js';
 import { ERROR_CATEGORIES, UpstreamError } from '../../src/common/upstreamErrors.js';
-import { normalizeTestError } from '../helpers/normalizeTestError.js';
+import { makeHttpError, normalizeTestError } from '../helpers/normalizeTestError.js';
 
 class MockAdapter {
   constructor() {
@@ -268,16 +268,12 @@ describe('Streaming End-to-End Tests', () => {
       async* generateStream(req, apiKey, signal) {
         failingAdapter.callCount += 1;
         if (apiKey === 'key-1') {
-          throw new Error('Key 1 rate limit');
+          throw makeHttpError('maintenance downtime', 503);
         }
         yield { id: 'success-chunk', choices: [{ index: 0, delta: { content: 'hello' } }] };
       },
       normalizeError(error) {
-        const err = error;
-        if (err.status === undefined && err.statusCode === undefined) {
-          err.status = 503;
-        }
-        return normalizeTestError(err, 'mock-provider');
+        return normalizeTestError(error, 'mock-provider');
       },
     };
 
@@ -333,14 +329,10 @@ describe('Streaming End-to-End Tests', () => {
 
     const primaryAdapter = {
       async* generateStream(req, apiKey, signal) {
-        throw new Error('Primary key rate limit');
+        throw makeHttpError('maintenance downtime', 503);
       },
       normalizeError(error) {
-        const err = error;
-        if (err.status === undefined && err.statusCode === undefined) {
-          err.status = 503;
-        }
-        return normalizeTestError(err, 'primary-provider');
+        return normalizeTestError(error, 'primary-provider');
       },
     };
 
@@ -430,14 +422,10 @@ describe('Streaming End-to-End Tests', () => {
 
     const primaryAdapter = {
       async* generateStream(req, apiKey, signal) {
-        throw new Error('Primary failed');
+        throw makeHttpError('maintenance downtime', 503);
       },
       normalizeError(error) {
-        const err = error;
-        if (err.status === undefined && err.statusCode === undefined) {
-          err.status = 503;
-        }
-        return normalizeTestError(err, 'primary-provider');
+        return normalizeTestError(error, 'primary-provider');
       },
     };
 

@@ -7,10 +7,15 @@ import { executeStream } from './gemini/geminiStream.js';
  * WHY: Serves as the core contract delegator for Gemini standard and stream generation.
  */
 export class GeminiAdapter extends BaseProvider {
-  constructor(baseUrl = null, timeoutMs = null) {
+  constructor({
+    baseUrl = null,
+    timeoutMs = null,
+    streamTimeoutMs = null,
+  } = {}) {
     super();
     this.baseUrl = baseUrl;
     this.timeoutMs = timeoutMs;
+    this.streamTimeoutMs = streamTimeoutMs;
   }
 
   async generateCompletion(req, apiKey, signal, requestLog = null) {

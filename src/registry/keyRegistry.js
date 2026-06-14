@@ -5,7 +5,13 @@
  * @module registry/KeyRegistry
  */
 
-import { ERROR_CATEGORIES } from '../common/upstreamErrors.js';
+import {
+  ERROR_CATEGORIES,
+  BILLING_CODES,
+  PERMISSION_CODES,
+  RATE_LIMIT_CODES,
+  SERVER_CODES,
+} from '../common/upstreamErrors.js';
 import { COOLDOWN_DEFAULTS } from '../config/cooldownDefaults.js';
 import { KeyObject } from './keyObject.js';
 
@@ -13,33 +19,6 @@ import { KeyObject } from './keyObject.js';
  * @const {string}
  */
 const DEFAULT_ROUTING_STRATEGY = 'round-robin';
-
-const BILLING_CODES = new Set([
-  'insufficient_quota',
-  'billing_hard_limit_reached',
-  'daily_tokens_exceeded',
-]);
-
-const PERMISSION_CODES = new Set([
-  'forbidden',
-  'region_not_supported',
-  'org_membership_required',
-  'ip_not_authorized',
-]);
-
-const RATE_LIMIT_CODES = new Set([
-  'rate_limit_exceeded',
-  'tokens_per_minute_exceeded',
-  'concurrent_requests_exceeded',
-]);
-
-const SERVER_CODES = new Set([
-  'internal_server_error',
-  'engine_overloaded',
-  'service_unavailable',
-  'gateway_timeout',
-  'bad_gateway',
-]);
 
 /**
  * Factory for creating a stateful pool of keys for a specific provider.

@@ -18,7 +18,7 @@ describe('GeminiAdapter Tests', () => {
   });
 
   it('assert: thought:true part + regular part -> message has content and reasoning_content populated separately', async () => {
-    const adapter = new GeminiAdapter();
+    const adapter = new GeminiAdapter({});
 
     mockFetch.mockResolvedValue({
       ok: true,
@@ -84,7 +84,7 @@ describe('GeminiAdapter Tests', () => {
   });
 
   it('assert: no thought parts -> reasoning_content is null/absent', async () => {
-    const adapter = new GeminiAdapter();
+    const adapter = new GeminiAdapter({});
 
     mockFetch.mockResolvedValue({
       ok: true,
@@ -117,7 +117,7 @@ describe('GeminiAdapter Tests', () => {
   });
 
   it('assert: normalizeError covers 429 and quota exhausted codes', () => {
-    const adapter = new GeminiAdapter();
+    const adapter = new GeminiAdapter({});
 
     // 429
     expect(adapter.normalizeError({ statusCode: 429 })).toEqual({
@@ -128,6 +128,7 @@ describe('GeminiAdapter Tests', () => {
       provider: 'gemini',
       category: 'rate_limit',
       upstreamBody: undefined,
+      upstreamStatus: 429,
       retryAfterSeconds: undefined,
     });
 
@@ -140,6 +141,7 @@ describe('GeminiAdapter Tests', () => {
       provider: 'gemini',
       category: 'billing',
       upstreamBody: undefined,
+      upstreamStatus: 402,
       retryAfterSeconds: undefined,
     });
 
@@ -152,6 +154,7 @@ describe('GeminiAdapter Tests', () => {
       provider: 'gemini',
       category: 'auth',
       upstreamBody: undefined,
+      upstreamStatus: 403,
       retryAfterSeconds: undefined,
     });
 
@@ -164,12 +167,13 @@ describe('GeminiAdapter Tests', () => {
       provider: 'gemini',
       category: 'server',
       upstreamBody: undefined,
+      upstreamStatus: 500,
       retryAfterSeconds: undefined,
     });
   });
 
   it('assert: generateStream yields chunks correctly', async () => {
-    const adapter = new GeminiAdapter();
+    const adapter = new GeminiAdapter({});
 
     const mockBody = {
       async* [Symbol.asyncIterator]() {
@@ -205,7 +209,7 @@ describe('GeminiAdapter Tests', () => {
   });
 
   it('assert: reasoningSupported true without reasoningEffort uses default thinking level medium', async () => {
-    const adapter = new GeminiAdapter();
+    const adapter = new GeminiAdapter({});
 
     mockFetch.mockResolvedValue({
       ok: true,
@@ -232,7 +236,7 @@ describe('GeminiAdapter Tests', () => {
   });
 
   it('assert: reasoningSupported true enables thinking option with default or configured effort', async () => {
-    const adapter = new GeminiAdapter();
+    const adapter = new GeminiAdapter({});
 
     mockFetch.mockResolvedValue({
       ok: true,
@@ -260,7 +264,7 @@ describe('GeminiAdapter Tests', () => {
   });
 
   it('assert: generateStream forwards thinking options and abortSignal correctly', async () => {
-    const adapter = new GeminiAdapter();
+    const adapter = new GeminiAdapter({});
 
     const mockBody = {
       async* [Symbol.asyncIterator]() {
@@ -319,7 +323,7 @@ describe('GeminiAdapter Tests', () => {
   });
 
   it('assert: generateCompletion forwards abortSignal correctly', async () => {
-    const adapter = new GeminiAdapter();
+    const adapter = new GeminiAdapter({});
     const req = {
       model: 'gemini/gemini-2.5-pro',
       actualModelId: 'gemini-2.5-pro',
@@ -345,7 +349,7 @@ describe('GeminiAdapter Tests', () => {
   });
 
   it('should parse and extract <thought> tags from generateCompletion (non-streaming)', async () => {
-    const adapter = new GeminiAdapter();
+    const adapter = new GeminiAdapter({});
     mockFetch.mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -376,7 +380,7 @@ describe('GeminiAdapter Tests', () => {
   });
 
   it('should parse and split <thought> tags across stream chunks in generateStream', async () => {
-    const adapter = new GeminiAdapter();
+    const adapter = new GeminiAdapter({});
 
     const mockBody = {
       async* [Symbol.asyncIterator]() {

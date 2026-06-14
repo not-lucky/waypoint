@@ -126,7 +126,7 @@ describe('Key Registry Failures & Cooldowns', () => {
     expect(key.exhausted).toBe(true);
   });
 
-  it('T2: forbidden -> permission cooldown, not exhausted', () => {
+  it('T2: permission codes use permission cooldown and recover', () => {
     const config = {
       gateway: { cooldown: { permissionSeconds: 1800 } },
       providers: { gemini: { keys: ['Key_A'] } },
@@ -142,6 +142,61 @@ describe('Key Registry Failures & Cooldowns', () => {
     expect(key.exhausted).toBe(false);
     expect(key.active).toBe(false);
     expect(key.cooldownUntil).toBe(Date.now() + 1800000);
+  });
+
+  it.each([
+    ['org_membership_required'],
+    ['ip_not_authorized'],
+    ['region_not_supported'],
+  ])('T2: %s -> permission cooldown, not exhausted', (code) => {
+    const config = {
+      gateway: { cooldown: { permissionSeconds: 1800 } },
+      providers: { gemini: { keys: ['Key_A'] } },
+    };
+    const registry = new KeyRegistry(config);
+    const key = registry.pools.gemini.keys[0];
+
+    registry.flagFailure('gemini', 'Key_A', {
+      category: ERROR_CATEGORIES.AUTH,
+      code,
+    });
+
+    expect(key.exhausted).toBe(false);
+    expect(key.active).toBe(false);
+    expect(key.cooldownUntil).toBe(Date.now() + 1800000);
+  });
+
+  it('T3: rate limit honors Retry-After override from descriptor', () => {
+    const config = {
+      gateway: { cooldown: { baseSeconds: 30, maxSeconds: 3600 } },
+      providers: { gemini: { keys: ['Key_A'] } },
+    };
+    const registry = new KeyRegistry(config);
+    const key = registry.pools.gemini.keys[0];
+
+    registry.flagFailure('gemini', 'Key_A', {
+      ...rateLimitDescriptor,
+      retryAfterSeconds: 120,
+    });
+
+    expect(key.cooldownUntil).toBe(Date.now() + 120000);
+  });
+
+  it('T4: engine_overloaded honors Retry-After from descriptor', () => {
+    const config = {
+      gateway: { cooldown: { serverSeconds: 60 } },
+      providers: { gemini: { keys: ['Key_A'] } },
+    };
+    const registry = new KeyRegistry(config);
+    const key = registry.pools.gemini.keys[0];
+
+    registry.flagFailure('gemini', 'Key_A', {
+      category: ERROR_CATEGORIES.MODEL_RESOURCE,
+      code: 'engine_overloaded',
+      retryAfterSeconds: 90,
+    });
+
+    expect(key.cooldownUntil).toBe(Date.now() + 90000);
   });
 
   it('T4: internal_server_error -> serverSeconds cooldown and recovery', () => {

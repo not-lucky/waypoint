@@ -92,6 +92,7 @@ function processGateway(gateway) {
   processed = coerceToInt(processed, 'port');
   processed = coerceToInt(processed, 'globalRetryLimit');
   processed = coerceToInt(processed, 'httpTimeoutMs');
+  processed = coerceToInt(processed, 'streamTimeoutMs');
 
   if (processed.cooldown) {
     let cooldown = { ...processed.cooldown };

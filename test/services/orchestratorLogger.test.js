@@ -7,7 +7,7 @@ import {
   afterEach,
 } from 'vitest';
 import { UnifiedOrchestrator } from '../../src/services/unifiedOrchestrator.js';
-import { normalizeTestError } from '../helpers/normalizeTestError.js';
+import { makeHttpError, normalizeTestError } from '../helpers/normalizeTestError.js';
 import { KeyRegistry } from '../../src/registry/keyRegistry.js';
 import { ProviderFactory } from '../../src/adapters/providerFactory.js';
 
@@ -84,9 +84,7 @@ describe('UnifiedOrchestrator – Logger Integration', () => {
     const logger = createMockLogger();
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, baseConfig, logger);
 
-    const err = new Error('Rate limited');
-    err.status = 429;
-    mockAdapter.enqueue(err);
+    mockAdapter.enqueue(makeHttpError('Rate limited', 429));
     mockAdapter.enqueue({ id: 'ok' });
 
     const req = { provider: 'mock-provider', actualModelId: 'test-model' };
@@ -96,7 +94,12 @@ describe('UnifiedOrchestrator – Logger Integration', () => {
     expect(logger.warn).toHaveBeenCalledTimes(1);
     expect(logger.warn).toHaveBeenCalledWith(
       expect.stringContaining("Attempt 1 of 3 for provider 'mock-provider' failed"),
-      undefined,
+      expect.objectContaining({
+        error_code: 'rate_limit_exceeded',
+        category: 'rate_limit',
+        lifecycle_tier: 'T3',
+        provider: 'mock-provider',
+      }),
     );
 
     // console.warn should NOT have been called
@@ -107,12 +110,9 @@ describe('UnifiedOrchestrator – Logger Integration', () => {
     const logger = createMockLogger();
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, baseConfig, logger);
 
-    const err1 = new Error('err1');
-    err1.status = 429;
-    const err2 = new Error('err2');
-    err2.status = 500;
-    const err3 = new Error('err3');
-    err3.status = 402;
+    const err1 = makeHttpError('err1', 429);
+    const err2 = makeHttpError('err2', 500);
+    const err3 = makeHttpError('err3', 402);
 
     mockAdapter.enqueue(err1);
     mockAdapter.enqueue(err2);
@@ -125,17 +125,17 @@ describe('UnifiedOrchestrator – Logger Integration', () => {
     expect(logger.warn).toHaveBeenNthCalledWith(
       1,
       expect.stringContaining('Attempt 1 of 3'),
-      undefined,
+      expect.objectContaining({ error_code: expect.any(String), provider: 'mock-provider' }),
     );
     expect(logger.warn).toHaveBeenNthCalledWith(
       2,
       expect.stringContaining('Attempt 2 of 3'),
-      undefined,
+      expect.objectContaining({ error_code: expect.any(String), provider: 'mock-provider' }),
     );
     expect(logger.warn).toHaveBeenNthCalledWith(
       3,
       expect.stringContaining('Attempt 3 of 3'),
-      undefined,
+      expect.objectContaining({ error_code: expect.any(String), provider: 'mock-provider' }),
     );
     expect(consoleWarnSpy).not.toHaveBeenCalled();
   });
@@ -145,9 +145,7 @@ describe('UnifiedOrchestrator – Logger Integration', () => {
   it('should fall back to console.warn when no logger is provided', async () => {
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, baseConfig);
 
-    const err = new Error('fallback test');
-    err.status = 500;
-    mockAdapter.enqueue(err);
+    mockAdapter.enqueue(makeHttpError('fallback test', 500));
     mockAdapter.enqueue({ id: 'ok' });
 
     const req = { provider: 'mock-provider', actualModelId: 'test-model' };
@@ -162,9 +160,7 @@ describe('UnifiedOrchestrator – Logger Integration', () => {
   it('should fall back to console.warn when logger is explicitly null', async () => {
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, baseConfig, null);
 
-    const err = new Error('null logger');
-    err.status = 500;
-    mockAdapter.enqueue(err);
+    mockAdapter.enqueue(makeHttpError('null logger', 500));
     mockAdapter.enqueue({ id: 'ok' });
 
     const req = { provider: 'mock-provider', actualModelId: 'test-model' };
@@ -195,17 +191,19 @@ describe('UnifiedOrchestrator – Logger Integration', () => {
     const logger = createMockLogger();
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, baseConfig, logger);
 
-    const err = new Error('Specific provider error: quota exceeded');
-    err.status = 429;
-    mockAdapter.enqueue(err);
+    mockAdapter.enqueue(makeHttpError('You exceeded your current quota, please check your plan', 429));
     mockAdapter.enqueue({ id: 'ok' });
 
     const req = { provider: 'mock-provider', actualModelId: 'test-model' };
     await orchestrator.executeCompletion(req, {});
 
     expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining('Specific provider error: quota exceeded'),
-      undefined,
+      expect.stringContaining('You exceeded your current quota'),
+      expect.objectContaining({
+        error_code: 'daily_tokens_exceeded',
+        lifecycle_tier: 'T1',
+        provider: 'mock-provider',
+      }),
     );
   });
 
@@ -228,7 +226,10 @@ describe('UnifiedOrchestrator – Logger Integration', () => {
     expect(logger.warn).toHaveBeenCalledTimes(1);
     expect(logger.warn).toHaveBeenCalledWith(
       expect.stringContaining('raw string error'),
-      undefined,
+      expect.objectContaining({
+        error_code: expect.any(String),
+        provider: 'mock-provider',
+      }),
     );
   });
 
@@ -251,13 +252,8 @@ describe('UnifiedOrchestrator – Logger Integration', () => {
     pf.register('primary', primaryAdapter);
     pf.register('fallback', fallbackAdapter);
 
-    const err1 = new Error('primary fail');
-    err1.status = 500;
-    primaryAdapter.enqueue(err1);
-
-    const err2 = new Error('fallback fail');
-    err2.status = 503;
-    fallbackAdapter.enqueue(err2);
+    primaryAdapter.enqueue(makeHttpError('primary fail', 500));
+    fallbackAdapter.enqueue(makeHttpError('engine overloaded', 503));
 
     const logger = createMockLogger();
     const orchestrator = new UnifiedOrchestrator(kr, pf, config, logger);
@@ -274,12 +270,12 @@ describe('UnifiedOrchestrator – Logger Integration', () => {
     expect(logger.warn).toHaveBeenNthCalledWith(
       1,
       expect.stringContaining("provider 'primary' failed"),
-      undefined,
+      expect.objectContaining({ error_code: 'internal_server_error', lifecycle_tier: 'T4' }),
     );
     expect(logger.warn).toHaveBeenNthCalledWith(
       2,
       expect.stringContaining("provider 'fallback' failed"),
-      undefined,
+      expect.objectContaining({ error_code: 'engine_overloaded', lifecycle_tier: 'T4' }),
     );
   });
 
@@ -303,9 +299,7 @@ describe('UnifiedOrchestrator – Logger Integration', () => {
     };
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, baseConfig, logger);
 
-    const err = new Error('Rate limited');
-    err.status = 429;
-    mockAdapter.enqueue(err);
+    mockAdapter.enqueue(makeHttpError('Rate limited', 429));
     mockAdapter.enqueue({ id: 'ok' });
 
     const req = { provider: 'mock-provider', actualModelId: 'test-model' };

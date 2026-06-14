@@ -33,7 +33,7 @@ describe('retryExecutor upstream error propagation', () => {
 
     const keyRegistry = new KeyRegistry(config);
     const providerFactory = new ProviderFactory(config);
-    const adapter = new OpenAICompatibleAdapter('https://router.requesty.ai', 'requesty');
+    const adapter = new OpenAICompatibleAdapter({ baseUrl: 'https://router.requesty.ai', providerName: 'requesty' });
     providerFactory.register('requesty', adapter);
 
     mockFetch.mockResolvedValue({
@@ -70,7 +70,7 @@ describe('retryExecutor upstream error propagation', () => {
 
     const keyRegistry = new KeyRegistry(config);
     const providerFactory = new ProviderFactory(config);
-    const adapter = new AnthropicAdapter('https://router.requesty.ai', null, 'requesty');
+    const adapter = new AnthropicAdapter({ baseUrl: 'https://router.requesty.ai', providerName: 'requesty' });
     providerFactory.register('requesty', adapter);
 
     mockFetch.mockResolvedValue({
@@ -114,7 +114,7 @@ describe('retryExecutor upstream error propagation', () => {
 
     const keyRegistry = new KeyRegistry(config);
     const providerFactory = new ProviderFactory(config);
-    const adapter = new OpenAICompatibleAdapter('https://router.requesty.ai', 'requesty');
+    const adapter = new OpenAICompatibleAdapter({ baseUrl: 'https://router.requesty.ai', providerName: 'requesty' });
     providerFactory.register('requesty', adapter);
 
     mockFetch.mockResolvedValue({
@@ -148,7 +148,7 @@ describe('retryExecutor upstream error propagation', () => {
     keyRegistry.pools.requesty.keys[0].cooldownUntil = Date.now() + 60000;
 
     const providerFactory = new ProviderFactory(config);
-    const adapter = new OpenAICompatibleAdapter('https://router.requesty.ai/v1', 'requesty');
+    const adapter = new OpenAICompatibleAdapter({ baseUrl: 'https://router.requesty.ai/v1', providerName: 'requesty' });
     providerFactory.register('requesty', adapter);
 
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);

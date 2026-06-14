@@ -13,6 +13,7 @@ import {
   shouldCooldownKey,
 } from '../common/upstreamErrors.js';
 import { logDebug, logWarning } from '../logging/loggerHelpers.js';
+import { buildUpstreamErrorLogFields } from '../logging/upstreamErrorLogMeta.js';
 
 /**
  * Constructs a 503 error payload when all keys are unavailable.
@@ -60,7 +61,7 @@ function buildPoolUnavailableError(provider, keyRegistry) {
  * @param {Error|null} lastError - The most recent upstream error, if any.
  * @returns {Object} Normalized error payload.
  */
-function buildFinalError(provider, keyRegistry, adapter, lastError, req) {
+function buildFinalError(provider, keyRegistry, adapter, lastError, req, logger) {
   if (lastError) {
     const normalized = adapter.normalizeError(lastError, req);
     return buildClientErrorEnvelope(
@@ -75,6 +76,14 @@ function buildFinalError(provider, keyRegistry, adapter, lastError, req) {
     );
   }
 
+  logWarning(logger, `All keys for provider '${provider}' are in cooldown.`, {
+    error_code: 'poolUnavailable',
+    category: undefined,
+    lifecycle_tier: 'none',
+    provider,
+    client_http_status: 503,
+    error_source: 'pool',
+  });
   return buildPoolUnavailableError(provider, keyRegistry);
 }
 
@@ -135,7 +144,7 @@ export const executeWithRetry = async ({
       logDebug(logger, 'No active keys available in pool for provider', { provider });
       if (req.isFallback) {
         // If we are already on a fallback provider, we halt and fail immediately.
-        return buildFinalError(provider, keyRegistry, adapter, lastError, req);
+        return buildFinalError(provider, keyRegistry, adapter, lastError, req, logger);
       }
       if (req.fallbackModel) {
         // Return a signal to switch the orchestrator to the designated fallback provider/model.
@@ -209,6 +218,12 @@ export const executeWithRetry = async ({
           } catch (streamErr) {
             if (!abortController.signal.aborted) {
               const normalized = adapter.normalizeError(streamErr, req);
+              const streamMsg = normalized.message || streamErr?.message || String(streamErr);
+              logWarning(
+                logger,
+                `Streaming attempt for provider '${provider}' failed. Reason: ${streamMsg}`,
+                buildUpstreamErrorLogFields(normalized),
+              );
               if (shouldCooldownKey(normalized.category, normalized.code)) {
                 keyRegistry.flagFailure(provider, apiKey, {
                   category: normalized.category,
@@ -267,10 +282,10 @@ export const executeWithRetry = async ({
       const normalized = adapter.normalizeError(error, req);
       const reasonMsg = normalized.message || error?.message || String(error);
       const msg = `Attempt ${attempt} of ${retryLimit} for provider '${provider}' failed. Reason: ${reasonMsg}`;
-      logWarning(logger, msg);
+      logWarning(logger, msg, buildUpstreamErrorLogFields(normalized));
 
       if (!isRetryable(normalized.category, normalized.code)) {
-        return buildFinalError(provider, keyRegistry, adapter, lastError, req);
+        return buildFinalError(provider, keyRegistry, adapter, lastError, req, logger);
       }
 
       if (shouldCooldownKey(normalized.category, normalized.code)) {
@@ -288,5 +303,5 @@ export const executeWithRetry = async ({
     return { triggerFallback: true };
   }
 
-  return buildFinalError(provider, keyRegistry, adapter, lastError, req);
+  return buildFinalError(provider, keyRegistry, adapter, lastError, req, logger);
 };

@@ -13,6 +13,15 @@ gateway:
   # This differs from client rate limits (below), which control the frequency of requests over time.
   httpTimeoutMs: 120000
 
+  # Optional streaming timeout in milliseconds (positive integer).
+  # When set, applies only to streaming upstream calls; non-streaming
+  # completions continue using httpTimeoutMs above.
+  # When omitted, streams inherit httpTimeoutMs (current default behavior).
+  # Trade-off: a low value protects against hung streams but may truncate
+  # long generations; set higher than httpTimeoutMs when streams routinely
+  # exceed completion timeouts.
+  # streamTimeoutMs: 600000
+
   # Cooldown settings for tiered key lifecycle (optional).
   # When a key fails upstream, Waypoint puts it in cooldown for a tier-specific
   # duration instead of exhausting it. The key auto-reactivates when the timer

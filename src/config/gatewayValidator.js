@@ -39,6 +39,11 @@ export class GatewayValidator {
       logErrorAndExitOrThrow("Invalid 'gateway.httpTimeoutMs'. Must be a positive integer.", shouldExit, customLogger);
     }
 
+    if (gateway.streamTimeoutMs !== undefined
+      && !isPositiveInteger(gateway.streamTimeoutMs)) {
+      logErrorAndExitOrThrow("Invalid 'gateway.streamTimeoutMs'. Must be a positive integer.", shouldExit, customLogger);
+    }
+
     if (gateway.cooldown !== undefined) {
       if (typeof gateway.cooldown !== 'object' || gateway.cooldown === null) {
         logErrorAndExitOrThrow("Invalid 'gateway.cooldown'. Must be an object.", shouldExit, customLogger);

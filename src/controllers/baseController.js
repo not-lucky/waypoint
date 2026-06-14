@@ -8,6 +8,7 @@ import {
   normalizeUpstreamError,
   UpstreamError,
 } from '../common/upstreamErrors.js';
+import { buildUpstreamErrorLogFields } from '../logging/upstreamErrorLogMeta.js';
 
 /**
  * Base class for all protocol controllers.
@@ -36,7 +37,17 @@ export class BaseController {
    */
   async handleError(res, reqLog, error, statusCode = null) {
     const finalStatus = statusCode || error.httpStatus || 500;
-    this.logger.debug('Handling controller error', { code: error.code, status: finalStatus });
+    const logMeta = error.category
+      ? buildUpstreamErrorLogFields(
+        { ...error, httpStatus: finalStatus },
+        { errorSource: error.errorSource || 'upstream' },
+      )
+      : {
+        error_code: error.code,
+        client_http_status: finalStatus,
+        error_source: error.errorSource || 'gateway',
+      };
+    this.logger.debug('Handling controller error', logMeta);
 
     if (error.retryAfterSeconds !== undefined) {
       res.setHeader('Retry-After', String(error.retryAfterSeconds));
@@ -73,15 +84,16 @@ export class BaseController {
    */
   emitStreamError(res, reqLog, err, formatSseError, provider, chunkCount) {
     const envelope = BaseController.normalizeStreamFailureForClient(err, provider);
-    if (envelope.error.retryAfterSeconds !== undefined) {
+    const normalized = normalizeUpstreamError(err, err?.provider || provider);
+    if (envelope.error.retryAfterSeconds !== undefined && !res.headersSent) {
       res.setHeader('Retry-After', String(envelope.error.retryAfterSeconds));
     }
     const sseData = formatSseError(envelope);
     reqLog.appendStreamEvent('client', sseData);
     res.write(sseData);
     this.logger.debug('SSE stream error emitted to client', {
-      code: envelope.error.code,
       chunkCount,
+      ...buildUpstreamErrorLogFields(normalized),
     });
     reqLog.logClientResponse(200, {
       _streamed: true,

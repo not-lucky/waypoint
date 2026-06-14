@@ -7,7 +7,7 @@ import {
 import { UnifiedOrchestrator } from '../../src/services/unifiedOrchestrator.js';
 import { KeyRegistry } from '../../src/registry/keyRegistry.js';
 import { ProviderFactory } from '../../src/adapters/providerFactory.js';
-import { normalizeTestError } from '../helpers/normalizeTestError.js';
+import { makeHttpError, normalizeTestError } from '../helpers/normalizeTestError.js';
 
 class MockAdapter {
   constructor() {
@@ -51,10 +51,8 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     const mockAdapter = new MockAdapter();
     providerFactory.register('mock-provider', mockAdapter);
 
-    const err1 = new Error('Temporary Rate Limit');
-    err1.status = 429;
-    const err2 = new Error('Transient Internal Server Error');
-    err2.status = 500;
+    const err1 = makeHttpError('Rate limit exceeded', 429);
+    const err2 = makeHttpError('Internal Server Error', 500);
 
     const mockResponse = {
       id: 'waypoint-retry-ok',
@@ -221,9 +219,7 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     const mockAdapter = new MockAdapter();
     providerFactory.register('mock-provider', mockAdapter);
 
-    const err = new Error('Failure');
-    err.status = 500;
-    mockAdapter.enqueue(err);
+    mockAdapter.enqueue(makeHttpError('Failure', 500));
 
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
     const req = { provider: 'mock-provider', actualModelId: 'test-model' };
@@ -367,20 +363,12 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     providerFactory.register('fallback-provider', fallbackAdapter);
 
     // Setup errors for primary (2 retries fail)
-    const errP1 = new Error('P1 Failed');
-    errP1.status = 500;
-    const errP2 = new Error('P2 Failed');
-    errP2.status = 500;
-    primaryAdapter.enqueue(errP1);
-    primaryAdapter.enqueue(errP2);
+    primaryAdapter.enqueue(makeHttpError('P1 Failed', 500));
+    primaryAdapter.enqueue(makeHttpError('P2 Failed', 500));
 
     // Setup errors for fallback (2 retries fail)
-    const errF1 = new Error('F1 Failed');
-    errF1.status = 500;
-    const errF2 = new Error('F2 Failed');
-    errF2.status = 500;
-    fallbackAdapter.enqueue(errF1);
-    fallbackAdapter.enqueue(errF2);
+    fallbackAdapter.enqueue(makeHttpError('F1 Failed', 500));
+    fallbackAdapter.enqueue(makeHttpError('F2 Failed', 500));
 
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
     const req = {

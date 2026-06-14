@@ -25,7 +25,7 @@ export async function* executeStandardStream(req, apiKey, signal, requestLog, ad
     payload,
     signal,
     requestLog,
-    adapter.timeoutMs,
+    adapter.resolveStreamTimeoutMs(),
   );
 
   const chunkId = `waypoint-chunk-${Date.now()}`;

@@ -21,6 +21,30 @@ export const BILLING_CODES = new Set([
   'daily_tokens_exceeded',
 ]);
 
+/** Permission recovery codes (T2). */
+export const PERMISSION_CODES = new Set([
+  'forbidden',
+  'region_not_supported',
+  'org_membership_required',
+  'ip_not_authorized',
+]);
+
+/** Rate limit codes (T3). */
+export const RATE_LIMIT_CODES = new Set([
+  'rate_limit_exceeded',
+  'tokens_per_minute_exceeded',
+  'concurrent_requests_exceeded',
+]);
+
+/** Transient server error codes (T4). */
+export const SERVER_CODES = new Set([
+  'internal_server_error',
+  'engine_overloaded',
+  'service_unavailable',
+  'gateway_timeout',
+  'bad_gateway',
+]);
+
 /**
  * Attaches retryAfterSeconds to a classification result when the header was present.
  *
@@ -64,6 +88,339 @@ export function parseRetryAfter(headerValue) {
 }
 
 /**
+ * Extracts the error object from an upstream response body.
+ *
+ * @param {any} errorBody - Parsed JSON or string body from upstream.
+ * @returns {Object}
+ */
+function extractUpstreamErrorObject(errorBody) {
+  if (errorBody?.error && typeof errorBody.error === 'object') {
+    return errorBody.error;
+  }
+  if (errorBody && typeof errorBody === 'object' && !Array.isArray(errorBody)) {
+    return errorBody;
+  }
+  return {};
+}
+
+/**
+ * Builds normalized classification context from upstream inputs.
+ *
+ * @param {number} statusCode - HTTP status code from upstream.
+ * @param {any} errorBody - Parsed JSON or string body from upstream.
+ * @param {Object} [headers] - Response headers (e.g. for Retry-After).
+ * @returns {Object}
+ */
+function buildClassificationContext(statusCode, errorBody, headers = {}) {
+  const errObj = extractUpstreamErrorObject(errorBody);
+  const type = errObj?.type || '';
+  const code = errObj?.code || '';
+  const message = errObj?.message || (typeof errorBody === 'string' ? errorBody : '');
+  const msgLower = message.toLowerCase();
+  const codeLower = String(code).toLowerCase();
+
+  let retryAfterSeconds;
+  if (headers) {
+    const retryAfterHeader = headers['retry-after'] || headers['Retry-After'];
+    retryAfterSeconds = parseRetryAfter(retryAfterHeader);
+  }
+
+  return {
+    statusCode,
+    type,
+    code,
+    message,
+    msgLower,
+    codeLower,
+    retryAfterSeconds,
+  };
+}
+
+/**
+ * @param {Object} result - Classification result fields.
+ * @param {Object} ctx - Classification context.
+ * @returns {Object}
+ */
+function finalizeClassification(result, ctx) {
+  return withRetryAfter({
+    type: result.type,
+    code: result.code,
+    category: result.category,
+    message: ctx.message,
+  }, ctx.retryAfterSeconds);
+}
+
+/** @type {Record<number|string, Array<{ match: Function, result: Function }>>} */
+const HTTP_STATUS_RULES = {
+  401: [
+    {
+      match: (ctx) => ctx.msgLower.includes('member of an organization') || ctx.codeLower === 'org_membership_required',
+      result: () => ({
+        type: 'authentication_error', code: 'org_membership_required', category: ERROR_CATEGORIES.AUTH,
+      }),
+    },
+    {
+      match: (ctx) => ctx.msgLower.includes('ip not authorized') || ctx.codeLower === 'ip_not_authorized',
+      result: () => ({
+        type: 'authentication_error', code: 'ip_not_authorized', category: ERROR_CATEGORIES.AUTH,
+      }),
+    },
+    {
+      match: (ctx) => ctx.msgLower.includes('no authorization') || ctx.msgLower.includes('missing') || ctx.codeLower === 'no_api_key',
+      result: () => ({
+        type: 'authentication_error', code: 'no_api_key', category: ERROR_CATEGORIES.AUTH,
+      }),
+    },
+    {
+      match: () => true,
+      result: () => ({
+        type: 'authentication_error', code: 'invalid_api_key', category: ERROR_CATEGORIES.AUTH,
+      }),
+    },
+  ],
+  403: [
+    {
+      match: (ctx) => ctx.msgLower.includes('country') || ctx.msgLower.includes('region')
+        || ctx.msgLower.includes('territory not supported') || ctx.codeLower === 'region_not_supported',
+      result: () => ({
+        type: 'permission_denied_error', code: 'region_not_supported', category: ERROR_CATEGORIES.AUTH,
+      }),
+    },
+    {
+      match: () => true,
+      result: () => ({
+        type: 'permission_denied_error', code: 'forbidden', category: ERROR_CATEGORIES.AUTH,
+      }),
+    },
+  ],
+  402: [
+    {
+      match: (ctx) => ctx.msgLower.includes('hard limit') || ctx.codeLower.includes('hard_limit'),
+      result: () => ({
+        type: 'billing_error', code: 'billing_hard_limit_reached', category: ERROR_CATEGORIES.BILLING,
+      }),
+    },
+    {
+      match: () => true,
+      result: () => ({
+        type: 'billing_error', code: 'insufficient_quota', category: ERROR_CATEGORIES.BILLING,
+      }),
+    },
+  ],
+  429: [
+    {
+      match: (ctx) => ctx.msgLower.includes('exceeded your current quota') || ctx.msgLower.includes('daily')
+        || ctx.msgLower.includes('monthly') || ctx.codeLower.includes('daily') || ctx.codeLower.includes('quota'),
+      result: () => ({
+        type: 'billing_error', code: 'daily_tokens_exceeded', category: ERROR_CATEGORIES.BILLING,
+      }),
+    },
+    {
+      match: (ctx) => ctx.msgLower.includes('tokens per minute') || ctx.msgLower.includes('tpm')
+        || ctx.codeLower.includes('tokens'),
+      result: () => ({
+        type: 'rate_limit_error', code: 'tokens_per_minute_exceeded', category: ERROR_CATEGORIES.RATE_LIMIT,
+      }),
+    },
+    {
+      match: (ctx) => ctx.msgLower.includes('concurrent') || ctx.codeLower.includes('concurrent'),
+      result: () => ({
+        type: 'rate_limit_error', code: 'concurrent_requests_exceeded', category: ERROR_CATEGORIES.RATE_LIMIT,
+      }),
+    },
+    {
+      match: () => true,
+      result: () => ({
+        type: 'rate_limit_error', code: 'rate_limit_exceeded', category: ERROR_CATEGORIES.RATE_LIMIT,
+      }),
+    },
+  ],
+  404: [
+    {
+      match: (ctx) => ctx.msgLower.includes('endpoint') || ctx.msgLower.includes('path')
+        || ctx.msgLower.includes('url') || ctx.msgLower.includes('page')
+        || ctx.msgLower.includes('route') || ctx.msgLower.includes('html'),
+      result: () => ({
+        type: 'not_found_error', code: 'endpoint_not_found', category: ERROR_CATEGORIES.MODEL_RESOURCE,
+      }),
+    },
+    {
+      match: () => true,
+      result: () => ({
+        type: 'not_found_error', code: 'model_not_found', category: ERROR_CATEGORIES.MODEL_RESOURCE,
+      }),
+    },
+  ],
+  451: [
+    {
+      match: () => true,
+      result: () => ({
+        type: 'content_policy_violation', code: 'content_unavailable_legal', category: ERROR_CATEGORIES.CONTENT_POLICY,
+      }),
+    },
+  ],
+  413: [
+    {
+      match: () => true,
+      result: () => ({
+        type: 'invalid_request_error', code: 'request_too_large', category: ERROR_CATEGORIES.VALIDATION,
+      }),
+    },
+  ],
+  422: [
+    {
+      match: () => true,
+      result: () => ({
+        type: 'invalid_request_error', code: 'unprocessable_entity', category: ERROR_CATEGORIES.VALIDATION,
+      }),
+    },
+  ],
+  400: [
+    {
+      match: (ctx) => ctx.msgLower.includes('content filter') || ctx.msgLower.includes('safety')
+        || ctx.msgLower.includes('policy') || ctx.codeLower === 'content_filter',
+      result: () => ({
+        type: 'content_policy_violation', code: 'content_filter', category: ERROR_CATEGORIES.CONTENT_POLICY,
+      }),
+    },
+    {
+      match: (ctx) => ctx.msgLower.includes('moderation') || ctx.codeLower === 'moderation_flagged',
+      result: () => ({
+        type: 'content_policy_violation', code: 'moderation_flagged', category: ERROR_CATEGORIES.CONTENT_POLICY,
+      }),
+    },
+    {
+      match: (ctx) => ctx.msgLower.includes('feature not supported') || ctx.msgLower.includes('unsupported feature')
+        || ctx.codeLower === 'unsupported_feature',
+      result: () => ({
+        type: 'invalid_request_error', code: 'unsupported_feature', category: ERROR_CATEGORIES.MODEL_RESOURCE,
+      }),
+    },
+    {
+      match: (ctx) => ctx.msgLower.includes('context length') || ctx.msgLower.includes('context window')
+        || ctx.msgLower.includes('max_tokens exceeds') || ctx.codeLower === 'context_length_exceeded',
+      result: () => ({
+        type: 'invalid_request_error', code: 'context_length_exceeded', category: ERROR_CATEGORIES.VALIDATION,
+      }),
+    },
+    {
+      match: (ctx) => (ctx.msgLower.includes('max_tokens') && (ctx.msgLower.includes('too large') || ctx.msgLower.includes('exceeds')))
+        || ctx.codeLower === 'max_tokens_too_large',
+      result: () => ({
+        type: 'invalid_request_error', code: 'max_tokens_too_large', category: ERROR_CATEGORIES.VALIDATION,
+      }),
+    },
+    {
+      match: (ctx) => ctx.msgLower.includes('role') || ctx.codeLower === 'invalid_message_role',
+      result: () => ({
+        type: 'invalid_request_error', code: 'invalid_message_role', category: ERROR_CATEGORIES.VALIDATION,
+      }),
+    },
+    {
+      match: (ctx) => ctx.msgLower.includes('tool') || ctx.msgLower.includes('function')
+        || ctx.codeLower === 'invalid_tool_definition',
+      result: () => ({
+        type: 'invalid_request_error', code: 'invalid_tool_definition', category: ERROR_CATEGORIES.VALIDATION,
+      }),
+    },
+    {
+      match: (ctx) => ctx.msgLower.includes('conflict') || ctx.msgLower.includes('incompatible')
+        || ctx.codeLower === 'incompatible_params',
+      result: () => ({
+        type: 'invalid_request_error', code: 'incompatible_params', category: ERROR_CATEGORIES.VALIDATION,
+      }),
+    },
+    {
+      match: (ctx) => ctx.msgLower.includes('missing') || ctx.msgLower.includes('required')
+        || ctx.codeLower === 'missing_required_param',
+      result: () => ({
+        type: 'invalid_request_error', code: 'missing_required_param', category: ERROR_CATEGORIES.VALIDATION,
+      }),
+    },
+    {
+      match: (ctx) => ctx.msgLower.includes('invalid type') || ctx.codeLower === 'invalid_type',
+      result: () => ({
+        type: 'invalid_request_error', code: 'invalid_type', category: ERROR_CATEGORIES.VALIDATION,
+      }),
+    },
+    {
+      match: () => true,
+      result: () => ({
+        type: 'invalid_request_error', code: 'invalid_parameter_value', category: ERROR_CATEGORIES.VALIDATION,
+      }),
+    },
+  ],
+  503: [
+    {
+      match: (ctx) => ctx.msgLower.includes('slow down') || ctx.codeLower === 'rate_reduction_required',
+      result: () => ({
+        type: 'api_error', code: 'rate_reduction_required', category: ERROR_CATEGORIES.SERVER,
+      }),
+    },
+    {
+      match: (ctx) => ctx.msgLower.includes('overloaded') || ctx.msgLower.includes('capacity')
+        || ctx.codeLower === 'engine_overloaded',
+      result: () => ({
+        type: 'overloaded_error', code: 'engine_overloaded', category: ERROR_CATEGORIES.MODEL_RESOURCE,
+      }),
+    },
+    {
+      match: () => true,
+      result: () => ({
+        type: 'api_error', code: 'service_unavailable', category: ERROR_CATEGORIES.SERVER,
+      }),
+    },
+  ],
+  504: [
+    {
+      match: () => true,
+      result: () => ({
+        type: 'api_error', code: 'gateway_timeout', category: ERROR_CATEGORIES.SERVER,
+      }),
+    },
+  ],
+  502: [
+    {
+      match: () => true,
+      result: () => ({
+        type: 'api_error', code: 'bad_gateway', category: ERROR_CATEGORIES.SERVER,
+      }),
+    },
+  ],
+};
+
+const STREAM_STATUS_RULES = [
+  {
+    match: (ctx) => ctx.typeLower.includes('rate_limit') || ctx.codeLower.includes('rate_limit'),
+    result: () => ({ status: 429 }),
+  },
+  {
+    match: (ctx) => ctx.typeLower.includes('authentication') || ctx.codeLower.includes('api_key') || ctx.codeLower === 'no_api_key',
+    result: () => ({ status: 401 }),
+  },
+  {
+    match: (ctx) => ctx.typeLower.includes('permission') || ctx.codeLower === 'forbidden' || ctx.codeLower === 'region_not_supported',
+    result: () => ({ status: 403 }),
+  },
+  {
+    match: (ctx) => ctx.typeLower.includes('billing') || ctx.codeLower.includes('quota') || ctx.codeLower.includes('billing'),
+    result: () => ({ status: 402 }),
+  },
+  {
+    match: (ctx) => ctx.typeLower.includes('invalid_request') || ctx.codeLower.includes('invalid_'),
+    result: () => ({ status: 400 }),
+  },
+  {
+    match: (ctx) => ctx.typeLower.includes('not_found') || ctx.codeLower.includes('not_found'),
+    result: () => ({ status: 404 }),
+  },
+  {
+    match: (ctx) => ctx.typeLower.includes('overloaded') || ctx.codeLower === 'engine_overloaded',
+    result: () => ({ status: 503 }),
+  },
+];
+
+/**
  * Resolves an HTTP status code from a stream error payload.
  *
  * @param {any} errorPayload - Parsed SSE error JSON.
@@ -82,28 +439,15 @@ function resolveStreamErrorStatus(errorPayload, fallback = 502) {
     return err.status;
   }
 
-  const code = String(err?.code || '').toLowerCase();
-  const type = String(err?.type || '').toLowerCase();
-  if (type.includes('rate_limit') || code.includes('rate_limit')) {
-    return 429;
-  }
-  if (type.includes('authentication') || code.includes('api_key') || code === 'no_api_key') {
-    return 401;
-  }
-  if (type.includes('permission') || code === 'forbidden' || code === 'region_not_supported') {
-    return 403;
-  }
-  if (type.includes('billing') || code.includes('quota') || code.includes('billing')) {
-    return 402;
-  }
-  if (type.includes('invalid_request') || code.includes('invalid_')) {
-    return 400;
-  }
-  if (type.includes('not_found') || code.includes('not_found')) {
-    return 404;
-  }
-  if (type.includes('overloaded') || code === 'engine_overloaded') {
-    return 503;
+  const ctx = {
+    codeLower: String(err?.code || '').toLowerCase(),
+    typeLower: String(err?.type || '').toLowerCase(),
+  };
+
+  for (const rule of STREAM_STATUS_RULES) {
+    if (rule.match(ctx)) {
+      return rule.result(ctx).status;
+    }
   }
 
   return fallback;
@@ -121,6 +465,21 @@ export class UpstreamError extends Error {
     this.retryAfterSeconds = options.retryAfterSeconds || undefined;
     this.category = options.category || ERROR_CATEGORIES.SERVER;
   }
+
+  /**
+   * Redacted JSON representation for structured logging.
+   *
+   * @returns {Object}
+   */
+  toJSON() {
+    return {
+      errorCode: this.errorCode,
+      category: this.category,
+      statusCode: this.statusCode,
+      provider: this.provider,
+      retryAfterSeconds: this.retryAfterSeconds,
+    };
+  }
 }
 
 /**
@@ -132,250 +491,38 @@ export class UpstreamError extends Error {
  * @returns {{ type: string, code: string, category: string, message: string }}
  */
 export function classifyUpstreamError(statusCode, errorBody, headers = {}) {
-  const errObj = errorBody?.error || errorBody || {};
-  const type = errObj?.type || '';
-  const code = errObj?.code || '';
-  const message = errObj?.message || (typeof errorBody === 'string' ? errorBody : '');
+  const ctx = buildClassificationContext(statusCode, errorBody, headers);
+  const rules = HTTP_STATUS_RULES[statusCode];
 
-  // Normalize inputs to lowercase for robust keyword matching
-  const msgLower = message.toLowerCase();
-  const codeLower = String(code).toLowerCase();
-
-  // Retry-After header extraction
-  let retryAfterSeconds;
-  if (headers) {
-    const retryAfterHeader = headers['retry-after'] || headers['Retry-After'];
-    retryAfterSeconds = parseRetryAfter(retryAfterHeader);
-  }
-
-  // 1. HTTP 401 - Auth
-  if (statusCode === 401) {
-    let errorCode = 'invalid_api_key';
-    if (msgLower.includes('no authorization') || msgLower.includes('missing') || codeLower === 'no_api_key') {
-      errorCode = 'no_api_key';
-    } else if (msgLower.includes('member of an organization') || codeLower === 'org_membership_required') {
-      errorCode = 'org_membership_required';
-    } else if (msgLower.includes('ip not authorized') || codeLower === 'ip_not_authorized') {
-      errorCode = 'ip_not_authorized';
+  if (rules) {
+    for (const rule of rules) {
+      if (rule.match(ctx)) {
+        return finalizeClassification(rule.result(ctx), ctx);
+      }
     }
-    return withRetryAfter({
-      type: 'authentication_error',
-      code: errorCode,
-      category: ERROR_CATEGORIES.AUTH,
-      message,
-    }, retryAfterSeconds);
   }
 
-  // 2. HTTP 403 - Permission Denied
-  if (statusCode === 403) {
-    let errorCode = 'forbidden';
-    if (msgLower.includes('country') || msgLower.includes('region') || msgLower.includes('territory not supported') || codeLower === 'region_not_supported') {
-      errorCode = 'region_not_supported';
-    }
-    return withRetryAfter({
-      type: 'permission_denied_error',
-      code: errorCode,
-      category: ERROR_CATEGORIES.AUTH,
-      message,
-    }, retryAfterSeconds);
-  }
-
-  // 3. HTTP 402 - Billing / Insufficient Quota
-  if (statusCode === 402) {
-    let errorCode = 'insufficient_quota';
-    if (msgLower.includes('hard limit') || codeLower.includes('hard_limit')) {
-      errorCode = 'billing_hard_limit_reached';
-    }
-    return withRetryAfter({
-      type: 'billing_error',
-      code: errorCode,
-      category: ERROR_CATEGORIES.BILLING,
-      message,
-    }, retryAfterSeconds);
-  }
-
-  // 4. HTTP 429 - Rate Limiting
-  if (statusCode === 429) {
-    let errorCode = 'rate_limit_exceeded';
-    if (msgLower.includes('tokens per minute') || msgLower.includes('tpm') || codeLower.includes('tokens')) {
-      errorCode = 'tokens_per_minute_exceeded';
-    } else if (msgLower.includes('concurrent') || codeLower.includes('concurrent')) {
-      errorCode = 'concurrent_requests_exceeded';
-    } else if (msgLower.includes('exceeded your current quota') || msgLower.includes('daily') || msgLower.includes('monthly') || codeLower.includes('daily') || codeLower.includes('quota')) {
-      errorCode = 'daily_tokens_exceeded';
-    }
-    const isQuotaExhausted = errorCode === 'daily_tokens_exceeded';
-    return withRetryAfter({
-      type: isQuotaExhausted ? 'billing_error' : 'rate_limit_error',
-      code: errorCode,
-      category: isQuotaExhausted ? ERROR_CATEGORIES.BILLING : ERROR_CATEGORIES.RATE_LIMIT,
-      message,
-    }, retryAfterSeconds);
-  }
-
-  // 5. HTTP 404 - Not Found / Endpoint
-  if (statusCode === 404) {
-    let errorCode = 'model_not_found';
-    if (msgLower.includes('endpoint') || msgLower.includes('path') || msgLower.includes('url') || msgLower.includes('page') || msgLower.includes('route') || msgLower.includes('html')) {
-      errorCode = 'endpoint_not_found';
-    }
-    return {
-      type: 'not_found_error',
-      code: errorCode,
-      category: ERROR_CATEGORIES.MODEL_RESOURCE,
-      message,
-    };
-  }
-
-  // 6. HTTP 451 - Content policy legal block
-  if (statusCode === 451) {
-    return {
-      type: 'content_policy_violation',
-      code: 'content_unavailable_legal',
-      category: ERROR_CATEGORIES.CONTENT_POLICY,
-      message,
-    };
-  }
-
-  // 7. HTTP 413 - Payload too large
-  if (statusCode === 413) {
-    return {
-      type: 'invalid_request_error',
-      code: 'request_too_large',
-      category: ERROR_CATEGORIES.VALIDATION,
-      message,
-    };
-  }
-
-  // 8. HTTP 422 - Unprocessable Entity
-  if (statusCode === 422) {
-    return {
-      type: 'invalid_request_error',
-      code: 'unprocessable_entity',
-      category: ERROR_CATEGORIES.VALIDATION,
-      message,
-    };
-  }
-
-  // 9. HTTP 400 - Validation or Content Filter or Unsupported Feature
-  if (statusCode === 400) {
-    // Content filters
-    if (msgLower.includes('content filter') || msgLower.includes('safety') || msgLower.includes('policy') || codeLower === 'content_filter') {
-      return {
-        type: 'content_policy_violation',
-        code: 'content_filter',
-        category: ERROR_CATEGORIES.CONTENT_POLICY,
-        message,
-      };
-    }
-    if (msgLower.includes('moderation') || codeLower === 'moderation_flagged') {
-      return {
-        type: 'content_policy_violation',
-        code: 'moderation_flagged',
-        category: ERROR_CATEGORIES.CONTENT_POLICY,
-        message,
-      };
-    }
-
-    // Unsupported features
-    if (msgLower.includes('feature not supported') || msgLower.includes('unsupported feature') || codeLower === 'unsupported_feature') {
-      return {
-        type: 'invalid_request_error',
-        code: 'unsupported_feature',
-        category: ERROR_CATEGORIES.MODEL_RESOURCE,
-        message,
-      };
-    }
-
-    // Specific request validation failures
-    let errorCode = 'invalid_parameter_value';
-    if (msgLower.includes('context length') || msgLower.includes('context window') || msgLower.includes('max_tokens exceeds') || codeLower === 'context_length_exceeded') {
-      errorCode = 'context_length_exceeded';
-    } else if ((msgLower.includes('max_tokens') && (msgLower.includes('too large') || msgLower.includes('exceeds'))) || codeLower === 'max_tokens_too_large') {
-      errorCode = 'max_tokens_too_large';
-    } else if (msgLower.includes('role') || codeLower === 'invalid_message_role') {
-      errorCode = 'invalid_message_role';
-    } else if (msgLower.includes('tool') || msgLower.includes('function') || codeLower === 'invalid_tool_definition') {
-      errorCode = 'invalid_tool_definition';
-    } else if (msgLower.includes('conflict') || msgLower.includes('incompatible') || codeLower === 'incompatible_params') {
-      errorCode = 'incompatible_params';
-    } else if (msgLower.includes('missing') || msgLower.includes('required') || codeLower === 'missing_required_param') {
-      errorCode = 'missing_required_param';
-    } else if (msgLower.includes('type') || codeLower === 'invalid_type') {
-      errorCode = 'invalid_type';
-    }
-
-    return {
-      type: 'invalid_request_error',
-      code: errorCode,
-      category: ERROR_CATEGORIES.VALIDATION,
-      message,
-    };
-  }
-
-  // 10. HTTP 503 - Slow down vs Engine Overloaded vs Service Unavailable
-  if (statusCode === 503) {
-    if (msgLower.includes('slow down') || codeLower === 'rate_reduction_required') {
-      return withRetryAfter({
-        type: 'api_error',
-        code: 'rate_reduction_required',
-        category: ERROR_CATEGORIES.SERVER,
-        message,
-      }, retryAfterSeconds);
-    }
-    if (msgLower.includes('overloaded') || msgLower.includes('capacity') || codeLower === 'engine_overloaded') {
-      return withRetryAfter({
-        type: 'overloaded_error',
-        code: 'engine_overloaded',
-        category: ERROR_CATEGORIES.MODEL_RESOURCE,
-        message,
-      }, retryAfterSeconds);
-    }
-    return withRetryAfter({
-      type: 'api_error',
-      code: 'service_unavailable',
-      category: ERROR_CATEGORIES.SERVER,
-      message,
-    }, retryAfterSeconds);
-  }
-
-  // 11. HTTP 504 - Gateway Timeout
-  if (statusCode === 504) {
-    return withRetryAfter({
-      type: 'api_error',
-      code: 'gateway_timeout',
-      category: ERROR_CATEGORIES.SERVER,
-      message,
-    }, retryAfterSeconds);
-  }
-
-  // 12. HTTP 502 - Bad Gateway
-  if (statusCode === 502) {
-    return withRetryAfter({
-      type: 'api_error',
-      code: 'bad_gateway',
-      category: ERROR_CATEGORIES.SERVER,
-      message,
-    }, retryAfterSeconds);
-  }
-
-  // Default server error for other 5xx
   if (statusCode >= 500) {
-    return withRetryAfter({
+    return finalizeClassification({
       type: 'api_error',
       code: 'internal_server_error',
       category: ERROR_CATEGORIES.SERVER,
-      message,
-    }, retryAfterSeconds);
+    }, ctx);
   }
 
-  // Generic fallback error
-  return withRetryAfter({
-    type: type || 'api_error',
-    code: code || 'upstream_error',
+  if (statusCode >= 400) {
+    return finalizeClassification({
+      type: 'invalid_request_error',
+      code: ctx.code || 'upstream_client_error',
+      category: ERROR_CATEGORIES.VALIDATION,
+    }, ctx);
+  }
+
+  return finalizeClassification({
+    type: ctx.type || 'api_error',
+    code: ctx.code || 'upstream_error',
     category: ERROR_CATEGORIES.SERVER,
-    message,
-  }, retryAfterSeconds);
+  }, ctx);
 }
 
 /**
@@ -469,19 +616,15 @@ export function shouldCooldownKey(category, code) {
     return true;
   }
 
-  // Key configuration/auth issues
   if (category === ERROR_CATEGORIES.AUTH) {
     return true;
   }
-  // Billing quota issues (exhausted keys)
   if (category === ERROR_CATEGORIES.BILLING) {
     return true;
   }
-  // Rate limiting issues
   if (category === ERROR_CATEGORIES.RATE_LIMIT) {
     return true;
   }
-  // Engine overloaded / server down
   if (category === ERROR_CATEGORIES.SERVER || (category === ERROR_CATEGORIES.MODEL_RESOURCE && code === 'engine_overloaded')) {
     return true;
   }
@@ -489,39 +632,100 @@ export function shouldCooldownKey(category, code) {
 }
 
 /**
+ * Resolves the lifecycle tier label for logging and observability.
+ * Mirrors keyRegistry flagFailure tier decisions.
+ *
+ * @param {string} category - Error category slug.
+ * @param {string} code - Machine-readable error code.
+ * @returns {string} T0–T5, T4b, or none.
+ */
+export function resolveLifecycleTier(category, code) {
+  if (!code) {
+    return 'none';
+  }
+  if (code === 'no_api_key' || code === 'poolUnavailable' || code === 'requestCancelled') {
+    return 'none';
+  }
+  if (code === 'invalid_api_key') {
+    return 'T0';
+  }
+  if (BILLING_CODES.has(code)) {
+    return 'T1';
+  }
+  if (PERMISSION_CODES.has(code)) {
+    return 'T2';
+  }
+  if (code === 'rate_reduction_required') {
+    return 'T4b';
+  }
+  if (RATE_LIMIT_CODES.has(code)) {
+    return 'T3';
+  }
+  if (SERVER_CODES.has(code) || category === ERROR_CATEGORIES.SERVER) {
+    return 'T4';
+  }
+  if (category === ERROR_CATEGORIES.MODEL_RESOURCE && code === 'engine_overloaded') {
+    return 'T4';
+  }
+  return 'T5';
+}
+
+const CLIENT_STATUS_RULES = [
+  {
+    match: (_upstreamStatus, _category, code) => code === 'forbidden' || code === 'region_not_supported',
+    status: 403,
+  },
+  {
+    match: (_upstreamStatus, _category, code) => code === 'insufficient_quota' || code === 'billing_hard_limit_reached',
+    status: 402,
+  },
+  {
+    match: (_upstreamStatus, _category, code) => code === 'invalid_api_key' || code === 'no_api_key',
+    status: 401,
+  },
+  {
+    match: (_upstreamStatus, _category, code) => (
+      PERMISSION_CODES.has(code)
+      && code !== 'forbidden'
+      && code !== 'region_not_supported'
+    ),
+    status: 401,
+  },
+  {
+    match: (upstreamStatus, category) => (
+      category === ERROR_CATEGORIES.AUTH && upstreamStatus === 402
+    ),
+    status: 402,
+  },
+  {
+    match: (upstreamStatus, category) => (
+      category === ERROR_CATEGORIES.AUTH && upstreamStatus === 403
+    ),
+    status: 403,
+  },
+  {
+    match: (_upstreamStatus, category) => category === ERROR_CATEGORIES.AUTH,
+    status: 401,
+  },
+  {
+    match: (_upstreamStatus, category, code) => category === ERROR_CATEGORIES.SERVER && code === 'internal_server_error',
+    status: 502,
+  },
+  {
+    match: (upstreamStatus) => upstreamStatus === 500,
+    status: 502,
+  },
+];
+
+/**
  * Maps upstream status code and category/code to the status code we return to the client.
  */
 export function getClientHttpStatus(upstreamStatus, category, code) {
-  if (code === 'forbidden' || code === 'region_not_supported') {
-    return 403;
-  }
-  if (code === 'insufficient_quota' || code === 'billing_hard_limit_reached') {
-    return 402;
-  }
-  if (code === 'invalid_api_key' || code === 'no_api_key') {
-    return 401;
-  }
-
-  // fallback for auth & billing category
-  if (category === ERROR_CATEGORIES.AUTH) {
-    if (upstreamStatus === 402) {
-      return 402;
+  for (const rule of CLIENT_STATUS_RULES) {
+    if (rule.match(upstreamStatus, category, code)) {
+      return rule.status;
     }
-    if (upstreamStatus === 403) {
-      return 403;
-    }
-    return 401;
   }
-
-  if (category === ERROR_CATEGORIES.SERVER && code === 'internal_server_error') {
-    // "If persists, return 502 (bad gateway) to client."
-    return 502;
-  }
-
-  if (upstreamStatus === 500) {
-    return 502;
-  }
-
   return upstreamStatus || 502;
 }
 
@@ -565,6 +769,21 @@ export function classifyTransportError(error) {
  * @param {Object} [req] - Normalized internal request (for auth message context).
  * @returns {Object} Normalized error with code, category, type, message, httpStatus, provider.
  */
+function extractResponseHeaders(error) {
+  const rawHeaders = error?.response?.headers ?? error?.headers;
+  if (!rawHeaders) {
+    return {};
+  }
+  if (typeof rawHeaders.entries === 'function') {
+    const headers = {};
+    for (const [key, value] of rawHeaders.entries()) {
+      headers[key.toLowerCase()] = value;
+    }
+    return headers;
+  }
+  return rawHeaders;
+}
+
 export function normalizeUpstreamError(error, providerName, req = null) {
   const status = error?.statusCode ?? error?.status ?? error?.response?.status;
   if (error instanceof UpstreamError || status !== undefined) {
@@ -576,11 +795,17 @@ export function normalizeUpstreamError(error, providerName, req = null) {
     let message = error?.message || String(error);
 
     if (!(error instanceof UpstreamError)) {
-      const classification = classifyUpstreamError(status, error);
+      const errorBody = error?.upstreamBody
+        ?? (error?.error ? { error: error.error } : error);
+      const classification = classifyUpstreamError(
+        status,
+        errorBody,
+        extractResponseHeaders(error),
+      );
       errorCode = classification.code;
       errorType = classification.type;
       category = classification.category;
-      retryAfterSeconds = classification.retryAfterSeconds;
+      retryAfterSeconds = classification.retryAfterSeconds ?? retryAfterSeconds;
       message = classification.message || message;
     }
 
@@ -604,6 +829,7 @@ export function normalizeUpstreamError(error, providerName, req = null) {
       retryAfterSeconds,
       category,
       upstreamBody,
+      upstreamStatus: status,
     };
   }
 

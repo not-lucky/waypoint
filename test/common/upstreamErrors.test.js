@@ -10,7 +10,11 @@ import {
   normalizeUpstreamError,
   parseRetryAfter,
   formatOpenAiSseError,
+  formatAnthropicSseError,
   normalizeStreamFailure,
+  throwIfStreamErrorPayload,
+  throwIfGeminiStreamError,
+  resolveLifecycleTier,
   ERROR_CATEGORIES,
   UpstreamError,
 } from '../../src/common/upstreamErrors.js';
@@ -179,6 +183,45 @@ describe('upstreamErrors.js Tests', () => {
 
       const res2 = classifyUpstreamError(502, { error: { message: 'Bad Gateway' } });
       expect(res2.code).toBe('bad_gateway');
+    });
+
+    it('should classify 413 and 422 validation errors', () => {
+      const res413 = classifyUpstreamError(413, { error: { message: 'Payload too large' } });
+      expect(res413.code).toBe('request_too_large');
+      expect(res413.category).toBe(ERROR_CATEGORIES.VALIDATION);
+
+      const res422 = classifyUpstreamError(422, { error: { message: 'Unprocessable' } });
+      expect(res422.code).toBe('unprocessable_entity');
+      expect(res422.category).toBe(ERROR_CATEGORIES.VALIDATION);
+    });
+
+    it('should classify 500 server errors', () => {
+      const res = classifyUpstreamError(500, { error: { message: 'Internal error' } });
+      expect(res.code).toBe('internal_server_error');
+      expect(res.category).toBe(ERROR_CATEGORIES.SERVER);
+    });
+
+    it('should classify unknown 4xx as validation (T5), not server', () => {
+      const res = classifyUpstreamError(
+        418,
+        { error: { type: 'api_error', code: 'upstream_error', message: 'Teapot' } },
+        { 'retry-after': '15' },
+      );
+      expect(res.category).toBe(ERROR_CATEGORIES.VALIDATION);
+      expect(res.code).toBe('upstream_error');
+      expect(res.retryAfterSeconds).toBe(15);
+      expect(isRetryable(res.category, res.code)).toBe(false);
+      expect(shouldCooldownKey(res.category, res.code)).toBe(false);
+      expect(resolveLifecycleTier(res.category, res.code)).toBe('T5');
+    });
+
+    it('should prefer org_membership_required over generic missing keyword on 401', () => {
+      const res = classifyUpstreamError(401, {
+        error: {
+          message: 'You must be a member of an organization; missing org id',
+        },
+      });
+      expect(res.code).toBe('org_membership_required');
     });
   });
 
@@ -352,6 +395,75 @@ describe('upstreamErrors.js Tests', () => {
       expect(sse).toContain('data: {"error":');
       expect(sse).toContain('data: [DONE]');
     });
+
+    it('should format Anthropic SSE error frames with v1 envelope', () => {
+      const sse = formatAnthropicSseError({
+        error: {
+          code: 'rate_limit_exceeded',
+          message: 'Rate limit exceeded.',
+          httpStatus: 429,
+          type: 'rate_limit_error',
+          provider: 'anthropic',
+        },
+      });
+      expect(sse).toContain('event: error');
+      expect(sse).toContain('"code":"rate_limit_exceeded"');
+    });
+
+    it('should throw on inline OpenAI-compatible stream error payloads', () => {
+      expect(() => throwIfStreamErrorPayload({
+        error: {
+          message: 'Rate limit exceeded',
+          type: 'rate_limit_error',
+          code: 'rate_limit_exceeded',
+        },
+      }, 'openai')).toThrow(UpstreamError);
+
+      try {
+        throwIfStreamErrorPayload({
+          error: {
+            message: 'Engine overloaded',
+            type: 'overloaded_error',
+            code: 'engine_overloaded',
+          },
+        }, 'openai', { 'retry-after': '90' });
+      } catch (err) {
+        expect(err.errorCode).toBe('engine_overloaded');
+        expect(err.retryAfterSeconds).toBe(90);
+        expect(err.category).toBe(ERROR_CATEGORIES.STREAMING);
+      }
+    });
+
+    it('should throw on Gemini native stream error payloads', () => {
+      expect(() => throwIfGeminiStreamError({
+        error: { message: 'Invalid API key', code: 'invalid_api_key' },
+      }, 'gemini')).toThrow(UpstreamError);
+    });
+  });
+
+  describe('normalizeUpstreamError auth messaging', () => {
+    it('should rewrite invalid_api_key and no_api_key messages for clients', () => {
+      const invalidKey = normalizeUpstreamError({ statusCode: 401, message: 'bad key' }, 'openai');
+      expect(invalidKey.message).toBe('Authentication failed: Invalid upstream API key.');
+
+      const noKey = normalizeUpstreamError(
+        { statusCode: 401, message: 'no authorization header' },
+        'openai',
+      );
+      expect(noKey.message).toBe(
+        'Authentication failed: No Authorization header sent to the upstream provider.',
+      );
+    });
+
+    it('should extract Retry-After from response headers during normalization', () => {
+      const normalized = normalizeUpstreamError({
+        statusCode: 429,
+        message: 'Rate limit exceeded',
+        response: { status: 429, headers: { 'retry-after': '45' } },
+      }, 'openai');
+      expect(normalized.retryAfterSeconds).toBe(45);
+      expect(normalized.code).toBe('rate_limit_exceeded');
+    });
   });
 
   describe('getClientHttpStatus', () => {
@@ -369,6 +481,50 @@ describe('upstreamErrors.js Tests', () => {
     it('should forward other status codes', () => {
       expect(getClientHttpStatus(400, ERROR_CATEGORIES.VALIDATION, 'context_length_exceeded')).toBe(400);
       expect(getClientHttpStatus(429, ERROR_CATEGORIES.RATE_LIMIT, 'rate_limit_exceeded')).toBe(429);
+    });
+
+    it('should map explicit billing codes to 402', () => {
+      expect(getClientHttpStatus(402, ERROR_CATEGORIES.BILLING, 'insufficient_quota')).toBe(402);
+      expect(getClientHttpStatus(429, ERROR_CATEGORIES.BILLING, 'daily_tokens_exceeded')).toBe(429);
+    });
+
+    it('should use category fallback for auth when code is not explicitly mapped', () => {
+      expect(getClientHttpStatus(402, ERROR_CATEGORIES.AUTH, 'unknown_auth_code')).toBe(402);
+      expect(getClientHttpStatus(403, ERROR_CATEGORIES.AUTH, 'unknown_auth_code')).toBe(403);
+    });
+  });
+
+  describe('resolveLifecycleTier', () => {
+    it('should map codes to lifecycle tiers matching flagFailure policy', () => {
+      expect(resolveLifecycleTier(ERROR_CATEGORIES.AUTH, 'invalid_api_key')).toBe('T0');
+      expect(resolveLifecycleTier(ERROR_CATEGORIES.AUTH, 'no_api_key')).toBe('none');
+      expect(resolveLifecycleTier(ERROR_CATEGORIES.BILLING, 'insufficient_quota')).toBe('T1');
+      expect(resolveLifecycleTier(ERROR_CATEGORIES.AUTH, 'region_not_supported')).toBe('T2');
+      expect(resolveLifecycleTier(ERROR_CATEGORIES.RATE_LIMIT, 'rate_limit_exceeded')).toBe('T3');
+      expect(resolveLifecycleTier(ERROR_CATEGORIES.SERVER, 'rate_reduction_required')).toBe('T4b');
+      expect(resolveLifecycleTier(ERROR_CATEGORIES.SERVER, 'internal_server_error')).toBe('T4');
+      expect(resolveLifecycleTier(ERROR_CATEGORIES.VALIDATION, 'context_length_exceeded')).toBe('T5');
+    });
+  });
+
+  describe('UpstreamError.toJSON', () => {
+    it('should return redacted fields without upstream body', () => {
+      const err = new UpstreamError('fail', {
+        statusCode: 429,
+        errorCode: 'rate_limit_exceeded',
+        category: ERROR_CATEGORIES.RATE_LIMIT,
+        provider: 'openai',
+        retryAfterSeconds: 30,
+        upstreamBody: { secret: 'data' },
+      });
+      expect(err.toJSON()).toEqual({
+        errorCode: 'rate_limit_exceeded',
+        category: ERROR_CATEGORIES.RATE_LIMIT,
+        statusCode: 429,
+        provider: 'openai',
+        retryAfterSeconds: 30,
+      });
+      expect(err.toJSON()).not.toHaveProperty('upstreamBody');
     });
   });
 });

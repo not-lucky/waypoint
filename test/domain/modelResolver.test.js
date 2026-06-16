@@ -142,5 +142,32 @@ describe('modelResolver & RequestTransformer Unit Tests', () => {
       expect(unifiedReq.reasoningSupported).toBe(true);
       expect(unifiedReq.reasoningEffort).toBe('medium');
     });
+
+    it('should not mutate the original base request object when resolved config is applied', () => {
+      const baseReq = { model: 'test', temperature: 0.4 };
+      const resolved = {
+        provider: 'openai',
+        modelConfig: {
+          id: 'gpt-4o-real',
+          actualModelId: 'gpt-4o-real',
+          maxTokens: 512,
+          overrides: {
+            reasoningEffort: 'high',
+          },
+        },
+      };
+
+      const snapshot = { ...baseReq };
+      const unifiedReq = transformRequest(baseReq, resolved);
+
+      expect(baseReq).toEqual(snapshot);
+      expect(unifiedReq).toMatchObject({
+        provider: 'openai',
+        actualModelId: 'gpt-4o-real',
+        maxTokens: 512,
+        reasoningEffort: 'high',
+      });
+      expect(unifiedReq.clientParams).toEqual(snapshot);
+    });
   });
 });

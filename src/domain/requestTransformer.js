@@ -1,32 +1,76 @@
+const EMPTY_ENTRIES = Object.freeze([]);
+
+const EMPTY_COMPILED_MODEL_CONFIG = Object.freeze({
+  defaultEntries: EMPTY_ENTRIES,
+  overrideEntries: EMPTY_ENTRIES,
+});
+
+const compiledModelConfigCache = new WeakMap();
+
 /**
- * Normalizes a model settings object into unified request fields.
- * Case-insensitively maps unified reasoning levels (minimal, low, medium, high, xhigh, max).
+ * Normalizes a model settings object into key/value entry pairs.
  *
  * @param {Object} settingsObj - Raw settings block from configuration.
- * @returns {Object} Mapped/normalized settings object.
+ * @returns {Array<[string, unknown]>} Normalized key/value entries.
  */
-const normalizeSettings = (settingsObj) => {
-  if (!settingsObj) return {};
-  const normalized = {};
+const normalizeSettingEntries = (settingsObj) => {
+  if (!settingsObj) return EMPTY_ENTRIES;
 
-  if (settingsObj.temperature !== undefined) normalized.temperature = settingsObj.temperature;
+  const entries = [];
+
+  if (settingsObj.temperature !== undefined) {
+    entries.push(['temperature', settingsObj.temperature]);
+  }
 
   if (settingsObj.maxTokens !== undefined) {
-    normalized.maxTokens = parseInt(settingsObj.maxTokens, 10);
+    entries.push(['maxTokens', parseInt(settingsObj.maxTokens, 10)]);
   }
 
   if (settingsObj.reasoningSupported !== undefined) {
-    normalized.reasoningSupported = settingsObj.reasoningSupported;
+    entries.push(['reasoningSupported', settingsObj.reasoningSupported]);
   }
 
   if (settingsObj.reasoningEffort !== undefined) {
-    normalized.reasoningEffort = settingsObj.reasoningEffort.toLowerCase();
-    if (normalized.reasoningSupported === undefined) {
-      normalized.reasoningSupported = true;
+    entries.push(['reasoningEffort', settingsObj.reasoningEffort.toLowerCase()]);
+    if (settingsObj.reasoningSupported === undefined) {
+      entries.push(['reasoningSupported', true]);
     }
   }
 
-  return normalized;
+  return entries.length > 0 ? entries : EMPTY_ENTRIES;
+};
+
+/**
+ * Compiles a model configuration object into reusable key/value entry arrays.
+ * Uses a WeakMap cache to avoid re-processing the same static config objects.
+ * Returns compiled entries for both defaults and overrides separately.
+ *
+ * @param {Object} modelConfig - The model configuration object.
+ * @returns {Object} Object with defaultEntries and overrideEntries arrays.
+ */
+const getCompiledModelConfig = (modelConfig) => {
+  if (!modelConfig || typeof modelConfig !== 'object') {
+    return EMPTY_COMPILED_MODEL_CONFIG;
+  }
+
+  const cached = compiledModelConfigCache.get(modelConfig);
+  if (cached) {
+    return cached;
+  }
+
+  const defaultEntries = [];
+  if (modelConfig.fallbackModel) {
+    defaultEntries.push(['fallbackModel', modelConfig.fallbackModel]);
+  }
+  defaultEntries.push(...normalizeSettingEntries(modelConfig));
+
+  const compiled = {
+    defaultEntries: defaultEntries.length > 0 ? defaultEntries : EMPTY_ENTRIES,
+    overrideEntries: normalizeSettingEntries(modelConfig.overrides),
+  };
+
+  compiledModelConfigCache.set(modelConfig, compiled);
+  return compiled;
 };
 
 /**
@@ -37,23 +81,17 @@ const normalizeSettings = (settingsObj) => {
  * @returns {Object} Updated request payload with settings applied.
  */
 export const applyModelConfigToRequest = (req, modelConfig) => {
-  const defaults = normalizeSettings(modelConfig);
-  const overrides = modelConfig?.overrides ? normalizeSettings(modelConfig.overrides) : {};
-
-  const resolvedDefaults = {
-    ...(modelConfig?.fallbackModel ? { fallbackModel: modelConfig.fallbackModel } : {}),
-    ...defaults,
-  };
+  const { defaultEntries, overrideEntries } = getCompiledModelConfig(modelConfig);
 
   const finalReq = { ...req };
 
-  Object.entries(resolvedDefaults).forEach(([key, val]) => {
+  defaultEntries.forEach(([key, val]) => {
     if (finalReq[key] === undefined && val !== undefined) {
       finalReq[key] = val;
     }
   });
 
-  Object.entries(overrides).forEach(([key, val]) => {
+  overrideEntries.forEach(([key, val]) => {
     if (val !== undefined) {
       finalReq[key] = val;
     }
@@ -70,8 +108,8 @@ export const applyModelConfigToRequest = (req, modelConfig) => {
  * @returns {Object} Unified request object.
  */
 export const transformRequest = (baseReq, resolved) => {
-  let req = { ...baseReq };
-  const clientParams = { ...req };
+  const clientParams = { ...baseReq };
+  let req = baseReq;
 
   let provider;
   let actualModelId;
@@ -82,10 +120,12 @@ export const transformRequest = (baseReq, resolved) => {
     req = applyModelConfigToRequest(req, modelConfig);
   }
 
-  return {
-    ...req,
-    clientParams,
-    ...(provider ? { provider } : {}),
-    ...(actualModelId ? { actualModelId } : {}),
-  };
+  const transformedReq = { ...req, clientParams };
+  if (provider) {
+    transformedReq.provider = provider;
+  }
+  if (actualModelId) {
+    transformedReq.actualModelId = actualModelId;
+  }
+  return transformedReq;
 };

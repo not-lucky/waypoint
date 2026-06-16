@@ -5,12 +5,6 @@
  */
 
 /**
- * Cooldown duration in milliseconds for generic network or internal errors.
- * @const {number}
- */
-const GENERIC_FAILURE_COOLDOWN_MS = 5000;
-
-/**
  * Represents a single upstream API key within a provider pool.
  */
 export class KeyObject {
@@ -56,12 +50,11 @@ export class KeyObject {
    * A key is available only if it is active, not permanently exhausted,
    * and any applied cooldown window has lapsed.
    *
+   * @param {number} [now=Date.now()] - The current timestamp in milliseconds.
    * @returns {boolean} True if the key is available, false otherwise.
    */
-  isAvailable() {
-    const cooledDown = this.cooldownUntil === null || this.cooldownUntil <= Date.now();
+  isAvailable(now = Date.now()) {
+    const cooledDown = this.cooldownUntil === null || this.cooldownUntil <= now;
     return this.active && !this.exhausted && cooledDown;
   }
 }
-
-export { GENERIC_FAILURE_COOLDOWN_MS };

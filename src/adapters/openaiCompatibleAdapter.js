@@ -20,7 +20,7 @@ export class OpenAICompatibleAdapter extends BaseProvider {
     streamTimeoutMs = null,
   } = {}) {
     super();
-    this.baseUrl = baseUrl;
+    this.baseUrl = baseUrl?.replace(/\/$/, '') ?? null;
     this.providerName = providerName;
     this.timeoutMs = timeoutMs;
     this.streamTimeoutMs = streamTimeoutMs;
@@ -29,7 +29,7 @@ export class OpenAICompatibleAdapter extends BaseProvider {
   async generateCompletion(req, apiKey, signal, requestLog = null) {
     const payload = buildOpenAIChatPayload(req, false);
 
-    const url = `${this.baseUrl.replace(/\/$/, '')}/chat/completions`;
+    const url = `${this.baseUrl}/chat/completions`;
     const headers = {
       'content-type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
@@ -55,7 +55,7 @@ export class OpenAICompatibleAdapter extends BaseProvider {
   async* generateStream(req, apiKey, signal, requestLog = null) {
     const payload = buildOpenAIChatPayload(req, true);
 
-    const url = `${this.baseUrl.replace(/\/$/, '')}/chat/completions`;
+    const url = `${this.baseUrl}/chat/completions`;
     const headers = {
       'content-type': 'application/json',
       Authorization: `Bearer ${apiKey}`,

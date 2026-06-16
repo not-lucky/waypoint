@@ -16,21 +16,41 @@ import { COOLDOWN_DEFAULTS } from '../config/cooldownDefaults.js';
 import { KeyObject } from './keyObject.js';
 
 /**
+ * Default routing strategy when none is specified.
  * @const {string}
  */
 const DEFAULT_ROUTING_STRATEGY = 'round-robin';
 
 /**
+ * Minimum number of keys required to use Map-backed lookup instead of array search.
+ * Maps provide O(1) lookup for large pools, while arrays are more memory-efficient
+ * for small pools due to lower overhead.
+ * @const {number}
+ */
+const MAP_LOOKUP_THRESHOLD = 10;
+
+/**
  * Factory for creating a stateful pool of keys for a specific provider.
  * Maintains the sequence index for round-robin rotation.
+ * For pools at or above MAP_LOOKUP_THRESHOLD, creates a Map for O(1) key lookup
+ * by string instead of O(n) array search.
  *
  * @param {Array<string>} [keys=[]] - Raw API key strings.
- * @returns {Object} Pool object containing KeyObject array and round-robin index pointer.
+ * @returns {Object} Pool object containing KeyObject array, optional Map,
+ *                   and round-robin index pointer.
  */
-const createKeyPool = (keys = []) => ({
-  keys: keys.map((k) => new KeyObject(k)),
-  roundRobinIndex: 0,
-});
+const createKeyPool = (keys = []) => {
+  const keyObjects = keys.map((key) => new KeyObject(key));
+  const keyMap = keyObjects.length >= MAP_LOOKUP_THRESHOLD
+    ? new Map(keyObjects.map((key) => [key.keyStr, key]))
+    : null;
+
+  return {
+    keys: keyObjects,
+    keyMap,
+    roundRobinIndex: 0,
+  };
+};
 
 /**
  * Central registry for managing API key lifecycle, rotation, and health status.
@@ -55,6 +75,12 @@ export class KeyRegistry {
     this.strategy = strategy || config?.gateway?.routing?.strategy || DEFAULT_ROUTING_STRATEGY;
 
     /**
+     * Merged cooldown policy used by failure handling.
+     * @type {Object}
+     */
+    this.cooldown = { ...COOLDOWN_DEFAULTS, ...config?.gateway?.cooldown };
+
+    /**
      * Active Node.js timers for releasing cooldowns to guarantee clean shutdowns.
      * @type {Set<NodeJS.Timeout>}
      */
@@ -62,7 +88,7 @@ export class KeyRegistry {
 
     /**
      * Map of provider name to its stateful key pool.
-     * @type {Object<string, {keys: Array<KeyObject>, roundRobinIndex: number}>}
+     * @type {Object<string, Object>}
      */
     this.pools = Object.fromEntries(
       Object.entries(config.providers || {}).map(([name, providerConfig]) => [
@@ -85,8 +111,11 @@ export class KeyRegistry {
     const keys = pool?.keys;
     if (!keys?.length) return null;
 
+    // Capture current time once to avoid repeated Date.now() calls in availability checks.
+    const now = Date.now();
+
     if (this.strategy === 'fill-first') {
-      return keys.find((key) => key.isAvailable())?.keyStr ?? null;
+      return keys.find((key) => key.isAvailable(now))?.keyStr ?? null;
     }
 
     // Round-robin implementation
@@ -96,7 +125,7 @@ export class KeyRegistry {
       const key = keys[idx];
       pool.roundRobinIndex = (idx + 1) % n;
 
-      if (key.isAvailable()) return key.keyStr;
+      if (key.isAvailable(now)) return key.keyStr;
     }
 
     return null;
@@ -110,7 +139,14 @@ export class KeyRegistry {
    * @returns {KeyObject|null} The KeyObject wrapper, or null if not found.
    */
   findKey(provider, keyStr) {
-    return this.pools[provider]?.keys.find((k) => k.keyStr === keyStr) ?? null;
+    const pool = this.pools[provider];
+    if (!pool) return null;
+
+    if (pool.keyMap) {
+      return pool.keyMap.get(keyStr) ?? null;
+    }
+
+    return pool.keys.find((key) => key.keyStr === keyStr) ?? null;
   }
 
   /**
@@ -138,7 +174,7 @@ export class KeyRegistry {
   }
 
   /**
-   * Flags a key as failed and applies tiered lifecycle policy (T0–T5)
+   * Flags a key as failed and applies tiered lifecycle policy (T0-T5)
    * from structured error meaning.
    *
    * @param {string} provider - The provider name.
@@ -150,79 +186,63 @@ export class KeyRegistry {
    */
   flagFailure(provider, keyStr, { category, code, retryAfterSeconds }) {
     const key = this.findKey(provider, keyStr);
-    if (!key) return;
+    if (!key || code === 'no_api_key') return;
 
-    if (code === 'no_api_key') {
-      return;
-    }
-
-    // T0 — Terminal credential: only invalid_api_key permanently exhausts a key.
     if (code === 'invalid_api_key') {
       key.exhausted = true;
       key.active = false;
       return;
     }
 
-    const cooldown = { ...COOLDOWN_DEFAULTS, ...this.config.gateway?.cooldown };
-
-    // T1 — Billing recovery.
     if (BILLING_CODES.has(code)) {
-      const seconds = retryAfterSeconds ?? cooldown.billingSeconds;
-      key.active = false;
-      this.setCooldown(key, seconds * 1000, true);
+      this.applyCooldown(key, retryAfterSeconds ?? this.cooldown.billingSeconds);
       return;
     }
 
-    // T2 — Permission recovery.
     if (PERMISSION_CODES.has(code)) {
-      const seconds = retryAfterSeconds ?? cooldown.permissionSeconds;
-      key.active = false;
-      this.setCooldown(key, seconds * 1000, true);
+      this.applyCooldown(key, retryAfterSeconds ?? this.cooldown.permissionSeconds);
       return;
     }
 
-    // T4b — Slow down.
     if (code === 'rate_reduction_required') {
       const seconds = Math.max(
         retryAfterSeconds ?? 0,
-        cooldown.slowDownMinimumSeconds,
+        this.cooldown.slowDownMinimumSeconds,
       );
-      key.active = false;
-      this.setCooldown(key, seconds * 1000, true);
+      this.applyCooldown(key, seconds);
       return;
     }
 
-    // T3 — Rate limit: exponential backoff with optional Retry-After override.
     if (RATE_LIMIT_CODES.has(code)) {
-      key.consecutiveFailures += 1;
-
-      if (retryAfterSeconds !== undefined && retryAfterSeconds === 0) {
-        return;
-      }
-
-      let backoffSeconds;
-      if (retryAfterSeconds !== undefined) {
-        backoffSeconds = retryAfterSeconds;
-      } else {
-        const { baseSeconds } = cooldown;
-        const { maxSeconds } = cooldown;
-        const exponent = key.consecutiveFailures - 1;
-        backoffSeconds = Math.min(baseSeconds * (2 ** exponent), maxSeconds);
-      }
-
-      key.active = false;
-      this.setCooldown(key, backoffSeconds * 1000, true);
+      const backoffSeconds = this.computeRateLimitBackoff(key, retryAfterSeconds);
+      if (backoffSeconds === null) return;
+      const target = key;
+      target.active = false;
+      this.setCooldown(target, backoffSeconds * 1000, true);
       return;
     }
 
-    // T4 — Server transient.
     if (SERVER_CODES.has(code) || category === ERROR_CATEGORIES.SERVER) {
-      const seconds = retryAfterSeconds ?? cooldown.serverSeconds;
-      key.active = false;
-      this.setCooldown(key, seconds * 1000, true);
+      this.applyCooldown(key, retryAfterSeconds ?? this.cooldown.serverSeconds);
     }
+  }
 
-    // T5 — No key action for validation, content policy, model/resource, etc.
+  applyCooldown(key, seconds) {
+    const target = key;
+    target.active = false;
+    this.setCooldown(target, seconds * 1000, true);
+  }
+
+  computeRateLimitBackoff(key, retryAfterSeconds) {
+    const target = key;
+    target.consecutiveFailures += 1;
+
+    if (retryAfterSeconds === 0) return null;
+
+    if (retryAfterSeconds !== undefined) return retryAfterSeconds;
+
+    const { baseSeconds, maxSeconds } = this.cooldown;
+    return Math.min(baseSeconds * (2 ** (target.consecutiveFailures - 1)), maxSeconds);
   }
 
   /**
@@ -256,14 +276,14 @@ export class KeyRegistry {
     let coolingKeys = 0;
     let coolingUntilMs = null;
 
-    for (const k of keys) {
-      if (k.exhausted) {
+    for (const key of keys) {
+      if (key.exhausted) {
         exhaustedKeys += 1;
-      } else if (k.cooldownUntil !== null && k.cooldownUntil > now) {
+      } else if (key.cooldownUntil !== null && key.cooldownUntil > now) {
         coolingKeys += 1;
         coolingUntilMs = coolingUntilMs === null
-          ? k.cooldownUntil
-          : Math.min(coolingUntilMs, k.cooldownUntil);
+          ? key.cooldownUntil
+          : Math.min(coolingUntilMs, key.cooldownUntil);
       }
     }
 

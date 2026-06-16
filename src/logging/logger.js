@@ -52,6 +52,7 @@ try {
  * @returns {string} Safe stringified payload.
  */
 export const formatMessage = (msg) => {
+  if (typeof msg === 'string') return msg;
   if (Array.isArray(msg)) {
     return msg.map((m) => {
       // Intent: Isolate native Error instances to extract their human-readable message

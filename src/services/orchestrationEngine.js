@@ -21,7 +21,7 @@ import { logDebug } from '../logging/loggerHelpers.js';
 const updateRequestWithModelConfig = (currentReq, config) => {
   if (!currentReq.model) return currentReq;
 
-  const resolved = resolveModel(currentReq.model, config.providers);
+  const resolved = currentReq.resolvedModel || resolveModel(currentReq.model, config.providers);
   if (!resolved) return currentReq;
 
   const { modelConfig } = resolved;
@@ -123,12 +123,14 @@ export const runOrchestrationLoop = async ({
           actualModelId: rest.join('/').trim(),
           isFallback: true,
         };
+        delete currentReq.resolvedModel;
       } else {
         currentReq = {
           ...currentReq,
           model: nextModel,
           isFallback: true,
         };
+        delete currentReq.resolvedModel;
       }
       continue;
     }

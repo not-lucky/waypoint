@@ -211,6 +211,19 @@ describe('Model-Level Defaults, Overrides, and Reasoning Unit Tests', () => {
       expect(unifiedReq.temperature).toBe(0.8); // client wins over defaults
       expect(unifiedReq.maxTokens).toBe(1000); // model overrides wins over client
     });
+
+    it('reuses compiled model settings without leaking data across requests', () => {
+      const firstReq = transformRequest({ model: 'custom-model' }, resolved);
+      firstReq.maxTokens = 42;
+      firstReq.reasoningEffort = 'minimal';
+
+      const secondReq = transformRequest({ model: 'custom-model' }, resolved);
+
+      expect(secondReq.maxTokens).toBe(1000);
+      expect(secondReq.reasoningEffort).toBe('high');
+      expect(secondReq.reasoningSupported).toBe(true);
+      expect(secondReq.clientParams).toEqual({ model: 'custom-model' });
+    });
   });
 
   describe('Provider Adapter Unified Mappings', () => {

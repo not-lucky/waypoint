@@ -1,5 +1,4 @@
 /* eslint-disable no-underscore-dangle */
-import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { getAppLogger } from './logger.js';
@@ -39,18 +38,27 @@ export class RequestLog {
    * @param {string} id - Short request identifier.
    * @param {number} startTime - High-resolution start time (Date.now()).
    */
-  constructor(dir, id, startTime) {
+  constructor(dir, id, startTime, dirReady) {
     this.dir = dir;
     this.id = id;
     this.startTime = startTime;
     this.isDryRun = false;
+    /** @type {Promise<boolean>} Resolves true if mkdir succeeded, false otherwise. */
+    this.dirReady = dirReady || Promise.resolve(true);
+    this.dirFailed = false;
     /** @type {Promise[]} Pending write operations to await on finalize. */
     this.pendingWrites = [];
     /** @type {string[]} Buffered stream event lines to flush periodically. */
     this.streamBuffer = [];
-    this.streamFlushTimer = null;
     this.streamFilePath = path.join(dir, '05_event_stream.jsonl');
     this.finalized = false;
+  }
+
+  async canWrite() {
+    if (this.finalized || this.dirFailed) return false;
+    const ok = await this.dirReady;
+    if (!ok) { this.dirFailed = true; return false; }
+    return true;
   }
 
   /**
@@ -60,8 +68,8 @@ export class RequestLog {
    * @param {Object} headers - The response headers received from the provider.
    * @param {Object} body - The payload sent to the provider.
    */
-  logProviderRequest(url, headers, body) {
-    if (this.finalized) return;
+  async logProviderRequest(url, headers, body) {
+    if (!(await this.canWrite())) return;
     const data = {
       timestamp: new Date().toISOString(),
       url,
@@ -79,8 +87,8 @@ export class RequestLog {
    * @param {Object} response - The NormalizedResponse from the adapter.
    * @param {number} durationMs - Time in ms from provider request to response.
    */
-  logProviderResponse(response, durationMs) {
-    if (this.finalized || this.isDryRun) return;
+  async logProviderResponse(response, durationMs) {
+    if (this.isDryRun || !(await this.canWrite())) return;
     const isStream = response && typeof response[Symbol.asyncIterator] === 'function';
     const data = {
       timestamp: new Date().toISOString(),
@@ -105,8 +113,8 @@ export class RequestLog {
    *
    * @param {Object} data - Streaming log data including _format, _eventCount, and summary.
    */
-  logProviderStreamSummary(data) {
-    if (this.finalized || this.isDryRun) return;
+  async logProviderStreamSummary(data) {
+    if (this.isDryRun || !(await this.canWrite())) return;
     const logData = {
       _streamed: true,
       _format: data._format || 'sse-json',
@@ -124,8 +132,8 @@ export class RequestLog {
    *
    * @param {Object} data - Streaming log data including _format, _eventCount, and summary.
    */
-  logClientStreamSummary(data) {
-    if (this.finalized || this.isDryRun) return;
+  async logClientStreamSummary(data) {
+    if (this.isDryRun || !(await this.canWrite())) return;
     const logData = {
       _streamed: true,
       _format: data._format || 'sse-json',
@@ -144,8 +152,8 @@ export class RequestLog {
    * @param {number} statusCode - HTTP status code sent to the client.
    * @param {Object} body - The response body sent (or summary for streams).
    */
-  logClientResponse(statusCode, body) {
-    if (this.finalized || this.isDryRun) return;
+  async logClientResponse(statusCode, body) {
+    if (this.isDryRun || !(await this.canWrite())) return;
     const data = {
       timestamp: new Date().toISOString(),
       statusCode,
@@ -165,7 +173,7 @@ export class RequestLog {
    * @param {*} data - The event data (chunk object or raw SSE string).
    */
   appendStreamEvent(direction, data) {
-    if (this.finalized || this.isDryRun) return;
+    if (this.finalized || this.isDryRun || this.dirFailed) return;
     this.streamBuffer.push({
       direction,
       timestamp: new Date().toISOString(),
@@ -179,18 +187,15 @@ export class RequestLog {
    * @returns {string} Formatted SSE line
    */
   static formatStreamEvent(eventData) {
-    let line = typeof eventData === 'string' ? eventData : `data: ${JSON.stringify(eventData)}\n\n`;
+    if (typeof eventData !== 'string') {
+      return `data: ${JSON.stringify(eventData)}\n\n`;
+    }
 
-    if (!line.startsWith('data: ') && !line.startsWith('event: ')) {
-      line = `data: ${line}`;
-    }
-    if (!line.endsWith('\n')) {
-      line += '\n';
-    }
-    if (!line.endsWith('\n\n')) {
-      line += '\n';
-    }
-    return line;
+    const prefixed = (eventData.startsWith('data: ') || eventData.startsWith('event: '))
+      ? eventData
+      : `data: ${eventData}`;
+
+    return prefixed.endsWith('\n\n') ? prefixed : `${prefixed.replace(/\n+$/, '')}\n\n`;
   }
 
   /**
@@ -202,6 +207,8 @@ export class RequestLog {
    */
   async writeStreamLog() {
     if (this.isDryRun) return;
+    const ok = await this.dirReady;
+    if (!ok) return;
     let providerContent = '';
     let clientContent = '';
     for (const e of this.streamBuffer) {
@@ -232,7 +239,8 @@ export class RequestLog {
     if (this.finalized) return;
     this.finalized = true;
 
-    // Write any buffered stream events
+    await this.dirReady;
+
     if (this.streamBuffer.length > 0) {
       const p = this.writeStreamLog();
       this.pendingWrites.push(p);
@@ -279,14 +287,15 @@ export function createRequestLog(req, config) {
   const folderName = `${safeTimestamp(now.toISOString())}_${id}`;
   const dir = path.join(basePath, folderName);
 
-  try {
-    fs.mkdirSync(dir, { recursive: true });
-  } catch (err) {
-    logger.error('Failed to create request log directory', { dir, error: err.message });
-    return NOOP_LOG;
-  }
+  const dirReady = fsp.mkdir(dir, { recursive: true })
+    .then(() => true)
+    .catch((err) => {
+      logger.error('Failed to create request log directory', { dir, error: err.message });
+      return false;
+    });
 
-  const reqLog = new RequestLog(dir, id, Date.now());
+  const reqLog = new RequestLog(dir, id, Date.now(), dirReady);
+  dirReady.then((ok) => { if (!ok) reqLog.dirFailed = true; });
   if (req?.isDryRun) {
     reqLog.isDryRun = true;
   }
@@ -299,7 +308,10 @@ export function createRequestLog(req, config) {
     headers: redactHeaders(req.headers),
     body: req.body || {},
   };
-  const p = writeJsonFile(path.join(dir, '01_client_request.json'), clientReqData);
+  const p = dirReady.then((ok) => {
+    if (ok) return writeJsonFile(path.join(dir, '01_client_request.json'), clientReqData);
+    return undefined;
+  });
   reqLog.pendingWrites.push(p);
 
   logger.debug('Request log created', { dir, id });

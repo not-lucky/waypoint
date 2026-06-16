@@ -28,15 +28,16 @@ function buildPoolUnavailableError(provider, keyRegistry) {
   const keys = keyRegistry.pools[provider]?.keys;
   if (keys) {
     const now = Date.now();
-    const activeCooldowns = keys.reduce((acc, k) => {
-      if (k.cooldownUntil > now) {
-        acc.push(k.cooldownUntil);
-      }
-      return acc;
-    }, []);
+    let minCooldownUntil = Infinity;
 
-    if (activeCooldowns.length > 0) {
-      retryAfterSeconds = Math.max(0, Math.ceil((Math.min(...activeCooldowns) - now) / 1000));
+    for (const key of keys) {
+      if (key.cooldownUntil > now && key.cooldownUntil < minCooldownUntil) {
+        minCooldownUntil = key.cooldownUntil;
+      }
+    }
+
+    if (minCooldownUntil !== Infinity) {
+      retryAfterSeconds = Math.max(0, Math.ceil((minCooldownUntil - now) / 1000));
     }
   }
 
@@ -87,6 +88,71 @@ function buildFinalError(provider, keyRegistry, adapter, lastError, req, logger)
   return buildPoolUnavailableError(provider, keyRegistry);
 }
 
+async function* createStreamWithAbortGuard({
+  adapter,
+  req,
+  apiKey,
+  abortController,
+  keyRegistry,
+  provider,
+  logger,
+  firstResult,
+  iterator,
+}) {
+  let completedSuccessfully = false;
+
+  try {
+    if (!firstResult.done) {
+      yield firstResult.value;
+      while (true) {
+        if (abortController.signal.aborted) {
+          logDebug(logger, 'Stream abort detected before chunk retrieval');
+          break;
+        }
+        const nextResult = await iterator.next();
+        if (nextResult.done) {
+          completedSuccessfully = true;
+          break;
+        }
+        if (abortController.signal.aborted) {
+          logDebug(logger, 'Stream abort detected after chunk retrieval');
+          break;
+        }
+        yield nextResult.value;
+      }
+    } else {
+      completedSuccessfully = true;
+    }
+
+    if (completedSuccessfully && !abortController.signal.aborted) {
+      keyRegistry.flagSuccess(provider, apiKey);
+      logDebug(logger, 'Streaming completion completed successfully', { provider, model: req.model });
+    }
+  } catch (streamErr) {
+    if (!abortController.signal.aborted) {
+      const normalized = adapter.normalizeError(streamErr, req);
+      const streamMsg = normalized.message || streamErr?.message || String(streamErr);
+      logWarning(
+        logger,
+        `Streaming attempt for provider '${provider}' failed. Reason: ${streamMsg}`,
+        buildUpstreamErrorLogFields(normalized),
+      );
+      if (shouldCooldownKey(normalized.category, normalized.code)) {
+        keyRegistry.flagFailure(provider, apiKey, {
+          category: normalized.category,
+          code: normalized.code,
+          retryAfterSeconds: normalized.retryAfterSeconds,
+        });
+      }
+    }
+    throw streamErr;
+  } finally {
+    if (typeof iterator.return === 'function') {
+      await iterator.return();
+    }
+  }
+}
+
 /**
  * Abstracts the retry/key-rotation loop for a single provider.
  * Rotates through keys, invokes the adapter, and tracks success/failure.
@@ -117,9 +183,7 @@ export const executeWithRetry = async ({
   let attempt = 0;
   let lastError = null;
 
-  // Inner retry loop: rotates keys within the current provider up to the global retry limit.
   while (attempt < retryLimit) {
-    // Check if the client cancelled/disconnected before invoking the next provider attempt.
     if (abortController.signal.aborted) {
       logDebug(logger, 'Request aborted during retry loop check');
       return buildClientErrorEnvelope(
@@ -132,22 +196,17 @@ export const executeWithRetry = async ({
       );
     }
 
-    // Retrieve the next available API key according to the configured routing strategy (round-robin / fill-first).
     let apiKey = keyRegistry.getKey(provider);
-
     if (!apiKey && req.isDryRun) {
       apiKey = 'dryrun-mock-key';
     }
 
-    // If no active keys are left in the provider's pool, decide whether to halt or trigger fallback.
     if (!apiKey) {
       logDebug(logger, 'No active keys available in pool for provider', { provider });
       if (req.isFallback) {
-        // If we are already on a fallback provider, we halt and fail immediately.
         return buildFinalError(provider, keyRegistry, adapter, lastError, req, logger);
       }
       if (req.fallbackModel) {
-        // Return a signal to switch the orchestrator to the designated fallback provider/model.
         return { triggerFallback: true };
       }
       break;
@@ -160,17 +219,9 @@ export const executeWithRetry = async ({
     try {
       const providerStartTime = Date.now();
 
-      // Streaming Request Path:
       if (req.stream) {
-        const stream = adapter.generateStream(
-          req,
-          apiKey,
-          abortController.signal,
-          requestLog,
-        );
+        const stream = adapter.generateStream(req, apiKey, abortController.signal, requestLog);
         const iterator = stream[Symbol.asyncIterator]();
-
-        // Retrieve the first chunk to ensure connection succeeded and the key is valid.
         const firstResult = await iterator.next();
 
         if (requestLog) {
@@ -179,71 +230,21 @@ export const executeWithRetry = async ({
             Date.now() - providerStartTime,
           );
         }
-
-        // Notify caller that we successfully initiated a streaming response.
         onStreamResponse();
 
-        // Wrap the stream iterator to continuously monitor client disconnection and clean up.
-        const streamWrapper = async function* streamWrapper() {
-          let completedSuccessfully = false;
-          try {
-            if (!firstResult.done) {
-              yield firstResult.value;
-              while (true) {
-                // Abort check before requesting next chunk.
-                if (abortController.signal.aborted) {
-                  logDebug(logger, 'Stream abort detected before chunk retrieval');
-                  break;
-                }
-                const nextResult = await iterator.next();
-                if (nextResult.done) {
-                  completedSuccessfully = true;
-                  break;
-                }
-                // Abort check after chunk is retrieved but before yielding it to the client.
-                if (abortController.signal.aborted) {
-                  logDebug(logger, 'Stream abort detected after chunk retrieval');
-                  break;
-                }
-                yield nextResult.value;
-              }
-            } else {
-              completedSuccessfully = true;
-            }
-
-            if (completedSuccessfully && !abortController.signal.aborted) {
-              keyRegistry.flagSuccess(provider, apiKey);
-              logDebug(logger, 'Streaming completion completed successfully', { provider, model: req.model });
-            }
-          } catch (streamErr) {
-            if (!abortController.signal.aborted) {
-              const normalized = adapter.normalizeError(streamErr, req);
-              const streamMsg = normalized.message || streamErr?.message || String(streamErr);
-              logWarning(
-                logger,
-                `Streaming attempt for provider '${provider}' failed. Reason: ${streamMsg}`,
-                buildUpstreamErrorLogFields(normalized),
-              );
-              if (shouldCooldownKey(normalized.category, normalized.code)) {
-                keyRegistry.flagFailure(provider, apiKey, {
-                  category: normalized.category,
-                  code: normalized.code,
-                  retryAfterSeconds: normalized.retryAfterSeconds,
-                });
-              }
-            }
-            throw streamErr;
-          } finally {
-            // Ensure iterator resources are cleaned up.
-            if (typeof iterator.return === 'function') {
-              await iterator.return();
-            }
-          }
-        };
-        return streamWrapper();
+        return createStreamWithAbortGuard({
+          adapter,
+          req,
+          apiKey,
+          abortController,
+          keyRegistry,
+          provider,
+          logger,
+          firstResult,
+          iterator,
+        });
       }
 
-      // Unary (Non-Streaming) Request Path:
       const response = await adapter.generateCompletion(
         req,
         apiKey,
@@ -263,10 +264,8 @@ export const executeWithRetry = async ({
       });
       return response;
     } catch (error) {
-      if (error.isDryRun) {
-        throw error;
-      }
-      // Abort exception handling during raw fetch.
+      if (error.isDryRun) throw error;
+
       if (abortController.signal.aborted) {
         logDebug(logger, 'Request aborted during adapter call exception handling');
         return buildClientErrorEnvelope(
@@ -298,7 +297,6 @@ export const executeWithRetry = async ({
     }
   }
 
-  // If all attempts failed and a fallback is configured, trigger the fallback flow.
   if (req.fallbackModel && !req.isFallback) {
     return { triggerFallback: true };
   }

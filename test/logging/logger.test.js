@@ -21,6 +21,11 @@ const filterAppCalls = (spy) => spy.mock.calls.filter((call) => {
 });
 
 describe('formatMessage', () => {
+  it('returns string messages by identity without conversion', () => {
+    const msg = 'exact same reference';
+    expect(formatMessage(msg)).toBe(msg);
+  });
+
   it('formats non-array messages as strings', () => {
     expect(formatMessage('hello')).toBe('hello');
     expect(formatMessage(123)).toBe('123');

@@ -10,6 +10,7 @@ import {
   rateLimiter,
   resetRateLimiter,
   clientWindows,
+  getClientWindowActiveTimestamps,
 } from '../../src/middleware/rateLimiter.js';
 
 describe('rateLimiter middleware', () => {
@@ -358,8 +359,8 @@ describe('rateLimiter middleware', () => {
     rateLimiter(req, res, next); // t = start + 500
 
     // Ensure all 3 timestamps are registered internally
-    expect(clientWindows.get(clientName).length).toBe(3);
-    expect(clientWindows.get(clientName)).toEqual([start, start + 200, start + 500]);
+    expect(getClientWindowActiveTimestamps(clientName).length).toBe(3);
+    expect(getClientWindowActiveTimestamps(clientName)).toEqual([start, start + 200, start + 500]);
 
     // Advance time to t = start + 1100
     // (t=start expires, t=start+200 and t=start+500 remain, plus new request)
@@ -367,8 +368,10 @@ describe('rateLimiter middleware', () => {
     rateLimiter(req, res, next); // t = start + 1100
 
     // Assert that the array has been pruned of expired timestamps
-    expect(clientWindows.get(clientName).length).toBe(3);
-    expect(clientWindows.get(clientName)).toEqual([start + 200, start + 500, start + 1100]);
+    expect(getClientWindowActiveTimestamps(clientName).length).toBe(3);
+    expect(getClientWindowActiveTimestamps(clientName))
+      .toEqual([start + 200, start + 500, start + 1100]);
+    expect(clientWindows.get(clientName).length).toBeGreaterThanOrEqual(3);
   });
 
   it('assert: non-numeric configuration parameters are bypassed safely', () => {

@@ -92,4 +92,39 @@ describe('Key Registry Health & Edge Cases', () => {
       })).toBeUndefined();
     });
   });
+
+  describe('Batch 1 optimizations', () => {
+    it('uses a Map-backed lookup for pools at or above the threshold', () => {
+      const keys = Array.from({ length: 10 }, (_, index) => `Key_${index}`);
+      const registry = new KeyRegistry({
+        providers: { gemini: { keys } },
+      });
+
+      expect(registry.pools.gemini.keyMap).toBeInstanceOf(Map);
+      expect(registry.findKey('gemini', 'Key_9')?.keyStr).toBe('Key_9');
+    });
+
+    it('keeps array lookup for small pools below the threshold', () => {
+      const registry = new KeyRegistry({
+        providers: { gemini: { keys: ['Key_A', 'Key_B', 'Key_C'] } },
+      });
+
+      expect(registry.pools.gemini.keyMap).toBeNull();
+      expect(registry.findKey('gemini', 'Key_B')?.keyStr).toBe('Key_B');
+    });
+
+    it('captures Date.now() once per getKey call in round-robin mode', () => {
+      const registry = new KeyRegistry({
+        gateway: { routing: { strategy: 'round-robin' } },
+        providers: { gemini: { keys: ['Key_A', 'Key_B', 'Key_C'] } },
+      });
+      registry.pools.gemini.keys[0].active = false;
+      registry.pools.gemini.keys[1].active = false;
+
+      const nowSpy = vi.spyOn(Date, 'now');
+
+      expect(registry.getKey('gemini')).toBe('Key_C');
+      expect(nowSpy).toHaveBeenCalledTimes(1);
+    });
+  });
 });

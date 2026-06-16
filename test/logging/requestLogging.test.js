@@ -1,9 +1,13 @@
 /* eslint-disable max-len, no-await-in-loop, no-restricted-syntax */
+import os from 'node:os';
+import path from 'node:path';
+import fsp from 'node:fs/promises';
 import {
   vi, describe, it, expect, beforeEach, afterEach,
 } from 'vitest';
 import { GeminiAdapter } from '../../src/adapters/geminiAdapter.js';
 import { OpenAIController } from '../../src/controllers/openaiController.js';
+import { RequestLog } from '../../src/logging/requestLogger.js';
 import {
   sanitizeUrl, serializeHeaders, redactHeaders,
 } from '../../src/logging/requestLoggerUtils.js';
@@ -101,5 +105,33 @@ describe('Request Logging', () => {
     await controller.handleCompletion(req, res);
     expect(orchestrator.executeCompletion).toHaveBeenCalled();
     expect(res.write).toHaveBeenCalled();
+  });
+
+  it('writes provider and client stream sections without repeated string concatenation side effects', async () => {
+    const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'waypoint-request-log-'));
+    try {
+      const requestLog = new RequestLog(dir, 'req-1', Date.now(), Promise.resolve(true));
+      requestLog.appendStreamEvent('provider', { chunk: 'one' });
+      requestLog.appendStreamEvent('provider', { chunk: 'two' });
+      requestLog.appendStreamEvent('client', 'data: done\n\n');
+
+      await requestLog.finalize();
+
+      const content = await fsp.readFile(path.join(dir, '05_event_stream.jsonl'), 'utf8');
+      expect(content).toBe([
+        '--- provider ---',
+        'data: {"chunk":"one"}',
+        '',
+        'data: {"chunk":"two"}',
+        '',
+        '',
+        '--- client ---',
+        'data: done',
+        '',
+        '',
+      ].join('\n'));
+    } finally {
+      await fsp.rm(dir, { recursive: true, force: true });
+    }
   });
 });

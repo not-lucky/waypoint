@@ -151,6 +151,8 @@ export class BaseController {
       // Resolve and transform
       const resolved = resolveModel(body.model, providersConfig);
       const unifiedReq = transformRequest(baseReq, resolved);
+      // Pass resolved model to orchestration engine to avoid duplicate resolveModel() calls
+      unifiedReq.resolvedModel = resolved;
 
       this.logger.debug(`${protocolName} completion request received`, {
         model: body.model,

@@ -293,13 +293,7 @@ const respondValidationError = (res, result) => {
 export const validateCompletionBody = (req, res, next) => {
   logger.debug('Validating completion request body');
 
-  // WHAT: Parse the body securely using Zod's `safeParse`.
-  // WHY: Synchronous `try/catch` around `parse()` introduces overhead and the risk of
-  // unhandled exceptions leaking internal stack traces. `safeParse` provides a functional
-  // Either-like result object that guarantees predictable control flow when processing
-  // invalid data.
   const result = completionSchema.safeParse(req.body);
-
   if (!result.success) {
     return respondValidationError(res, result);
   }

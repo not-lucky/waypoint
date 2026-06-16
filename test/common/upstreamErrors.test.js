@@ -4,7 +4,6 @@ import {
   classifyTransportError,
   isRetryable,
   shouldCooldownKey,
-  shouldFlagKeyFailure,
   getClientHttpStatus,
   buildClientErrorEnvelope,
   normalizeUpstreamError,
@@ -319,19 +318,6 @@ describe('upstreamErrors.js Tests', () => {
         retryAfterSeconds: undefined,
         upstreamBody: undefined,
       });
-    });
-  });
-
-  describe('shouldFlagKeyFailure', () => {
-    it('should return false for T5 codes and no_api_key gateway faults', () => {
-      expect(shouldFlagKeyFailure(ERROR_CATEGORIES.MODEL_RESOURCE, 'model_not_found')).toBe(false);
-      expect(shouldFlagKeyFailure(ERROR_CATEGORIES.AUTH, 'no_api_key')).toBe(false);
-    });
-
-    it('should return true for cooldown-bearing upstream failures', () => {
-      expect(shouldFlagKeyFailure(ERROR_CATEGORIES.RATE_LIMIT, 'rate_limit_exceeded')).toBe(true);
-      expect(shouldFlagKeyFailure(ERROR_CATEGORIES.BILLING, 'insufficient_quota')).toBe(true);
-      expect(shouldFlagKeyFailure(ERROR_CATEGORIES.BILLING, 'daily_tokens_exceeded')).toBe(true);
     });
   });
 

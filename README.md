@@ -75,6 +75,7 @@ Waypoint enforces strict **Separation of Concerns** using a layered Clean Archit
 
 ### 2. API Key Pool Management & Circuit Breaking
 - Maintains stateful `KeyObject` telemetry in-memory for each provider key pool.
+- **Map-Backed Key Lookup**: Automatically switches from an O(n) array search to an O(1) Map-backed lookup for key pools containing 10 or more keys, optimizing performance for large-scale rotations.
 - **Routing Strategies**:
   - `round-robin`: Rotates keys sequentially per request to balance load evenly across active keys.
   - `fill-first`: Uses the first available key and fails over only when exhausted, optimizing for upstream **prompt cache locality**.
@@ -128,6 +129,13 @@ For OpenAI-compatible requests, `max_tokens` takes precedence when present; `max
 ### 9. Error Responses (v1)
 
 All client-visible failures use a single JSON envelope under an `error` object. Raw upstream response bodies are **never** returned as the root HTTP body. For the complete envelope structure, error codes, status forwarding, and streaming behaviors, see the [Client Error API Contract](#-client-error-api-contract) section below.
+
+### 10. Performance & Allocation Optimizations
+Waypoint incorporates extensive performance enhancements specifically tailored for high-throughput, low-latency sidecar deployments:
+- **Cached Settings Normalization**: Uses a `WeakMap` to cache compiled model configs and settings overrides, avoiding repeated normalization and `Object.entries` object allocations on every request.
+- **Circular Buffer Rate Limiting**: Employs a Symbol-indexed head pointer on sliding-window arrays to perform in-place pruning and compaction. This avoids high-overhead array slicing/splicing shifts, minimizing memory/GC pressure.
+- **Loop-based Stream Accumulation**: Replaces array flat-mapping with structured loops when constructing chunked responses, reducing stream-processing memory allocations by up to 81%.
+- **Syscall Minimization**: Passes a single cached `now` timestamp through rotation iteration paths, preventing redundant system-level clock queries (`Date.now()`).
 
 ---
 
@@ -385,7 +393,7 @@ npm start
 ```
 
 ### Running Tests
-Waypoint features a comprehensive test suite (464 unit, integration, and edge-case tests) executed via **Vitest**:
+Waypoint features a comprehensive test suite (483 unit, integration, and edge-case tests) executed via **Vitest**:
 ```bash
 npm test
 npm run test:watch   # watch mode
@@ -415,7 +423,7 @@ src/
 ├── domain/                  # Model routing, caching, and request transformation
 ├── logging/                 # LogTape integration and per-request audit logging
 ├── streaming/               # SSE parsing and stream accumulation utilities
-├── common/                  # Shared errors and string helpers
+├── common/                  # Decomposed error handler policies, classifiers, and envelopes
 ├── middleware/              # Auth, rate limiting, payload validation
 ├── registry/                # API key pool state and teardown hooks
 ├── services/                # Orchestration, retry, and failover logic

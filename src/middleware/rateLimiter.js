@@ -9,6 +9,22 @@ import { getAppLogger } from '../logging/logger.js';
 import { teardownRegistry } from '../registry/teardownRegistry.js';
 
 /**
+ * Symbol property key for tracking the head index in the sliding window.
+ * Used to mark the boundary between expired and active timestamps without
+ * allocating separate objects.
+ * @const {Symbol}
+ */
+const WINDOW_HEAD_INDEX = Symbol('windowHeadIndex');
+
+/**
+ * Minimum number of expired timestamps at the head of the window that triggers
+ * in-place compaction. Compacting avoids unbounded array growth while amortizing
+ * the cost over multiple operations.
+ * @const {number}
+ */
+const WINDOW_COMPACT_THRESHOLD = 64;
+
+/**
  * @type {Object}
  */
 const logger = getAppLogger('rate-limiter');
@@ -29,6 +45,119 @@ export const clientWindows = new Map();
  * @type {Set<NodeJS.Timeout>}
  */
 export const rateLimiterIntervals = new Set();
+
+/**
+ * Creates a new timestamp array with head index metadata.
+ * The head index marks the start of active (non-expired) timestamps,
+ * allowing efficient pruning without array splicing.
+ *
+ * @returns {Array<number>} Timestamp array with head index property.
+ */
+function createTimestampWindow() {
+  const timestamps = [];
+  Object.defineProperty(timestamps, WINDOW_HEAD_INDEX, {
+    value: 0,
+    writable: true,
+    configurable: true,
+  });
+  return timestamps;
+}
+
+/**
+ * Retrieves the current head index from a timestamp window.
+ *
+ * @param {Array<number>} timestamps - Timestamp array with head index property.
+ * @returns {number} The current head index (0 if not set).
+ */
+function getWindowHeadIndex(timestamps) {
+  return timestamps[WINDOW_HEAD_INDEX] ?? 0;
+}
+
+/**
+ * Updates the head index for a timestamp window.
+ *
+ * @param {Array<number>} timestamps - Timestamp array with head index property.
+ * @param {number} headIndex - The new head index value.
+ */
+function setWindowHeadIndex(timestamps, headIndex) {
+  if (!(WINDOW_HEAD_INDEX in timestamps)) {
+    Object.defineProperty(timestamps, WINDOW_HEAD_INDEX, {
+      value: headIndex,
+      writable: true,
+      configurable: true,
+    });
+    return;
+  }
+  // eslint-disable-next-line no-param-reassign
+  timestamps[WINDOW_HEAD_INDEX] = headIndex;
+}
+
+/**
+ * Compacts the timestamp array in-place by removing expired entries.
+ * Uses copyWithin to shift active entries to the front and truncates the array.
+ * This is more efficient than splice() which allocates a new array.
+ *
+ * @param {Array<number>} timestamps - Timestamp array with head index property.
+ */
+function compactTimestampWindow(timestamps) {
+  const headIndex = getWindowHeadIndex(timestamps);
+  if (headIndex <= 0) return;
+
+  if (headIndex >= timestamps.length) {
+    // eslint-disable-next-line no-param-reassign
+    timestamps.length = 0;
+    setWindowHeadIndex(timestamps, 0);
+    return;
+  }
+
+  // eslint-disable-next-line no-param-reassign
+  timestamps.copyWithin(0, headIndex);
+  // eslint-disable-next-line no-param-reassign
+  timestamps.length -= headIndex;
+  setWindowHeadIndex(timestamps, 0);
+}
+
+/**
+ * Conditionally compacts the timestamp window based on head index and threshold.
+ * Compacts when the window is empty or when expired entries exceed the threshold.
+ * This amortizes the cost of compaction over multiple operations.
+ *
+ * @param {Array<number>} timestamps - Timestamp array with head index property.
+ */
+function maybeCompactTimestampWindow(timestamps) {
+  const headIndex = getWindowHeadIndex(timestamps);
+  if (headIndex === 0) return;
+
+  const activeCount = timestamps.length - headIndex;
+  if (activeCount === 0 || headIndex >= WINDOW_COMPACT_THRESHOLD) {
+    compactTimestampWindow(timestamps);
+  }
+}
+
+/**
+ * Returns the count of active (non-expired) timestamps in the window.
+ *
+ * @param {Array<number>} timestamps - Timestamp array with head index property.
+ * @returns {number} The number of active timestamps.
+ */
+function getActiveWindowSize(timestamps) {
+  return timestamps.length - getWindowHeadIndex(timestamps);
+}
+
+/**
+ * Returns a copy of the active (non-expired) timestamps for a client.
+ * Exported for test visibility to verify internal state.
+ *
+ * @param {string} clientName - The client name to look up.
+ * @returns {Array<number>} Copy of active timestamps, or empty array if not found.
+ */
+export function getClientWindowActiveTimestamps(clientName) {
+  const timestamps = clientWindows.get(clientName);
+  if (!timestamps) return [];
+
+  const headIndex = getWindowHeadIndex(timestamps);
+  return headIndex === 0 ? [...timestamps] : timestamps.slice(headIndex);
+}
 
 teardownRegistry.add((loggerInstance) => {
   if (loggerInstance && typeof loggerInstance.debug === 'function') {
@@ -87,7 +216,7 @@ export const rateLimiter = (req, res, next) => {
 
   // Initialize the timestamp list for the client if it does not exist yet.
   if (!clientWindows.has(clientName)) {
-    clientWindows.set(clientName, []);
+    clientWindows.set(clientName, createTimestampWindow());
   }
 
   const timestamps = clientWindows.get(clientName);
@@ -98,18 +227,19 @@ export const rateLimiter = (req, res, next) => {
   // We locate the first timestamp that is within the window, then prune all expired ones in-place.
   // This is highly efficient and minimizes object creation overhead.
   const cutoff = now - windowMs;
-  let firstValidIndex = 0;
-  while (firstValidIndex < timestamps.length && timestamps[firstValidIndex] <= cutoff) {
-    firstValidIndex += 1;
+  let headIndex = getWindowHeadIndex(timestamps);
+  while (headIndex < timestamps.length && timestamps[headIndex] <= cutoff) {
+    headIndex += 1;
   }
-  if (firstValidIndex > 0) {
-    timestamps.splice(0, firstValidIndex);
-  }
+  setWindowHeadIndex(timestamps, headIndex);
+  maybeCompactTimestampWindow(timestamps);
+
+  const activeCount = getActiveWindowSize(timestamps);
 
   // If the number of requests in the active window meets or exceeds max, block the request.
   // Returns HTTP 429 Too Many Requests per standard API conventions.
-  if (timestamps.length >= max) {
-    logger.debug('Rate limit exceeded: blocking request', { clientName, max, currentCount: timestamps.length });
+  if (activeCount >= max) {
+    logger.debug('Rate limit exceeded: blocking request', { clientName, max, currentCount: activeCount });
     return res.status(429).json({
       error: {
         code: 'rateLimitExceeded',
@@ -120,9 +250,8 @@ export const rateLimiter = (req, res, next) => {
   }
 
   // Record the current request's timestamp.
-  logger.debug('Rate limit checked: request allowed', { clientName, max, currentCount: timestamps.length + 1 });
+  logger.debug('Rate limit checked: request allowed', { clientName, max, currentCount: activeCount + 1 });
   timestamps.push(now);
-  clientWindows.set(clientName, timestamps);
   return next();
 };
 

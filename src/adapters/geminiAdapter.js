@@ -13,7 +13,7 @@ export class GeminiAdapter extends BaseProvider {
     streamTimeoutMs = null,
   } = {}) {
     super();
-    this.baseUrl = baseUrl;
+    this.baseUrl = baseUrl?.replace(/\/$/, '') ?? null;
     this.timeoutMs = timeoutMs;
     this.streamTimeoutMs = streamTimeoutMs;
   }

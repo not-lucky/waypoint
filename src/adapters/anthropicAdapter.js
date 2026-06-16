@@ -17,7 +17,7 @@ export class AnthropicAdapter extends BaseProvider {
     providerName = 'anthropic',
   } = {}) {
     super();
-    this.baseUrl = baseUrl;
+    this.baseUrl = baseUrl?.replace(/\/$/, '') ?? null;
     this.timeoutMs = timeoutMs;
     this.streamTimeoutMs = streamTimeoutMs;
     this.providerName = providerName;
@@ -28,7 +28,7 @@ export class AnthropicAdapter extends BaseProvider {
    */
   buildUrl() {
     return this.baseUrl
-      ? `${this.baseUrl.replace(/\/$/, '')}/messages`
+      ? `${this.baseUrl}/messages`
       : 'https://api.anthropic.com/v1/messages';
   }
 

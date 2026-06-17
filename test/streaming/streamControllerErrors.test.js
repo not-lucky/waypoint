@@ -10,11 +10,11 @@ import express from 'express';
 import { OpenAIController } from '../../src/controllers/openaiController.js';
 import { AnthropicController } from '../../src/controllers/anthropicController.js';
 import { UnifiedOrchestrator } from '../../src/services/unifiedOrchestrator.js';
-import { KeyRegistry } from '../../src/registry/keyManagement/registryCore.js';
-import { ProviderFactory } from '../../src/adapters/providerFactory.js';
-import { ERROR_CATEGORIES } from '../../src/common/errorPolicy.js';
-import { UpstreamError } from '../../src/common/upstreamError.js';
-import { formatAnthropicSseError, formatOpenAiSseError } from '../../src/common/errorEnvelope.js';
+import { KeyRegistry } from '../../src/registry/keyRegistry.js';
+import { ProviderFactory } from '../../src/providers/factory.js';
+import { ERROR_CATEGORIES } from '../../src/errors/policy.js';
+import { UpstreamError } from '../../src/errors/upstream.js';
+import { formatAnthropicSseError, formatOpenAiSseError } from '../../src/errors/envelope.js';
 import { normalizeTestError } from '../helpers/normalizeTestError.js';
 
 class StreamMockAdapter {

@@ -1,4 +1,4 @@
-import { getLongestPrefixSuffix } from '../common/stringUtils.js';
+import { getLongestPrefixSuffix } from '../utils/stringUtils.js';
 
 /**
  * State machine for parsing content with embedded tags (e.g., <thought>).

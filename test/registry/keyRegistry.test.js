@@ -1,8 +1,8 @@
 import {
   describe, it, expect, vi, beforeEach, afterEach,
 } from 'vitest';
-import { ERROR_CATEGORIES } from '../../src/common/errorPolicy.js';
-import { KeyRegistry } from '../../src/registry/keyManagement/registryCore.js';
+import { ERROR_CATEGORIES } from '../../src/errors/policy.js';
+import { KeyRegistry } from '../../src/registry/keyRegistry.js';
 
 describe('Key Registry Health & Edge Cases', () => {
   beforeEach(() => {

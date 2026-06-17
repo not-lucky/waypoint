@@ -10,8 +10,8 @@ import request from 'supertest';
 import express from 'express';
 import { OpenAIController } from '../../src/controllers/openaiController.js';
 import { UnifiedOrchestrator, activeControllers } from '../../src/services/unifiedOrchestrator.js';
-import { KeyRegistry } from '../../src/registry/keyManagement/registryCore.js';
-import { ProviderFactory } from '../../src/adapters/providerFactory.js';
+import { KeyRegistry } from '../../src/registry/keyRegistry.js';
+import { ProviderFactory } from '../../src/providers/factory.js';
 import { teardown } from '../../src/lifecycle/lifecycle.js';
 import { normalizeTestError } from '../helpers/normalizeTestError.js';
 

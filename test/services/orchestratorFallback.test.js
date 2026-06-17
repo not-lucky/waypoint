@@ -5,8 +5,8 @@ import {
 } from 'vitest';
 import { UnifiedOrchestrator } from '../../src/services/unifiedOrchestrator.js';
 import { normalizeTestError } from '../helpers/normalizeTestError.js';
-import { KeyRegistry } from '../../src/registry/keyManagement/registryCore.js';
-import { ProviderFactory } from '../../src/adapters/providerFactory.js';
+import { KeyRegistry } from '../../src/registry/keyRegistry.js';
+import { ProviderFactory } from '../../src/providers/factory.js';
 
 class MockAdapter {
   constructor(providerName = 'mock-provider') {

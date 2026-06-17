@@ -1,9 +1,9 @@
 import {
   describe, it, expect, vi, beforeEach, afterEach,
 } from 'vitest';
-import { ERROR_CATEGORIES } from '../../src/common/errorPolicy.js';
+import { ERROR_CATEGORIES } from '../../src/errors/policy.js';
 import { COOLDOWN_DEFAULTS } from '../../src/config/cooldownDefaults.js';
-import { KeyRegistry } from '../../src/registry/keyManagement/registryCore.js';
+import { KeyRegistry } from '../../src/registry/keyRegistry.js';
 
 const rateLimitDescriptor = {
   category: ERROR_CATEGORIES.RATE_LIMIT,

@@ -1,6 +1,6 @@
 /* eslint-disable max-len */
-import { formatAnthropicSseError } from '../common/errorEnvelope.js';
-import { FORMATS, translateRequest, translateResponse } from '../translators/index.js';
+import { formatAnthropicSseError } from '../errors/envelope.js';
+import { FORMATS, translateRequest, translateResponse } from '../transforms/index.js';
 import { StreamAccumulator } from '../streaming/streamAccumulator.js';
 import { BaseController } from './baseController.js';
 

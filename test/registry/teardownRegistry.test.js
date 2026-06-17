@@ -1,7 +1,7 @@
 import {
   describe, it, expect, vi, beforeEach,
 } from 'vitest';
-import { TeardownRegistry } from '../../src/registry/teardownRegistry.js';
+import { TeardownRegistry } from '../../src/lifecycle/teardownRegistry.js';
 
 describe('TeardownRegistry', () => {
   let registry;

@@ -1,5 +1,5 @@
 import { flushLogs } from '../logging/logger.js';
-import { teardownRegistry } from '../registry/teardownRegistry.js';
+import { teardownRegistry } from './teardownRegistry.js';
 
 let isTearingDown = false;
 

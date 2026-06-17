@@ -6,10 +6,10 @@ import {
   beforeEach,
 } from 'vitest';
 import { UnifiedOrchestrator } from '../../src/services/unifiedOrchestrator.js';
-import { KeyRegistry } from '../../src/registry/keyManagement/registryCore.js';
-import { ProviderFactory } from '../../src/adapters/providerFactory.js';
-import { AnthropicAdapter } from '../../src/adapters/anthropicAdapter.js';
-import { OpenAICompatibleAdapter } from '../../src/adapters/openaiCompatibleAdapter.js';
+import { KeyRegistry } from '../../src/registry/keyRegistry.js';
+import { ProviderFactory } from '../../src/providers/factory.js';
+import { AnthropicAdapter } from '../../src/providers/anthropic.js';
+import { OpenAICompatibleAdapter } from '../../src/providers/openai.js';
 
 describe('retryExecutor upstream error propagation', () => {
   let mockFetch;

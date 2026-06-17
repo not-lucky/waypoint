@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { buildClientErrorEnvelope } from '../common/errorEnvelope.js';
+import { buildClientErrorEnvelope } from '../errors/envelope.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { dryRunMiddleware } from '../middleware/dryRun.js';
 import { createHealthRouter } from '../routes/health.js';

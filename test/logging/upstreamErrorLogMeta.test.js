@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildUpstreamErrorLogFields } from '../../src/logging/upstreamErrorLogMeta.js';
-import { ERROR_CATEGORIES } from '../../src/common/errorPolicy.js';
+import { ERROR_CATEGORIES } from '../../src/errors/policy.js';
 
 describe('upstreamErrorLogMeta', () => {
   it('should build structured fields from a normalized upstream error', () => {

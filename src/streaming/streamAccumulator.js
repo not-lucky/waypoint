@@ -1,6 +1,6 @@
 /* eslint-disable max-len */
-import { extractReasoningText } from '../adapters/shared/openaiResponse.js';
-import { mergeToolCallDeltas } from '../adapters/shared/openaiToolCalls.js';
+import { extractReasoningText } from '../providers/shared/openaiResponse.js';
+import { mergeToolCallDeltas } from '../providers/shared/openaiToolCalls.js';
 
 export class StreamAccumulator {
   constructor(defaultId = null, defaultModel = null) {

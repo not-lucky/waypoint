@@ -6,7 +6,7 @@
  */
 
 import { getAppLogger } from '../logging/logger.js';
-import { teardownRegistry } from '../registry/teardownRegistry.js';
+import { teardownRegistry } from '../lifecycle/teardownRegistry.js';
 
 /**
  * Symbol property key for tracking the head index in the sliding window.

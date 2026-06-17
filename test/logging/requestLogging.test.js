@@ -5,7 +5,7 @@ import fsp from 'node:fs/promises';
 import {
   vi, describe, it, expect, beforeEach, afterEach,
 } from 'vitest';
-import { GeminiAdapter } from '../../src/adapters/geminiAdapter.js';
+import { GeminiAdapter } from '../../src/providers/gemini.js';
 import { OpenAIController } from '../../src/controllers/openaiController.js';
 import { RequestLog } from '../../src/logging/requestLogger.js';
 import {

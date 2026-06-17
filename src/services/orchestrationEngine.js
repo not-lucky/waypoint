@@ -8,7 +8,7 @@
 /* eslint-disable no-restricted-syntax, no-constant-condition */
 import { resolveModel } from '../domain/modelRouter.js';
 import { applyModelConfigToRequest } from '../domain/requestTransformer.js';
-import { executeWithRetry } from './retryLogic/keyRotationLoop.js';
+import { executeWithRetry } from './keyRotationLoop.js';
 import { logDebug } from '../logging/loggerWrapper.js';
 
 /**

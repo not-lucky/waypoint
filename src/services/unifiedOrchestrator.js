@@ -7,7 +7,7 @@
 
 import { runOrchestrationLoop } from './orchestrationEngine.js';
 import { logDebug } from '../logging/loggerWrapper.js';
-import { teardownRegistry } from '../registry/teardownRegistry.js';
+import { teardownRegistry } from '../lifecycle/teardownRegistry.js';
 
 /**
  * Central registry of all active request AbortControllers.

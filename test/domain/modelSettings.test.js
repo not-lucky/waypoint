@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { ProviderValidator } from '../../src/config/providerValidator.js';
 import { ConfigLoader } from '../../src/config/loader.js';
 import { transformRequest, applyModelConfigToRequest } from '../../src/domain/requestTransformer.js';
-import { translateOpenAIToClaude } from '../../src/translators/request/openaiToClaude.js';
-import { getThinkingLevel } from '../../src/adapters/gemini/geminiFormatter.js';
+import { translateOpenAIToClaude } from '../../src/transforms/request/openaiToClaude.js';
+import { getThinkingLevel } from '../../src/providers/gemini/geminiFormatter.js';
 
 describe('Model-Level Defaults, Overrides, and Reasoning Unit Tests', () => {
   describe('ProviderValidator Validation', () => {

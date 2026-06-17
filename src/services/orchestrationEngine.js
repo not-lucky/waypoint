@@ -8,8 +8,8 @@
 /* eslint-disable no-restricted-syntax, no-constant-condition */
 import { resolveModel } from '../domain/modelRouter.js';
 import { applyModelConfigToRequest } from '../domain/requestTransformer.js';
-import { executeWithRetry } from './retryExecutor.js';
-import { logDebug } from '../logging/loggerHelpers.js';
+import { executeWithRetry } from './retryLogic/keyRotationLoop.js';
+import { logDebug } from '../logging/loggerWrapper.js';
 
 /**
  * Updates the current request object with resolved model configuration.

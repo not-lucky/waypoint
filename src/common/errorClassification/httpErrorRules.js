@@ -1,129 +1,25 @@
 /**
- * @fileoverview Error classification logic for upstream HTTP and stream errors.
- * Maps HTTP status codes and error bodies to structured classification results.
+ * @fileoverview HTTP status code classification rules for upstream errors.
+ * Maps HTTP status codes to structured error classifications based on error body content.
+ * @module common/errorClassification/httpErrorRules
  */
 
-import { ERROR_CATEGORIES } from './errorPolicy.js';
-
-/**
- * Attaches retryAfterSeconds to a classification result when the header was present.
- *
- * @param {Object} result - Classifier result object.
- * @param {number|undefined} retryAfterSeconds - Parsed Retry-After value.
- * @returns {Object} Result with retryAfterSeconds when defined.
- */
-function withRetryAfter(result, retryAfterSeconds) {
-  if (retryAfterSeconds !== undefined) {
-    return { ...result, retryAfterSeconds };
-  }
-  return result;
-}
-
-/**
- * Parses a Retry-After header value per RFC 7231 (delay-seconds or HTTP-date).
- *
- * @param {string|number} headerValue - Raw Retry-After header value.
- * @returns {number|undefined} Seconds until retry, or undefined if unparseable.
- */
-export function parseRetryAfter(headerValue) {
-  if (headerValue === undefined || headerValue === null) {
-    return undefined;
-  }
-
-  const trimmed = String(headerValue).trim();
-  if (!trimmed) {
-    return undefined;
-  }
-
-  if (/^\d+$/.test(trimmed)) {
-    return Math.max(0, parseInt(trimmed, 10));
-  }
-
-  const dateMs = Date.parse(trimmed);
-  if (!Number.isNaN(dateMs)) {
-    return Math.max(0, Math.ceil((dateMs - Date.now()) / 1000));
-  }
-
-  return undefined;
-}
-
-/**
- * Extracts the error object from an upstream response body.
- *
- * @param {any} errorBody - Parsed JSON or string body from upstream.
- * @returns {Object}
- */
-function extractUpstreamErrorObject(errorBody) {
-  if (errorBody?.error && typeof errorBody.error === 'object') {
-    return errorBody.error;
-  }
-  if (errorBody && typeof errorBody === 'object' && !Array.isArray(errorBody)) {
-    return errorBody;
-  }
-  return {};
-}
-
-/**
- * Builds normalized classification context from upstream inputs.
- *
- * @param {number} statusCode - HTTP status code from upstream.
- * @param {any} errorBody - Parsed JSON or string body from upstream.
- * @param {Object} [headers] - Response headers (e.g. for Retry-After).
- * @returns {Object}
- */
-function buildClassificationContext(statusCode, errorBody, headers = {}) {
-  const errObj = extractUpstreamErrorObject(errorBody);
-  const type = errObj?.type || '';
-  const code = errObj?.code || '';
-  const message = errObj?.message || (typeof errorBody === 'string' ? errorBody : '');
-  const msgLower = message.toLowerCase();
-  const codeLower = String(code).toLowerCase();
-
-  let retryAfterSeconds;
-  if (headers) {
-    const retryAfterHeader = headers['retry-after'] || headers['Retry-After'];
-    retryAfterSeconds = parseRetryAfter(retryAfterHeader);
-  }
-
-  return {
-    statusCode,
-    type,
-    code,
-    message,
-    msgLower,
-    codeLower,
-    retryAfterSeconds,
-  };
-}
-
-/**
- * @param {Object} result - Classification result fields.
- * @param {Object} ctx - Classification context.
- * @returns {Object}
- */
-function finalizeClassification(result, ctx) {
-  return withRetryAfter({
-    type: result.type,
-    code: result.code,
-    category: result.category,
-    message: ctx.message,
-  }, ctx.retryAfterSeconds);
-}
-
-const ANY = () => true;
-
-function rule(match, type, code, category) {
-  return { match, result: () => ({ type, code, category }) };
-}
-
-function streamRule(match, status) {
-  return { match, result: () => ({ status }) };
-}
+import { ERROR_CATEGORIES } from '../errorPolicy.js';
+import {
+  rule,
+  ANY,
+  buildClassificationContext,
+  attachContextFields,
+} from './classifierCore.js';
 
 const {
   AUTH, BILLING, VALIDATION, RATE_LIMIT, MODEL_RESOURCE, CONTENT_POLICY, SERVER,
 } = ERROR_CATEGORIES;
 
+/**
+ * HTTP status code classification rules.
+ * Each status code maps to an array of rules evaluated in order.
+ */
 const HTTP_STATUS_RULES = {
   401: [
     rule(
@@ -302,49 +198,6 @@ const HTTP_STATUS_RULES = {
   ],
 };
 
-const STREAM_STATUS_RULES = [
-  streamRule((ctx) => ctx.typeLower.includes('rate_limit') || ctx.codeLower.includes('rate_limit'), 429),
-  streamRule((ctx) => ctx.typeLower.includes('authentication') || ctx.codeLower.includes('api_key') || ctx.codeLower === 'no_api_key', 401),
-  streamRule((ctx) => ctx.typeLower.includes('permission') || ctx.codeLower === 'forbidden' || ctx.codeLower === 'region_not_supported', 403),
-  streamRule((ctx) => ctx.typeLower.includes('billing') || ctx.codeLower.includes('quota') || ctx.codeLower.includes('billing'), 402),
-  streamRule((ctx) => ctx.typeLower.includes('invalid_request') || ctx.codeLower.includes('invalid_'), 400),
-  streamRule((ctx) => ctx.typeLower.includes('not_found') || ctx.codeLower.includes('not_found'), 404),
-  streamRule((ctx) => ctx.typeLower.includes('overloaded') || ctx.codeLower === 'engine_overloaded', 503),
-];
-
-/**
- * Resolves an HTTP status code from a stream error payload.
- *
- * @param {any} errorPayload - Parsed SSE error JSON.
- * @param {number} [fallback=502] - Default status when none is present.
- * @returns {number}
- */
-function resolveStreamErrorStatus(errorPayload, fallback = 502) {
-  const err = errorPayload?.error || errorPayload;
-  if (typeof err?.code === 'number' && err.code >= 100 && err.code < 600) {
-    return err.code;
-  }
-  if (typeof err?.status_code === 'number' && err.status_code >= 100 && err.status_code < 600) {
-    return err.status_code;
-  }
-  if (typeof err?.status === 'number' && err.status >= 100 && err.status < 600) {
-    return err.status;
-  }
-
-  const ctx = {
-    codeLower: String(err?.code || '').toLowerCase(),
-    typeLower: String(err?.type || '').toLowerCase(),
-  };
-
-  for (const r of STREAM_STATUS_RULES) {
-    if (r.match(ctx)) {
-      return r.result(ctx).status;
-    }
-  }
-
-  return fallback;
-}
-
 /**
  * Classifies an upstream error message, status code, and body.
  *
@@ -360,13 +213,13 @@ export function classifyUpstreamError(statusCode, errorBody, headers = {}) {
   if (rules) {
     for (const r of rules) {
       if (r.match(ctx)) {
-        return finalizeClassification(r.result(ctx), ctx);
+        return attachContextFields(r.result(ctx), ctx);
       }
     }
   }
 
   if (statusCode >= 500) {
-    return finalizeClassification({
+    return attachContextFields({
       type: 'api_error',
       code: 'internal_server_error',
       category: ERROR_CATEGORIES.SERVER,
@@ -374,26 +227,16 @@ export function classifyUpstreamError(statusCode, errorBody, headers = {}) {
   }
 
   if (statusCode >= 400) {
-    return finalizeClassification({
+    return attachContextFields({
       type: 'invalid_request_error',
       code: ctx.code || 'upstream_client_error',
       category: ERROR_CATEGORIES.VALIDATION,
     }, ctx);
   }
 
-  return finalizeClassification({
+  return attachContextFields({
     type: 'api_error',
     code: 'internal_server_error',
     category: ERROR_CATEGORIES.SERVER,
   }, ctx);
 }
-
-/**
- * Resolves an HTTP status code from a stream error payload.
- * Exported for use in upstreamError module.
- *
- * @param {any} errorPayload - Parsed SSE error JSON.
- * @param {number} [fallback=502] - Default status when none is present.
- * @returns {number}
- */
-export { resolveStreamErrorStatus };

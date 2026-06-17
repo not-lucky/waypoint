@@ -7,7 +7,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "ci": "npm run lint && echo 'Linting passed' && echo 'Running tests...' && npm test && echo 'Tests passed'",
-    "lint": "eslint .",
+    "lint": "eslint . --fix",
     "dev": "node --watch src/index.js",
     "start": "node src/index.js"
   },

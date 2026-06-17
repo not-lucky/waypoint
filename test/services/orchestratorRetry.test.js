@@ -5,7 +5,7 @@ import {
   expect,
 } from 'vitest';
 import { UnifiedOrchestrator } from '../../src/services/unifiedOrchestrator.js';
-import { KeyRegistry } from '../../src/registry/keyRegistry.js';
+import { KeyRegistry } from '../../src/registry/keyManagement/registryCore.js';
 import { ProviderFactory } from '../../src/adapters/providerFactory.js';
 import { makeHttpError, normalizeTestError } from '../helpers/normalizeTestError.js';
 

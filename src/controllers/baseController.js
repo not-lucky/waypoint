@@ -2,12 +2,8 @@ import { getAppLogger } from '../logging/logger.js';
 import { createRequestLog } from '../logging/requestLogger.js';
 import { resolveModel } from '../domain/modelRouter.js';
 import { transformRequest } from '../domain/requestTransformer.js';
-import {
-  buildClientErrorEnvelope,
-  normalizeStreamFailure,
-  normalizeUpstreamError,
-  UpstreamError,
-} from '../common/upstreamErrors.js';
+import { buildClientErrorEnvelope, normalizeStreamFailure } from '../common/errorEnvelope.js';
+import { normalizeUpstreamError, UpstreamError } from '../common/upstreamError.js';
 import { buildUpstreamErrorLogFields } from '../logging/upstreamErrorLogMeta.js';
 
 /**

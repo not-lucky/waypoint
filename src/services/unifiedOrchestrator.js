@@ -6,7 +6,7 @@
  */
 
 import { runOrchestrationLoop } from './orchestrationEngine.js';
-import { logDebug } from '../logging/loggerHelpers.js';
+import { logDebug } from '../logging/loggerWrapper.js';
 import { teardownRegistry } from '../registry/teardownRegistry.js';
 
 /**

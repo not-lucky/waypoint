@@ -1,4 +1,4 @@
-import { KeyRegistry } from '../registry/keyRegistry.js';
+import { KeyRegistry } from '../registry/keyManagement/registryCore.js';
 import { ProviderFactory } from '../adapters/providerFactory.js';
 import { UnifiedOrchestrator } from '../services/unifiedOrchestrator.js';
 import { OpenAIController } from '../controllers/openaiController.js';

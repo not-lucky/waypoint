@@ -4,7 +4,8 @@
  */
 
 import { ERROR_CATEGORIES } from './errorPolicy.js';
-import { classifyUpstreamError, resolveStreamErrorStatus } from './errorClassifier.js';
+import { classifyUpstreamError } from './errorClassification/httpErrorRules.js';
+import { resolveStreamErrorStatus } from './errorClassification/streamErrorRules.js';
 import { getClientHttpStatus, classifyTransportError } from './transportErrors.js';
 
 /**
@@ -75,6 +76,29 @@ function extractResponseHeaders(error) {
 }
 
 /**
+ * Computes an override message for authentication-category errors.
+ * Returns null when no override applies, so the caller can fall back to the classified message.
+ *
+ * @param {string} errorCode - Machine-readable error code.
+ * @param {string} fallbackMessage - The currently resolved message.
+ * @param {Object|null} req - Normalized request (for model context in forbidden messages).
+ * @returns {string|null}
+ */
+function authMessageOverride(errorCode, fallbackMessage, req) {
+  if (errorCode === 'invalid_api_key') {
+    return 'Authentication failed: Invalid upstream API key.';
+  }
+  if (errorCode === 'no_api_key') {
+    return 'Authentication failed: No Authorization header sent to the upstream provider.';
+  }
+  if (errorCode === 'forbidden') {
+    const attemptedModel = req?.model || 'unknown';
+    return `Permission denied: access forbidden. Model attempted: ${attemptedModel}. ${fallbackMessage}`;
+  }
+  return null;
+}
+
+/**
  * Normalizes any upstream or transport error into the canonical provider error shape.
  *
  * @param {any} error - Caught error from adapter or fetch.
@@ -84,63 +108,57 @@ function extractResponseHeaders(error) {
  */
 export function normalizeUpstreamError(error, providerName, req = null) {
   const status = error?.statusCode ?? error?.status ?? error?.response?.status;
-  if (error instanceof UpstreamError || status !== undefined) {
-    let errorCode = error?.errorCode;
-    let errorType = error?.errorType;
-    let category = error?.category;
-    const upstreamBody = error?.upstreamBody;
-    let retryAfterSeconds = error?.retryAfterSeconds;
-    let message = error?.message || String(error);
 
-    if (!(error instanceof UpstreamError)) {
-      const errorBody = error?.upstreamBody
-        ?? (error?.error ? { error: error.error } : error);
-      const classification = classifyUpstreamError(
-        status,
-        errorBody,
-        extractResponseHeaders(error),
-      );
-      errorCode = classification.code;
-      errorType = classification.type;
-      category = classification.category;
-      retryAfterSeconds = classification.retryAfterSeconds ?? retryAfterSeconds;
-      message = classification.message || message;
-    }
-
-    if (category === ERROR_CATEGORIES.AUTH) {
-      if (errorCode === 'invalid_api_key') {
-        message = 'Authentication failed: Invalid upstream API key.';
-      } else if (errorCode === 'no_api_key') {
-        message = 'Authentication failed: No Authorization header sent to the upstream provider.';
-      } else if (errorCode === 'forbidden') {
-        const attemptedModel = req?.model || 'unknown';
-        message = `Permission denied: access forbidden. Model attempted: ${attemptedModel}. ${message}`;
-      }
-    }
-
+  if (!(error instanceof UpstreamError) && status === undefined) {
+    const transport = classifyTransportError(error);
     return {
-      code: errorCode,
-      type: errorType,
-      message,
-      httpStatus: getClientHttpStatus(status, category, errorCode),
-      provider: (error?.provider && error.provider !== 'unknown') ? error.provider : providerName,
-      retryAfterSeconds,
-      category,
-      upstreamBody,
-      upstreamStatus: status,
+      code: transport.code,
+      type: undefined,
+      message: transport.message,
+      httpStatus: transport.httpStatus,
+      provider: providerName,
+      category: transport.category,
+      retryAfterSeconds: undefined,
+      upstreamBody: undefined,
     };
   }
 
-  const transport = classifyTransportError(error);
+  let errorCode = error?.errorCode;
+  let errorType = error?.errorType;
+  let category = error?.category;
+  const upstreamBody = error?.upstreamBody;
+  let retryAfterSeconds = error?.retryAfterSeconds;
+  let message = error?.message || String(error);
+
+  if (!(error instanceof UpstreamError)) {
+    const errorBody = error?.upstreamBody
+      ?? (error?.error ? { error: error.error } : error);
+    const classification = classifyUpstreamError(
+      status,
+      errorBody,
+      extractResponseHeaders(error),
+    );
+    errorCode = classification.code;
+    errorType = classification.type;
+    category = classification.category;
+    retryAfterSeconds = classification.retryAfterSeconds ?? retryAfterSeconds;
+    message = classification.message || message;
+  }
+
+  if (category === ERROR_CATEGORIES.AUTH) {
+    message = authMessageOverride(errorCode, message, req) ?? message;
+  }
+
   return {
-    code: transport.code,
-    type: undefined,
-    message: transport.message,
-    httpStatus: transport.httpStatus,
-    provider: providerName,
-    category: transport.category,
-    retryAfterSeconds: undefined,
-    upstreamBody: undefined,
+    code: errorCode,
+    type: errorType,
+    message,
+    httpStatus: getClientHttpStatus(status, category, errorCode),
+    provider: (error?.provider && error.provider !== 'unknown') ? error.provider : providerName,
+    retryAfterSeconds,
+    category,
+    upstreamBody,
+    upstreamStatus: status,
   };
 }
 

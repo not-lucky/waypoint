@@ -142,7 +142,7 @@ describe('Structured Logger (LogTape)', () => {
         filePath: tempLogFile,
         format: 'json',
       },
-    });
+    }, { skipTimestamp: true });
 
     const logger = getAppLogger('test-file');
     logger.info('File message 1');

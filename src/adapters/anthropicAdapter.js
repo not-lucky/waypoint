@@ -4,7 +4,7 @@ import { parseSSEStream } from '../streaming/sseParser.js';
 import {
   FORMATS, translateRequest, translateResponse, translateStreamChunk,
 } from '../translators/index.js';
-import { createStreamUpstreamError } from '../common/upstreamErrors.js';
+import { createStreamUpstreamError } from '../common/upstreamError.js';
 
 /**
  * Provider adapter for Anthropic's Claude API endpoints.

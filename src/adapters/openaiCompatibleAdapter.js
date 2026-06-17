@@ -7,7 +7,7 @@ import {
   mapOpenAICompletionResponse,
   mapOpenAIStreamChunk,
 } from './shared/openaiResponse.js';
-import { throwIfStreamErrorPayload } from '../common/upstreamErrors.js';
+import { throwIfStreamErrorPayload } from '../common/upstreamError.js';
 
 /**
  * Adapter for natively OpenAI-compatible APIs.

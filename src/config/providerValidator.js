@@ -9,6 +9,44 @@
 import { isPositiveInteger, isNonEmptyString, validateFallbackModel } from './validationHelpers.js';
 import { logWarning, logErrorAndExitOrThrow } from '../logging/loggerWrapper.js';
 
+const SETTINGS_CONFIG = {
+  temperature: {
+    validate: (val) => typeof val === 'number' && val >= 0 && val <= 2,
+    errorMsg: (path, provider) => `Setting 'temperature' at '${path}' for provider '${provider}' must be a number between 0 and 2.`,
+  },
+  maxTokens: {
+    validate: (val) => isPositiveInteger(Number(val)),
+    errorMsg: (path, provider) => `Setting 'maxTokens' at '${path}' for provider '${provider}' must be a positive integer.`,
+  },
+  reasoningSupported: {
+    validate: (val) => typeof val === 'boolean',
+    errorMsg: (path, provider) => `Setting 'reasoningSupported' at '${path}' for provider '${provider}' must be a boolean.`,
+  },
+  reasoningEffort: {
+    validate: (val) => {
+      const allowed = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+      return typeof val === 'string' && allowed.includes(val.toLowerCase());
+    },
+    errorMsg: (path, provider) => `Setting 'reasoningEffort' at '${path}' for provider '${provider}' must be one of 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'.`,
+  },
+};
+
+const VALID_SETTING_KEYS = new Set(Object.keys(SETTINGS_CONFIG));
+
+const VALID_PROVIDER_TYPES = ['openai-compatible', 'anthropic-compatible'];
+
+const VALID_MODEL_KEYS = [
+  'id',
+  'aliases',
+  'actualModelId',
+  'fallbackModel',
+  'overrides',
+  'temperature',
+  'maxTokens',
+  'reasoningSupported',
+  'reasoningEffort',
+];
+
 /**
  * Class representing a validator for API providers.
  */
@@ -52,18 +90,15 @@ export class ProviderValidator {
           // eslint-disable-next-line no-param-reassign
           delete providerConf.type;
         }
-      } else {
-        const VALID_TYPES = ['openai-compatible', 'anthropic-compatible'];
-        if (providerConf.type === undefined) {
-          // eslint-disable-next-line no-param-reassign
-          providerConf.type = 'openai-compatible';
-        } else if (!VALID_TYPES.includes(providerConf.type)) {
-          logErrorAndExitOrThrow(
-            `Invalid 'type' value '${providerConf.type}' for custom provider '${providerName}'. unknown provider type.`,
-            shouldExit,
-            customLogger,
-          );
-        }
+      } else if (providerConf.type === undefined) {
+        // eslint-disable-next-line no-param-reassign
+        providerConf.type = 'openai-compatible';
+      } else if (!VALID_PROVIDER_TYPES.includes(providerConf.type)) {
+        logErrorAndExitOrThrow(
+          `Invalid 'type' value '${providerConf.type}' for custom provider '${providerName}'. unknown provider type.`,
+          shouldExit,
+          customLogger,
+        );
       }
 
       if (!this.reservedProviders.has(providerName) && !isNonEmptyString(providerConf.baseUrl)) {
@@ -111,17 +146,6 @@ export class ProviderValidator {
         if (!isNonEmptyString(model.id)) {
           logErrorAndExitOrThrow(`Missing or empty model 'id' at index ${j} for provider '${providerName}'.`, shouldExit, customLogger);
         }
-        const VALID_MODEL_KEYS = [
-          'id',
-          'aliases',
-          'actualModelId',
-          'fallbackModel',
-          'overrides',
-          'temperature',
-          'maxTokens',
-          'reasoningSupported',
-          'reasoningEffort',
-        ];
 
         Object.entries(model).forEach(([key, val]) => {
           if (!VALID_MODEL_KEYS.includes(key)) {
@@ -148,40 +172,14 @@ export class ProviderValidator {
                 customLogger,
               );
             }
-          } else if (key === 'temperature') {
-            if (typeof val !== 'number' || val < 0 || val > 2) {
-              logErrorAndExitOrThrow(
-                `Setting 'temperature' at index ${j} for provider '${providerName}' must be a number between 0 and 2.`,
-                shouldExit,
-                customLogger,
-              );
-            }
-          } else if (key === 'maxTokens') {
-            const coerced = Number(val);
-            if (!Number.isInteger(coerced) || coerced <= 0) {
-              logErrorAndExitOrThrow(
-                `Setting '${key}' at index ${j} for provider '${providerName}' must be a positive integer.`,
-                shouldExit,
-                customLogger,
-              );
-            }
-          } else if (key === 'reasoningSupported') {
-            if (typeof val !== 'boolean') {
-              logErrorAndExitOrThrow(
-                `Setting '${key}' at index ${j} for provider '${providerName}' must be a boolean.`,
-                shouldExit,
-                customLogger,
-              );
-            }
-          } else if (key === 'reasoningEffort') {
-            const allowed = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
-            if (typeof val !== 'string' || !allowed.includes(val.toLowerCase())) {
-              logErrorAndExitOrThrow(
-                `Setting '${key}' at index ${j} for provider '${providerName}' must be one of 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'.`,
-                shouldExit,
-                customLogger,
-              );
-            }
+          } else if (VALID_SETTING_KEYS.has(key)) {
+            ProviderValidator.validateSettings(
+              { [key]: val },
+              `models[${j}]`,
+              providerName,
+              shouldExit,
+              customLogger,
+            );
           } else if (key === 'overrides') {
             ProviderValidator.validateSettings(val, `models[${j}].overrides`, providerName, shouldExit, customLogger);
           }
@@ -221,55 +219,20 @@ export class ProviderValidator {
       return;
     }
 
-    const VALID_KEYS = [
-      'temperature',
-      'maxTokens',
-      'reasoningSupported',
-      'reasoningEffort',
-    ];
-
     Object.entries(settings).forEach(([key, val]) => {
-      if (!VALID_KEYS.includes(key)) {
+      if (!VALID_SETTING_KEYS.has(key)) {
         logErrorAndExitOrThrow(
           `Invalid setting key '${key}' at '${path}' for provider '${providerName}'.`,
           shouldExit,
           customLogger,
         );
       }
-      if (key === 'temperature') {
-        if (typeof val !== 'number' || val < 0 || val > 2) {
-          logErrorAndExitOrThrow(
-            `Setting 'temperature' at '${path}' for provider '${providerName}' must be a number between 0 and 2.`,
-            shouldExit,
-            customLogger,
-          );
-        }
-      } else if (key === 'maxTokens') {
-        const coerced = Number(val);
-        if (!isPositiveInteger(coerced)) {
-          logErrorAndExitOrThrow(
-            `Setting '${key}' at '${path}' for provider '${providerName}' must be a positive integer.`,
-            shouldExit,
-            customLogger,
-          );
-        }
-      } else if (key === 'reasoningSupported') {
-        if (typeof val !== 'boolean') {
-          logErrorAndExitOrThrow(
-            `Setting '${key}' at '${path}' for provider '${providerName}' must be a boolean.`,
-            shouldExit,
-            customLogger,
-          );
-        }
-      } else if (key === 'reasoningEffort') {
-        const allowed = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
-        if (typeof val !== 'string' || !allowed.includes(val.toLowerCase())) {
-          logErrorAndExitOrThrow(
-            `Setting '${key}' at '${path}' for provider '${providerName}' must be one of 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'.`,
-            shouldExit,
-            customLogger,
-          );
-        }
+      if (!SETTINGS_CONFIG[key].validate(val)) {
+        logErrorAndExitOrThrow(
+          SETTINGS_CONFIG[key].errorMsg(path, providerName),
+          shouldExit,
+          customLogger,
+        );
       }
     });
   }

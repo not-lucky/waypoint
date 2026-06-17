@@ -2,33 +2,30 @@ import { getAppLogger } from './logger.js';
 
 const logtapeLogger = getAppLogger('config');
 
+function dispatch(customLogger, method, msg, meta) {
+  let target = logtapeLogger;
+  if (customLogger) {
+    if (typeof customLogger[method] === 'function') target = customLogger;
+    else if (method === 'warning' && typeof customLogger.warn === 'function') {
+      if (meta !== undefined) customLogger.warn(msg, meta);
+      else customLogger.warn(msg);
+      return;
+    }
+  }
+  if (meta !== undefined) target[method](msg, meta);
+  else target[method](msg);
+}
+
 export function logDebug(customLogger, msg, meta) {
-  if (customLogger && typeof customLogger.debug === 'function') {
-    if (meta !== undefined) customLogger.debug(msg, meta);
-    else customLogger.debug(msg);
-  } else if (meta !== undefined) logtapeLogger.debug(msg, meta);
-  else logtapeLogger.debug(msg);
+  dispatch(customLogger, 'debug', msg, meta);
 }
 
 export function logWarning(customLogger, msg, meta) {
-  if (customLogger) {
-    if (typeof customLogger.warning === 'function') {
-      if (meta !== undefined) customLogger.warning(msg, meta);
-      else customLogger.warning(msg);
-    } else if (typeof customLogger.warn === 'function') {
-      if (meta !== undefined) customLogger.warn(msg, meta);
-      else customLogger.warn(msg);
-    }
-  } else if (meta !== undefined) logtapeLogger.warning(msg, meta);
-  else logtapeLogger.warning(msg);
+  dispatch(customLogger, 'warning', msg, meta);
 }
 
 export function logFatal(customLogger, msg, meta) {
-  if (customLogger && typeof customLogger.fatal === 'function') {
-    if (meta !== undefined) customLogger.fatal(msg, meta);
-    else customLogger.fatal(msg);
-  } else if (meta !== undefined) logtapeLogger.fatal(msg, meta);
-  else logtapeLogger.fatal(msg);
+  dispatch(customLogger, 'fatal', msg, meta);
 }
 
 export const logErrorAndExitOrThrow = (msg, shouldExit, customLogger = null) => {

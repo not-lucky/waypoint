@@ -1,4 +1,4 @@
-import { resolveLifecycleTier } from '../common/upstreamErrors.js';
+import { resolveLifecycleTier } from '../common/errorPolicy.js';
 
 /**
  * Builds redacted structured log fields for upstream error failures.

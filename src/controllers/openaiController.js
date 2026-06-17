@@ -1,4 +1,4 @@
-import { formatOpenAiSseError } from '../common/upstreamErrors.js';
+import { formatOpenAiSseError } from '../common/errorEnvelope.js';
 import { StreamAccumulator } from '../streaming/streamAccumulator.js';
 import { BaseController } from './baseController.js';
 

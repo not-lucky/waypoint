@@ -1,56 +1,20 @@
 /**
  * @fileoverview Central registry for managing API key lifecycle, rotation, and health status.
- * Abstracts load balancing (round-robin or fill-first) across pools of API keys for each provider,
- * and handles cooldown/backoff behaviors on rate limiting or authentication failures.
- * @module registry/KeyRegistry
+ * Composes pool management and cooldown tracking into a unified interface.
+ * @module registry/keyManagement/registryCore
  */
 
+import { COOLDOWN_DEFAULTS } from '../../config/cooldownDefaults.js';
 import {
-  ERROR_CATEGORIES,
-  BILLING_CODES,
-  PERMISSION_CODES,
-  RATE_LIMIT_CODES,
-  SERVER_CODES,
-} from '../common/upstreamErrors.js';
-import { COOLDOWN_DEFAULTS } from '../config/cooldownDefaults.js';
-import { KeyObject } from './keyObject.js';
-
-/**
- * Default routing strategy when none is specified.
- * @const {string}
- */
-const DEFAULT_ROUTING_STRATEGY = 'round-robin';
-
-/**
- * Minimum number of keys required to use Map-backed lookup instead of array search.
- * Maps provide O(1) lookup for large pools, while arrays are more memory-efficient
- * for small pools due to lower overhead.
- * @const {number}
- */
-const MAP_LOOKUP_THRESHOLD = 10;
-
-/**
- * Factory for creating a stateful pool of keys for a specific provider.
- * Maintains the sequence index for round-robin rotation.
- * For pools at or above MAP_LOOKUP_THRESHOLD, creates a Map for O(1) key lookup
- * by string instead of O(n) array search.
- *
- * @param {Array<string>} [keys=[]] - Raw API key strings.
- * @returns {Object} Pool object containing KeyObject array, optional Map,
- *                   and round-robin index pointer.
- */
-const createKeyPool = (keys = []) => {
-  const keyObjects = keys.map((key) => new KeyObject(key));
-  const keyMap = keyObjects.length >= MAP_LOOKUP_THRESHOLD
-    ? new Map(keyObjects.map((key) => [key.keyStr, key]))
-    : null;
-
-  return {
-    keys: keyObjects,
-    keyMap,
-    roundRobinIndex: 0,
-  };
-};
+  createKeyPool,
+  getKeyFromPool,
+  findKeyInPool,
+  DEFAULT_ROUTING_STRATEGY,
+} from './keyPool.js';
+import {
+  handleKeyFailure,
+  handleKeySuccess,
+} from './cooldownTracker.js';
 
 /**
  * Central registry for managing API key lifecycle, rotation, and health status.
@@ -100,35 +64,13 @@ export class KeyRegistry {
 
   /**
    * Retrieves the next available key for a requested provider using the active strategy.
-   * By rotating keys (e.g. round-robin), we prevent artificially bottlenecking on a single
-   * rate limit bucket, optimizing throughput across the key pool.
    *
    * @param {string} provider - The name of the provider (e.g. 'openai').
    * @returns {string|null} The next available API key string, or null if none are available.
    */
   getKey(provider) {
     const pool = this.pools[provider];
-    const keys = pool?.keys;
-    if (!keys?.length) return null;
-
-    // Capture current time once to avoid repeated Date.now() calls in availability checks.
-    const now = Date.now();
-
-    if (this.strategy === 'fill-first') {
-      return keys.find((key) => key.isAvailable(now))?.keyStr ?? null;
-    }
-
-    // Round-robin implementation
-    const n = keys.length;
-    for (let i = 0; i < n; i += 1) {
-      const idx = pool.roundRobinIndex;
-      const key = keys[idx];
-      pool.roundRobinIndex = (idx + 1) % n;
-
-      if (key.isAvailable(now)) return key.keyStr;
-    }
-
-    return null;
+    return getKeyFromPool(pool, this.strategy);
   }
 
   /**
@@ -140,37 +82,7 @@ export class KeyRegistry {
    */
   findKey(provider, keyStr) {
     const pool = this.pools[provider];
-    if (!pool) return null;
-
-    if (pool.keyMap) {
-      return pool.keyMap.get(keyStr) ?? null;
-    }
-
-    return pool.keys.find((key) => key.keyStr === keyStr) ?? null;
-  }
-
-  /**
-   * Puts a key on timeout for a specific duration.
-   * This is used to implement exponential backoff logic dynamically without
-   * permanently burning keys that encounter temporary network failures.
-   *
-   * @param {KeyObject} key - The KeyObject instance to put on cooldown.
-   * @param {number} durationMs - Cooldown duration in milliseconds.
-   * @param {boolean} [reactivate=false] - Whether to reactivate key after cooldown.
-   */
-  setCooldown(key, durationMs, reactivate = false) {
-    const target = key;
-    target.cooldownUntil = Date.now() + durationMs;
-
-    const timer = setTimeout(() => {
-      if (reactivate) {
-        target.active = true;
-      }
-      target.cooldownUntil = null;
-      this.timers.delete(timer);
-    }, durationMs);
-
-    this.timers.add(timer);
+    return findKeyInPool(pool, keyStr);
   }
 
   /**
@@ -184,65 +96,9 @@ export class KeyRegistry {
    * @param {string} descriptor.code - Machine-readable error code.
    * @param {number} [descriptor.retryAfterSeconds] - Optional cooldown override from Retry-After.
    */
-  flagFailure(provider, keyStr, { category, code, retryAfterSeconds }) {
+  flagFailure(provider, keyStr, descriptor) {
     const key = this.findKey(provider, keyStr);
-    if (!key || code === 'no_api_key') return;
-
-    if (code === 'invalid_api_key') {
-      key.exhausted = true;
-      key.active = false;
-      return;
-    }
-
-    if (BILLING_CODES.has(code)) {
-      this.applyCooldown(key, retryAfterSeconds ?? this.cooldown.billingSeconds);
-      return;
-    }
-
-    if (PERMISSION_CODES.has(code)) {
-      this.applyCooldown(key, retryAfterSeconds ?? this.cooldown.permissionSeconds);
-      return;
-    }
-
-    if (code === 'rate_reduction_required') {
-      const seconds = Math.max(
-        retryAfterSeconds ?? 0,
-        this.cooldown.slowDownMinimumSeconds,
-      );
-      this.applyCooldown(key, seconds);
-      return;
-    }
-
-    if (RATE_LIMIT_CODES.has(code)) {
-      const backoffSeconds = this.computeRateLimitBackoff(key, retryAfterSeconds);
-      if (backoffSeconds === null) return;
-      const target = key;
-      target.active = false;
-      this.setCooldown(target, backoffSeconds * 1000, true);
-      return;
-    }
-
-    if (SERVER_CODES.has(code) || category === ERROR_CATEGORIES.SERVER) {
-      this.applyCooldown(key, retryAfterSeconds ?? this.cooldown.serverSeconds);
-    }
-  }
-
-  applyCooldown(key, seconds) {
-    const target = key;
-    target.active = false;
-    this.setCooldown(target, seconds * 1000, true);
-  }
-
-  computeRateLimitBackoff(key, retryAfterSeconds) {
-    const target = key;
-    target.consecutiveFailures += 1;
-
-    if (retryAfterSeconds === 0) return null;
-
-    if (retryAfterSeconds !== undefined) return retryAfterSeconds;
-
-    const { baseSeconds, maxSeconds } = this.cooldown;
-    return Math.min(baseSeconds * (2 ** (target.consecutiveFailures - 1)), maxSeconds);
+    handleKeyFailure(key, descriptor, this.cooldown, this.timers);
   }
 
   /**
@@ -253,11 +109,7 @@ export class KeyRegistry {
    */
   flagSuccess(provider, keyStr) {
     const key = this.findKey(provider, keyStr);
-    if (!key) return;
-
-    key.consecutiveFailures = 0;
-    key.active = true;
-    key.cooldownUntil = null;
+    handleKeySuccess(key);
   }
 
   /**

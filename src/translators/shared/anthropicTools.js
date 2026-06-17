@@ -1,6 +1,5 @@
-/**
- * Converts Anthropic tool definitions to OpenAI function tools.
- */
+import { safeJsonParse } from '../utils.js';
+
 export function anthropicToolsToOpenAI(tools) {
   if (!tools?.length) return undefined;
   return tools.map((tool) => ({
@@ -13,9 +12,6 @@ export function anthropicToolsToOpenAI(tools) {
   }));
 }
 
-/**
- * Converts OpenAI function tools to Anthropic tool definitions.
- */
 export function openAIToolsToAnthropic(tools) {
   if (!tools?.length) return undefined;
   return tools.map((tool) => {
@@ -28,9 +24,6 @@ export function openAIToolsToAnthropic(tools) {
   });
 }
 
-/**
- * Maps Anthropic tool_choice to OpenAI tool_choice.
- */
 export function anthropicToolChoiceToOpenAI(toolChoice) {
   if (!toolChoice) return undefined;
   if (toolChoice.type === 'auto') return 'auto';
@@ -41,9 +34,6 @@ export function anthropicToolChoiceToOpenAI(toolChoice) {
   return undefined;
 }
 
-/**
- * Maps OpenAI tool_choice to Anthropic tool_choice.
- */
 export function openAIToolChoiceToAnthropic(toolChoice) {
   if (!toolChoice) return undefined;
   if (toolChoice === 'auto') return { type: 'auto' };
@@ -68,9 +58,6 @@ const toolResultContentToString = (content) => {
   return JSON.stringify(content ?? '');
 };
 
-/**
- * Converts a single Anthropic message to one or more OpenAI-shaped messages.
- */
 export function anthropicMessageToOpenAI(message) {
   const { role } = message;
   const { content } = message;
@@ -145,9 +132,6 @@ export function anthropicMessageToOpenAI(message) {
   return [{ role, content }];
 }
 
-/**
- * Converts OpenAI-shaped messages to Anthropic Messages API format.
- */
 export function openAIMessagesToAnthropic(messages) {
   const anthropicMessages = [];
   let pendingToolResults = [];
@@ -187,17 +171,11 @@ export function openAIMessagesToAnthropic(messages) {
 
       if (message.tool_calls?.length) {
         for (const call of message.tool_calls) {
-          let input = {};
-          try {
-            input = JSON.parse(call.function?.arguments || '{}');
-          } catch {
-            input = {};
-          }
           contentBlocks.push({
             type: 'tool_use',
             id: call.id,
             name: call.function?.name || '',
-            input,
+            input: safeJsonParse(call.function?.arguments || '{}'),
           });
         }
       }
@@ -242,9 +220,6 @@ export function openAIMessagesToAnthropic(messages) {
   return anthropicMessages;
 }
 
-/**
- * Converts Anthropic response content blocks to OpenAI assistant message fields.
- */
 export function anthropicContentToOpenAIMessage(contentArray) {
   let textContent = '';
   let reasoningContent = null;
@@ -276,9 +251,6 @@ export function anthropicContentToOpenAIMessage(contentArray) {
   return message;
 }
 
-/**
- * Converts OpenAI assistant message fields to Anthropic content blocks.
- */
 export function openAIMessageToAnthropicContent(message) {
   const content = [];
   let contentText = message.content || '';
@@ -307,17 +279,11 @@ export function openAIMessageToAnthropicContent(message) {
 
   if (message.tool_calls?.length) {
     for (const call of message.tool_calls) {
-      let input = {};
-      try {
-        input = JSON.parse(call.function?.arguments || '{}');
-      } catch {
-        input = {};
-      }
       content.push({
         type: 'tool_use',
         id: call.id,
         name: call.function?.name || '',
-        input,
+        input: safeJsonParse(call.function?.arguments || '{}'),
       });
     }
   }

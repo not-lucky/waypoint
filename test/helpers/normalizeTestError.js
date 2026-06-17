@@ -1,8 +1,5 @@
-import {
-  normalizeUpstreamError,
-  UpstreamError,
-  ERROR_CATEGORIES,
-} from '../../src/common/upstreamErrors.js';
+import { normalizeUpstreamError, UpstreamError } from '../../src/common/upstreamError.js';
+import { ERROR_CATEGORIES } from '../../src/common/errorPolicy.js';
 
 /**
  * Normalizes test/mock adapter errors through the production error authority.

@@ -1,6 +1,6 @@
 /* eslint-disable no-restricted-syntax */
 import { parseSSEStream, parseSSEEventData } from '../../streaming/sseParser.js';
-import { throwIfStreamErrorPayload } from '../../common/upstreamErrors.js';
+import { throwIfStreamErrorPayload } from '../../common/upstreamError.js';
 import { getThinkingLevel } from './geminiFormatter.js';
 import { mapUsage } from '../shared/openaiResponse.js';
 import { ThinkingBuffer } from '../../streaming/thinkingBuffer.js';

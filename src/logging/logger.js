@@ -169,21 +169,19 @@ const customTextFormatter = (record) => {
  *
  * @param {Object} config - The fully validated application configuration.
  */
-export async function configureLogging(config) {
+export async function configureLogging(config, testConfig = {}) {
   const loggingConfig = config?.logging || {};
   const enableConsole = loggingConfig.enableConsole !== false;
   let enableFile = !!loggingConfig.enableFile;
-  let filePath = loggingConfig.filePath || '';
+  let filePath = testConfig.filePath || loggingConfig.filePath || '';
   const format = loggingConfig.format || 'json';
   const level = loggingConfig.level || 'info';
 
-  if (process.env.VITEST) {
-    if (filePath === './logs/Waypoint.log' || filePath === 'logs/Waypoint.log' || filePath.endsWith('/logs/Waypoint.log') || filePath.endsWith('\\logs/Waypoint.log')) {
-      enableFile = false;
-    }
+  if (testConfig.disableFile) {
+    enableFile = false;
   }
 
-  if (filePath && !process.env.VITEST) {
+  if (filePath && !testConfig.skipTimestamp) {
     const parsedPath = path.parse(filePath);
     filePath = path.join(parsedPath.dir, `${parsedPath.name}_${sessionTimestamp}${parsedPath.ext}`);
   }

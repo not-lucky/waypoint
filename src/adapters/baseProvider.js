@@ -9,9 +9,8 @@
 /* eslint-disable no-restricted-syntax, generator-star-spacing, camelcase */
 import { sanitizeUrl, serializeHeaders, redactHeaders } from '../logging/requestLoggerUtils.js';
 import { NotImplementedError } from '../common/notImplementedError.js';
-import {
-  UpstreamError, classifyUpstreamError, normalizeUpstreamError,
-} from '../common/upstreamErrors.js';
+import { classifyUpstreamError } from '../common/errorClassification/httpErrorRules.js';
+import { UpstreamError, normalizeUpstreamError } from '../common/upstreamError.js';
 
 /**
  * @typedef {Object} UnifiedMessage
@@ -142,12 +141,9 @@ export class BaseProvider {
       errorJson = { message: errorText };
     }
 
-    const headersObj = {};
-    if (response.headers) {
-      for (const [k, v] of response.headers.entries()) {
-        headersObj[k.toLowerCase()] = v;
-      }
-    }
+    const headersObj = response.headers
+      ? Object.fromEntries(response.headers.entries())
+      : {};
 
     const classification = classifyUpstreamError(response.status, errorJson, headersObj);
 
@@ -248,12 +244,8 @@ export class BaseProvider {
 
     // Try using the native AbortSignal.any if running on newer Node versions
     if (typeof AbortSignal.any === 'function') {
-      try {
-        const combinedSignal = AbortSignal.any([signal, timeoutSignal]);
-        return { signal: combinedSignal, cleanup: () => { } };
-      } catch (err) {
-        // Fall back to manual combination
-      }
+      const combinedSignal = AbortSignal.any([signal, timeoutSignal]);
+      return { signal: combinedSignal, cleanup: () => { } };
     }
 
     // Polyfill for AbortSignal.any

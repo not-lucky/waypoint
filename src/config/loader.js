@@ -73,35 +73,27 @@ function processClient(client) {
 
   if (processed.rateLimit) {
     let rateLimit = { ...processed.rateLimit };
-    rateLimit = coerceToInt(rateLimit, 'windowMs');
-    rateLimit = coerceToInt(rateLimit, 'max');
+    ['windowMs', 'max'].forEach((key) => {
+      rateLimit = coerceToInt(rateLimit, key);
+    });
     processed.rateLimit = rateLimit;
   }
 
   return processed;
 }
 
-/**
- * Processes gateway numeric properties.
- * @param {object} gateway - Gateway configuration
- * @returns {object} Processed gateway config
- */
 function processGateway(gateway) {
   let processed = { ...gateway };
 
-  processed = coerceToInt(processed, 'port');
-  processed = coerceToInt(processed, 'globalRetryLimit');
-  processed = coerceToInt(processed, 'httpTimeoutMs');
-  processed = coerceToInt(processed, 'streamTimeoutMs');
+  ['port', 'globalRetryLimit', 'httpTimeoutMs', 'streamTimeoutMs'].forEach((key) => {
+    processed = coerceToInt(processed, key);
+  });
 
   if (processed.cooldown) {
     let cooldown = { ...processed.cooldown };
-    cooldown = coerceToInt(cooldown, 'baseSeconds');
-    cooldown = coerceToInt(cooldown, 'maxSeconds');
-    cooldown = coerceToInt(cooldown, 'billingSeconds');
-    cooldown = coerceToInt(cooldown, 'permissionSeconds');
-    cooldown = coerceToInt(cooldown, 'serverSeconds');
-    cooldown = coerceToInt(cooldown, 'slowDownMinimumSeconds');
+    ['baseSeconds', 'maxSeconds', 'billingSeconds', 'permissionSeconds', 'serverSeconds', 'slowDownMinimumSeconds'].forEach((key) => {
+      cooldown = coerceToInt(cooldown, key);
+    });
     processed = { ...processed, cooldown };
   }
 

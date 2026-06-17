@@ -263,7 +263,7 @@ export class RequestLog {
  * @param {Object} config - The application config object.
  * @returns {RequestLog} A request log context (or no-op stub).
  */
-export function createRequestLog(req, config) {
+export function createRequestLog(req, config, testLogPath) {
   const loggingConfig = config?.logging || {};
   if (!loggingConfig.logRequests) {
     if (req?.isDryRun) {
@@ -277,12 +277,7 @@ export function createRequestLog(req, config) {
 
   const now = new Date();
   const id = shortId();
-  let logPath = loggingConfig.requestLogPath;
-  if (process.env.VITEST) {
-    if (!logPath || logPath === './logs/requests' || logPath === 'logs/requests' || logPath.endsWith('/logs/requests') || logPath.endsWith('\\logs/requests')) {
-      logPath = './logs/requests-test';
-    }
-  }
+  const logPath = testLogPath || loggingConfig.requestLogPath;
   const basePath = path.resolve(logPath || './logs/requests');
   const folderName = `${safeTimestamp(now.toISOString())}_${id}`;
   const dir = path.join(basePath, folderName);

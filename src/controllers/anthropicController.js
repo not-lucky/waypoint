@@ -1,29 +1,26 @@
 /* eslint-disable max-len */
-import { formatAnthropicSseError } from '../common/upstreamErrors.js';
+import { formatAnthropicSseError } from '../common/errorEnvelope.js';
 import { FORMATS, translateRequest, translateResponse } from '../translators/index.js';
 import { StreamAccumulator } from '../streaming/streamAccumulator.js';
 import { BaseController } from './baseController.js';
 
-/**
- * Maps OpenAI-style finish_reason values to Anthropic stop_reason equivalents.
- */
 const STOP_REASON_MAP = {
   stop: 'end_turn',
   length: 'max_tokens',
   tool_calls: 'tool_use',
 };
 
-/**
- * Protocol controller for the Anthropic-compatible ingress endpoints.
- */
+function writeSseEvent(res, reqLog, eventType, data) {
+  const event = `event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`;
+  reqLog.appendStreamEvent('client', event);
+  res.write(event);
+}
+
 export class AnthropicController extends BaseController {
   constructor(orchestrator) {
     super(orchestrator, 'anthropic');
   }
 
-  /**
-   * Processes an incoming Anthropic Messages API completion request.
-   */
   async handleCompletion(req, res) {
     return this.executeRequest(req, res, {
       protocolName: 'Anthropic',
@@ -33,7 +30,6 @@ export class AnthropicController extends BaseController {
     });
   }
 
-  // eslint-disable-next-line class-methods-use-this
   async handleStreamingResponse(res, response, unifiedReq, reqLog, body) {
     this.logger.debug('Starting Anthropic SSE response stream');
 
@@ -41,7 +37,6 @@ export class AnthropicController extends BaseController {
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('X-Accel-Buffering', 'no');
 
-    // State Machine Variables
     let messageStartSent = false;
     let activeBlockType = null;
     let activeToolMeta = null;
@@ -59,12 +54,10 @@ export class AnthropicController extends BaseController {
       }
 
       if (activeBlockType !== null) {
-        const stopEvent = `event: content_block_stop\ndata: ${JSON.stringify({
+        writeSseEvent(res, reqLog, 'content_block_stop', {
           type: 'content_block_stop',
           index: currentBlockIndex,
-        })}\n\n`;
-        reqLog.appendStreamEvent('client', stopEvent);
-        res.write(stopEvent);
+        });
         currentBlockIndex += 1;
       }
 
@@ -83,13 +76,11 @@ export class AnthropicController extends BaseController {
           contentBlock = { type: 'text', text: '' };
         }
 
-        const startEvent = `event: content_block_start\ndata: ${JSON.stringify({
+        writeSseEvent(res, reqLog, 'content_block_start', {
           type: 'content_block_start',
           index: currentBlockIndex,
           content_block: contentBlock,
-        })}\n\n`;
-        reqLog.appendStreamEvent('client', startEvent);
-        res.write(startEvent);
+        });
       }
 
       activeBlockType = newBlockType;
@@ -97,13 +88,12 @@ export class AnthropicController extends BaseController {
     };
 
     try {
-      /* eslint-disable no-restricted-syntax */
       for await (const chunk of response) {
         chunkCount += 1;
         accumulator.processChunk(chunk);
 
         if (!messageStartSent) {
-          const messageStartEvent = `event: message_start\ndata: ${JSON.stringify({
+          writeSseEvent(res, reqLog, 'message_start', {
             type: 'message_start',
             message: {
               id: chunk.id || msgId,
@@ -118,9 +108,7 @@ export class AnthropicController extends BaseController {
                 output_tokens: 0,
               },
             },
-          })}\n\n`;
-          reqLog.appendStreamEvent('client', messageStartEvent);
-          res.write(messageStartEvent);
+          });
           messageStartSent = true;
         }
 
@@ -129,30 +117,26 @@ export class AnthropicController extends BaseController {
 
         if (delta.reasoning_content) {
           transitionBlock('thinking');
-          const thinkingDelta = `event: content_block_delta\ndata: ${JSON.stringify({
+          writeSseEvent(res, reqLog, 'content_block_delta', {
             type: 'content_block_delta',
             index: currentBlockIndex,
             delta: {
               type: 'thinking_delta',
               thinking: delta.reasoning_content,
             },
-          })}\n\n`;
-          reqLog.appendStreamEvent('client', thinkingDelta);
-          res.write(thinkingDelta);
+          });
         }
 
         if (delta.content) {
           transitionBlock('text');
-          const textDelta = `event: content_block_delta\ndata: ${JSON.stringify({
+          writeSseEvent(res, reqLog, 'content_block_delta', {
             type: 'content_block_delta',
             index: currentBlockIndex,
             delta: {
               type: 'text_delta',
               text: delta.content,
             },
-          })}\n\n`;
-          reqLog.appendStreamEvent('client', textDelta);
-          res.write(textDelta);
+          });
         }
 
         if (delta.tool_calls?.length) {
@@ -164,16 +148,14 @@ export class AnthropicController extends BaseController {
               });
             }
             if (toolCall.function?.arguments) {
-              const toolDelta = `event: content_block_delta\ndata: ${JSON.stringify({
+              writeSseEvent(res, reqLog, 'content_block_delta', {
                 type: 'content_block_delta',
                 index: currentBlockIndex,
                 delta: {
                   type: 'input_json_delta',
                   partial_json: toolCall.function.arguments,
                 },
-              })}\n\n`;
-              reqLog.appendStreamEvent('client', toolDelta);
-              res.write(toolDelta);
+              });
             }
           }
         }
@@ -181,7 +163,7 @@ export class AnthropicController extends BaseController {
         if (choice.finish_reason) {
           transitionBlock(null);
           const stopReason = STOP_REASON_MAP[choice.finish_reason] || choice.finish_reason || 'end_turn';
-          const messageDelta = `event: message_delta\ndata: ${JSON.stringify({
+          writeSseEvent(res, reqLog, 'message_delta', {
             type: 'message_delta',
             delta: {
               stop_reason: stopReason,
@@ -190,20 +172,15 @@ export class AnthropicController extends BaseController {
             usage: {
               output_tokens: 0,
             },
-          })}\n\n`;
-          reqLog.appendStreamEvent('client', messageDelta);
-          res.write(messageDelta);
+          });
         }
       }
-      /* eslint-enable no-restricted-syntax */
 
       transitionBlock(null);
 
-      const messageStop = `event: message_stop\ndata: ${JSON.stringify({
+      writeSseEvent(res, reqLog, 'message_stop', {
         type: 'message_stop',
-      })}\n\n`;
-      reqLog.appendStreamEvent('client', messageStop);
-      res.write(messageStop);
+      });
       this.logger.debug('Anthropic SSE response stream completed', { chunkCount });
 
       const normalized = accumulator.buildNormalizedResponse();

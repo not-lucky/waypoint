@@ -1,7 +1,7 @@
 /* eslint-disable no-restricted-syntax */
 import { FORMATS, translateRequest, translateStreamChunk } from '../../translators/index.js';
 import { parseSSEStream, parseSSEEventData } from '../../streaming/sseParser.js';
-import { throwIfGeminiStreamError } from '../../common/upstreamErrors.js';
+import { throwIfGeminiStreamError } from '../../common/upstreamError.js';
 
 /**
  * Executes a streaming completion for standard Gemini models (without thinking enabled).

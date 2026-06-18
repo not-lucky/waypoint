@@ -6,8 +6,10 @@
  */
 
 import { runOrchestrationLoop } from './orchestrationEngine.js';
-import { logDebug } from '../logging/loggerWrapper.js';
+import { getAppLogger } from '../logging/logger.js';
 import { teardownRegistry } from '../lifecycle/teardownRegistry.js';
+
+const logger = getAppLogger('orchestrator');
 
 /**
  * Central registry of all active request AbortControllers.
@@ -43,13 +45,11 @@ export class UnifiedOrchestrator {
    * @param {Object} keyRegistry - Stateful API key registry instance.
    * @param {Object} providerFactory - Factory for creating provider adapter instances.
    * @param {Object} [config={}] - Application gateway configuration.
-   * @param {Object|null} [logger=null] - Optional logger instance.
    */
-  constructor(keyRegistry, providerFactory, config = {}, logger = null) {
+  constructor(keyRegistry, providerFactory, config = {}) {
     this.keyRegistry = keyRegistry;
     this.providerFactory = providerFactory;
     this.config = config;
-    this.logger = logger;
   }
 
   /**
@@ -75,7 +75,7 @@ export class UnifiedOrchestrator {
     const abortController = new AbortController();
     activeControllers.add(abortController);
 
-    logDebug(this.logger, 'Request entry: executing completion', {
+    logger.debug('Request entry: executing completion', {
       model: req.model,
       provider: req.provider,
       stream: req.stream,
@@ -92,7 +92,7 @@ export class UnifiedOrchestrator {
         if (isResponseObject && target.writableEnded) {
           return;
         }
-        logDebug(this.logger, 'Request abort/cancel event detected via client disconnect');
+        logger.debug('Request abort/cancel event detected via client disconnect');
         abortController.abort();
       };
       target.on('close', handleClose);
@@ -113,7 +113,6 @@ export class UnifiedOrchestrator {
         keyRegistry: this.keyRegistry,
         providerFactory: this.providerFactory,
         config: this.config,
-        logger: this.logger,
         abortController,
         requestLog,
         retryLimit,

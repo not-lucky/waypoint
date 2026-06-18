@@ -168,7 +168,7 @@ export async function createTestApp(opts = {}) {
   const config = inlineConfig ?? new ConfigLoader().loadConfig();
   await configureLogging(config);
   const logger = getAppLogger('server');
-  const services = wireServices(config, logger);
+  const services = wireServices(config);
 
   if (configureServices) {
     configureServices(services);

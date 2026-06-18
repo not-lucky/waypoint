@@ -1,0 +1,8 @@
+node_modules
+.git
+.github
+test
+*.md
+.env.example
+vitest.config.js
+eslint.config.js

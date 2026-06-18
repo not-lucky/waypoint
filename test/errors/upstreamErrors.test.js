@@ -1,11 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { parseRetryAfter } from '../../src/errors/classifierCore.js';
-import { classifyUpstreamError } from '../../src/errors/httpRules.js';
+import { parseRetryAfter, classifyUpstreamError } from '../../src/errors/httpRules.js';
 import {
   ERROR_CATEGORIES, isRetryable, shouldCooldownKey, resolveLifecycleTier,
 } from '../../src/errors/policy.js';
-import { getClientHttpStatus, classifyTransportError } from '../../src/errors/transport.js';
 import {
+  getClientHttpStatus, classifyTransportError,
   UpstreamError, normalizeUpstreamError, throwIfStreamErrorPayload, throwIfGeminiStreamError,
 } from '../../src/errors/upstream.js';
 import {

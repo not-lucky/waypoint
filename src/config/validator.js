@@ -5,12 +5,15 @@
  * @module config/validator
  */
 
-import { logDebug, logErrorAndExitOrThrow } from '../logging/loggerWrapper.js'
+import { getAppLogger } from '../logging/logger.js'
+import { logErrorAndExitOrThrow } from './validationErrors.js'
 import { RESERVED_PROVIDERS } from './configUtils.js'
 import { validateGateway } from './gatewayValidator.js'
 import { validateClients } from './clientValidator.js'
 import { validateLogging } from './loggingValidator.js'
 import { ProviderValidator } from './providerValidator.js'
+
+const logger = getAppLogger( 'config' )
 
 /**
  * Validates the entire application configuration object.
@@ -19,26 +22,24 @@ import { ProviderValidator } from './providerValidator.js'
  * @param {Object} config - The raw configuration object to validate.
  * @param {boolean} [shouldExit=true] - Whether the process should exit on error.
  * @param {Set<string>} [reservedProviders=RESERVED_PROVIDERS] - Reserved provider names.
- * @param {Object|null} [customLogger=null] - Optional logger instance for errors/warnings.
  * @throws {Error} Throws an error if validation fails and shouldExit is false.
  */
 export const validateConfig = (
   config,
   shouldExit = true,
   reservedProviders = RESERVED_PROVIDERS,
-  customLogger = null,
 ) => {
   if ( !config ) {
-    logErrorAndExitOrThrow( 'Configuration object is null or undefined.', shouldExit, customLogger )
+    logErrorAndExitOrThrow( 'Configuration object is null or undefined.', shouldExit )
   }
 
   const providerValidator = new ProviderValidator( reservedProviders )
 
-  validateGateway( config.gateway, shouldExit, customLogger )
-  validateClients( config.clients, shouldExit, customLogger )
-  validateLogging( config.logging, shouldExit, customLogger )
-  const processedProviders = providerValidator.validate( config.providers, shouldExit, customLogger )
+  validateGateway( config.gateway, shouldExit )
+  validateClients( config.clients, shouldExit )
+  validateLogging( config.logging, shouldExit )
+  const processedProviders = providerValidator.validate( config.providers, shouldExit )
   config.providers = processedProviders
 
-  logDebug( customLogger, 'Configuration validation passed successfully' )
+  logger.debug( 'Configuration validation passed successfully' )
 }

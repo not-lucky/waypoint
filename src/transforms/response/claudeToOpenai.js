@@ -5,14 +5,7 @@ import { mapFinishReason, synthesizeMetadata } from '../utils.js';
 
 /**
  * Translates a complete Anthropic Messages API response into an OpenAI-shaped NormalizedResponse.
- *
- * WHY: The core architectural intent of Waypoint is to expose a unified, OpenAI-compatible
- * surface to clients while abstracting away provider-specific formats. This translator isolates
- * the structural differences between Anthropic's block-based message format and OpenAI's
- * string-based choice format, ensuring the orchestrator operates on a standardized data shape
- * without knowing the origin provider.
- *
- * WHAT: Maps Anthropic's `content` array blocks into OpenAI's `choices[0].message.content`
+ * Maps Anthropic's `content` array blocks into OpenAI's `choices[0].message.content`
  * and handles metadata like token usage and finish reasons.
  *
  * @param {Object} claudeRes - Anthropic API JSON response.
@@ -22,7 +15,7 @@ import { mapFinishReason, synthesizeMetadata } from '../utils.js';
 export const translateClaudeToOpenAI = (claudeRes, req = {}) => {
   const message = anthropicContentToOpenAIMessage(claudeRes.content || []);
 
-  // WHY: Fallback token counts to 0 ensures numerical safety downstream
+  // Fallback token counts to 0 ensures numerical safety downstream
   // if Anthropic omits usage stats.
   const promptTokens = claudeRes.usage?.input_tokens ?? 0;
   const completionTokens = claudeRes.usage?.output_tokens ?? 0;
@@ -46,17 +39,8 @@ export const translateClaudeToOpenAI = (claudeRes, req = {}) => {
 
 /**
  * Translates an Anthropic SSE event chunk into an OpenAI-shaped StreamChunk.
- *
- * WHY: Streaming translation is highly stateful and heterogeneous. While OpenAI emits a series
- * of relatively uniform `chat.completion.chunk` events, Anthropic implements a complex
- * state machine over SSE (e.g., `message_start`, `content_block_start`,
- * `content_block_delta`, `message_delta`).
- * This function acts as an adapter, discarding Anthropic lifecycle events that have no OpenAI
- * equivalent, and isolating only the delta mutations (text or stop reasons) to emit clean,
- * standard OpenAI chunks. This prevents OpenAI clients from crashing on unknown event structures.
- *
- * WHAT: Parses raw JSON data from SSE events and remaps `content_block_delta` and `message_delta`
- * to OpenAI's `choices[0].delta` format.
+ * Discards Anthropic lifecycle events that have no OpenAI equivalent, isolating only
+ * delta mutations (text or stop reasons) to emit standard OpenAI chunks.
  *
  * @param {Object} eventObj - The parsed SSE event object ({ event, data }).
  * @param {string} chunkId - A persistent ID for the stream session.
@@ -67,9 +51,8 @@ export function translateClaudeChunkToOpenAI(eventObj, chunkId, req = {}) {
   const { data } = eventObj;
   let dataJson;
   try {
-    // WHY: Defensive parsing is critical here. SSE streams can occasionally truncate chunks
-    // or emit malformed keep-alive payloads. Swallowing the error and returning null drops
-    // the invalid chunk instead of crashing the entire stream orchestrator.
+    // SSE streams can occasionally truncate chunks or emit malformed keep-alive payloads.
+    // Swallowing the error drops the invalid chunk instead of crashing the stream.
     dataJson = JSON.parse(data);
   } catch (err) {
     return null;
@@ -77,9 +60,8 @@ export function translateClaudeChunkToOpenAI(eventObj, chunkId, req = {}) {
 
   const { type } = dataJson;
 
-  // WHY: We only care about `content_block_delta` for actual generation content, and
-  // `message_delta` for termination metadata (stop reason, usage). We deliberately ignore
-  // `ping`, `message_start`, `content_block_start`, etc., as OpenAI streams lack equivalents.
+  // Only `content_block_delta` carries generation content; `message_delta` carries
+  // termination metadata. Other event types (`ping`, `message_start`, etc.) are ignored.
   if (type === 'content_block_start') {
     const block = dataJson.content_block || {};
     if (block.type === 'tool_use') {
@@ -138,8 +120,7 @@ export function translateClaudeChunkToOpenAI(eventObj, chunkId, req = {}) {
           },
         ],
       };
-    // WHY: Support for extended reasoning capabilities. We map thinking deltas separately
-    // so clients receiving extended reasoning traces don't conflate them with final text output.
+    // Thinking deltas are mapped separately so clients don't conflate them with final text.
     } if (delta.type === 'thinking_delta') {
       return {
         id: chunkId,
@@ -157,8 +138,7 @@ export function translateClaudeChunkToOpenAI(eventObj, chunkId, req = {}) {
       };
     }
   } else if (type === 'message_delta') {
-    // WHY: Anthropic emits stop reasons and final token usage at the very end in a `message_delta`.
-    // OpenAI expects the final chunk to contain a non-null `finish_reason` and empty deltas.
+    // Anthropic emits stop reasons and final token usage at the end in a `message_delta`.
     const delta = dataJson.delta || {};
     if (delta.stop_reason) {
       return {

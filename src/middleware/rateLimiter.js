@@ -159,6 +159,25 @@ export function getClientWindowActiveTimestamps(clientName) {
   return headIndex === 0 ? [...timestamps] : timestamps.slice(headIndex);
 }
 
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const MAX_IDLE_TIME_MS = 60 * 60 * 1000; // 1 hour
+
+const cleanupInterval = setInterval(() => {
+  const now = Date.now();
+  for (const [clientName, timestamps] of clientWindows.entries()) {
+    if (timestamps.length === 0) {
+      clientWindows.delete(clientName);
+      continue;
+    }
+    const lastTimestamp = timestamps[timestamps.length - 1];
+    if (now - lastTimestamp > MAX_IDLE_TIME_MS) {
+      clientWindows.delete(clientName);
+    }
+  }
+}, CLEANUP_INTERVAL_MS);
+if (cleanupInterval.unref) cleanupInterval.unref();
+rateLimiterIntervals.add(cleanupInterval);
+
 teardownRegistry.add((loggerInstance) => {
   if (loggerInstance && typeof loggerInstance.debug === 'function') {
     loggerInstance.debug(`Graceful shutdown: clearing ${rateLimiterIntervals.size} rate limiter intervals`);

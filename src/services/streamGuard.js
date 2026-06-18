@@ -6,8 +6,10 @@
  */
 
 import { shouldCooldownKey } from '../errors/policy.js';
-import { logDebug, logWarning } from '../logging/loggerWrapper.js';
+import { getAppLogger } from '../logging/logger.js';
 import { buildUpstreamErrorLogFields } from '../logging/upstreamErrorLogMeta.js';
+
+const logger = getAppLogger('stream');
 
 /**
  * Consumes remaining chunks from an async iterator while monitoring for abort signals.
@@ -15,14 +17,13 @@ import { buildUpstreamErrorLogFields } from '../logging/upstreamErrorLogMeta.js'
  *
  * @param {AsyncIterator} iterator - The stream iterator.
  * @param {AbortController} abortController - Abort controller for tracking client disconnects.
- * @param {Object|null} logger - Logger instance.
  * @yields {any} Stream chunks from the upstream provider.
  * @returns {Promise<boolean>} Whether the stream completed successfully.
  */
-async function* consumeStreamChunks(iterator, abortController, logger) {
+async function* consumeStreamChunks(iterator, abortController) {
   while (true) {
     if (abortController.signal.aborted) {
-      logDebug(logger, 'Stream abort detected before chunk retrieval');
+      logger.debug('Stream abort detected before chunk retrieval');
       return false;
     }
 
@@ -31,7 +32,7 @@ async function* consumeStreamChunks(iterator, abortController, logger) {
     if (nextResult.done) return true;
 
     if (abortController.signal.aborted) {
-      logDebug(logger, 'Stream abort detected after chunk retrieval');
+      logger.debug('Stream abort detected after chunk retrieval');
       return false;
     }
 
@@ -47,15 +48,14 @@ async function* consumeStreamChunks(iterator, abortController, logger) {
  */
 function handleStreamError(streamErr, config) {
   const {
-    abortController, adapter, req, keyRegistry, provider, apiKey, logger,
+    abortController, adapter, req, keyRegistry, provider, apiKey,
   } = config;
 
   if (abortController.signal.aborted) return;
 
   const normalized = adapter.normalizeError(streamErr, req);
   const streamMsg = normalized.message || streamErr?.message || String(streamErr);
-  logWarning(
-    logger,
+  logger.warning(
     `Streaming attempt for provider '${provider}' failed. Reason: ${streamMsg}`,
     buildUpstreamErrorLogFields(normalized),
   );
@@ -83,7 +83,6 @@ function handleStreamError(streamErr, config) {
  *   disconnects.
  * @param {Object} config.keyRegistry - The key registry instance.
  * @param {string} config.provider - The provider name.
- * @param {Object|null} config.logger - Logger instance.
  * @param {Object} config.firstResult - The first result from the iterator.
  * @param {AsyncIterator} config.iterator - The stream iterator.
  * @yields {any} Stream chunks from the upstream provider.
@@ -92,7 +91,6 @@ export async function* createStreamWithAbortGuard(config) {
   const {
     iterator,
     abortController,
-    logger,
     keyRegistry,
     provider,
     apiKey,
@@ -105,14 +103,14 @@ export async function* createStreamWithAbortGuard(config) {
   try {
     if (!firstResult.done) {
       yield firstResult.value;
-      completedSuccessfully = yield* consumeStreamChunks(iterator, abortController, logger);
+      completedSuccessfully = yield* consumeStreamChunks(iterator, abortController);
     } else {
       completedSuccessfully = true;
     }
 
     if (completedSuccessfully && !abortController.signal.aborted) {
       keyRegistry.flagSuccess(provider, apiKey);
-      logDebug(logger, 'Streaming completion completed successfully', { provider, model: req.model });
+      logger.debug('Streaming completion completed successfully', { provider, model: req.model });
     }
   } catch (streamErr) {
     handleStreamError(streamErr, config);

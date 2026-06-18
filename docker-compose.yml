@@ -1,0 +1,12 @@
+services:
+  waypoint:
+    build: .
+    ports:
+      - "20128:20128"
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+      - ./.env:/app/.env:ro
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped

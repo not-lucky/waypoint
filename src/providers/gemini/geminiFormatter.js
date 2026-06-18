@@ -35,8 +35,7 @@ export const getThinkingLevel = (req) => {
 };
 
 /**
- * WHAT: Parses and extracts <thought> tags from raw content.
- * WHY: Cleans up reasoning vs final answer separation if thinking content is mixed in text content.
+ * Parses and extracts <thought> tags from raw content.
  *
  * @param {string} contentText - Raw text content from the choices.
  * @param {string|null} reasoning - Existing reasoning content, if any.

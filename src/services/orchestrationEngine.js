@@ -9,7 +9,9 @@
 import { resolveModel } from '../domain/modelRouter.js';
 import { applyModelConfigToRequest } from '../domain/requestTransformer.js';
 import { executeWithRetry } from './keyRotationLoop.js';
-import { logDebug } from '../logging/loggerWrapper.js';
+import { getAppLogger } from '../logging/logger.js';
+
+const logger = getAppLogger('orchestration');
 
 /**
  * Updates the current request object with resolved model configuration.
@@ -68,16 +70,31 @@ export const runOrchestrationLoop = async ({
   keyRegistry,
   providerFactory,
   config,
-  logger,
   abortController,
   requestLog,
   retryLimit,
   onStreamResponse,
 }) => {
   let currentReq = req;
+  const visitedModels = new Set();
 
   while (true) {
     currentReq = updateRequestWithModelConfig(currentReq, config);
+
+    // Prevent infinite fallback loops
+    const modelKey = currentReq.model || currentReq.actualModelId;
+    if (visitedModels.has(modelKey)) {
+      logger.error('Infinite fallback loop detected, aborting request', { modelCycle: Array.from(visitedModels), failingModel: modelKey });
+      return {
+        error: {
+          code: 'infiniteFallbackLoop',
+          message: `Fallback routing cycle detected. Aborting to prevent infinite loop.`,
+          provider: currentReq.provider,
+          httpStatus: 508,
+        },
+      };
+    }
+    visitedModels.add(modelKey);
 
     const { provider } = currentReq;
     const adapter = providerFactory.get(provider);
@@ -102,12 +119,11 @@ export const runOrchestrationLoop = async ({
       abortController,
       requestLog,
       retryLimit,
-      logger,
       onStreamResponse,
     });
 
     if (result && result.triggerFallback) {
-      logDebug(logger, 'Triggering fallback routing', {
+      logger.debug('Triggering fallback routing', {
         originalModel: unifiedReq.model,
         fallbackModel: currentReq.fallbackModel,
       });

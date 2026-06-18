@@ -4,19 +4,9 @@ Waypoint is a lightweight, opinionated, developer-first local proxy and gateway.
 
 Waypoint accepts OpenAI- and Anthropic-compatible HTTP APIs, preserves provider-specific request fields, and supports OpenAI-style tool/function calling, multimodal text-plus-image messages, reasoning/thinking normalization, SSE streaming, and dry-run inspection.
 
-> [!WARNING]
-> **Waypoint is currently a Work In Progress (WIP)**. It is intended as a local companion gateway for developer workflows and is not certified for production use.
-
 ---
 
-## 📌 Project Framing & Scope Rationale
-Waypoint is designed to demonstrate systems-level clean architecture, protocol translation, and stateful in-memory key registry design. While comprehensive tools like LiteLLM exist for enterprise-scale multi-provider routing, Waypoint is optimized as a **zero-external-infrastructure, single-process local sidecar** that developer tools (like Open WebUI, Claude Code, or IDE extensions) can use locally without managing databases or external caches.
-
-All state—including rate limits, sequential rotations, and circuit breakers—is stored in-memory, ensuring near-zero latency and high portability.
-
----
-
-## 🏛️ System Architecture
+## System Architecture
 
 Waypoint enforces strict **Separation of Concerns** using a layered Clean Architecture model. Inbound client payloads are authenticated, validated, and normalized before being passed to key registries and provider adapters.
 
@@ -67,7 +57,7 @@ Waypoint enforces strict **Separation of Concerns** using a layered Clean Archit
 
 ---
 
-## ⚡ Core Features
+## Core Features
 
 ### 1. Robust Configuration Management
 - **Environment Interpolation**: Resolves `${ENV_VAR}` tokens in `config/config.yaml` during boot.
@@ -139,7 +129,7 @@ Waypoint incorporates extensive performance enhancements specifically tailored f
 
 ---
 
-## 🔑 Key Lifecycle & Cooldown Policy
+## Key Lifecycle & Cooldown Policy
 
 Waypoint manages a pool of upstream API keys per provider. When an upstream request fails, the gateway decides whether to permanently exhaust a key, apply a tiered cooldown, or take no key action. Policy decisions use **structured error meaning** (`code` and `category`)—never bare HTTP status codes alone.
 
@@ -202,7 +192,7 @@ Aligned with the OpenAI API error codes guide.
 
 ---
 
-## 🚨 Client Error API Contract
+## Client Error API Contract
 
 Every client-visible failure uses a single JSON envelope under an `error` object. Raw upstream response bodies are **never** returned as the root HTTP body. Upstream debugging detail is retained in server-side logs only (with redaction).
 
@@ -365,7 +355,7 @@ data: {"type":"error","error":{"code":"rate_limit_exceeded","message":"Rate limi
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 - Node.js v18+
@@ -393,7 +383,7 @@ npm start
 ```
 
 ### Running Tests
-Waypoint features a comprehensive test suite (483 unit, integration, and edge-case tests) executed via **Vitest**:
+Waypoint features a comprehensive test suite (478 tests across 59 test files) executed via **Vitest**:
 ```bash
 npm test
 npm run test:watch   # watch mode
@@ -406,6 +396,20 @@ Validate codebase constraints under ESLint (Airbnb-base preset):
 npm run lint
 ```
 
+### Docker
+Build and run with Docker Compose:
+```bash
+docker compose up -d
+```
+
+Or build the image directly:
+```bash
+docker build -t waypoint .
+docker run -p 20128:20128 -v ./config:/app/config waypoint
+```
+
+Mount `./config` to provide `config.yaml` and optionally mount `.env` for environment variables.
+
 ---
 
 ## Project Layout
@@ -414,28 +418,29 @@ Source and test files use **camelCase** naming throughout. The `src/` tree is or
 
 ```
 src/
-├── index.js                 # CLI entry point (delegates to app/bootstrap.js)
-├── app/                     # Startup wiring and Express app factory
+├── index.js                 # Entry point (delegates to app/bootstrap.js)
+├── app/                     # Startup wiring, Express app factory, service wiring
+├── config/                  # YAML loader, Zod validators, validation errors
+├── controllers/             # Protocol controllers (OpenAI, Anthropic)
+├── domain/                  # Model routing, caching, request transformation
+├── errors/                  # Error classifier, policy, envelopes, upstream errors
 ├── lifecycle/               # Graceful shutdown and signal handling
-├── adapters/                # Provider HTTP adapters (shared/ for cross-adapter utilities, gemini/ for Gemini internals)
-├── config/                  # YAML loader and Zod validators
-├── controllers/             # Protocol translation boundaries (OpenAI, Anthropic)
-├── domain/                  # Model routing, caching, and request transformation
 ├── logging/                 # LogTape integration and per-request audit logging
-├── streaming/               # SSE parsing and stream accumulation utilities
-├── common/                  # Decomposed error handler policies, classifiers, and envelopes
-├── middleware/              # Auth, rate limiting, payload validation
-├── registry/                # API key pool state and teardown hooks
-├── services/                # Orchestration, retry, and failover logic
-├── routes/                  # HTTP route definitions
-└── translators/             # Cross-protocol request/response translation
+├── middleware/              # Auth, rate limiting, Zod payload validation
+├── providers/               # Provider adapters (Gemini, OpenAI, Anthropic, factory)
+├── registry/                # API key pool, rotation, cooldown state
+├── routes/                  # HTTP route definitions (OpenAI, Anthropic, health)
+├── services/                # Orchestration, retry, key rotation, stream guard
+├── streaming/               # SSE parsing and stream accumulation
+├── transforms/              # Cross-protocol request/response translation
+└── utils/                   # Shared utilities (header parsing, finish reason mapping)
 ```
 
 Tests mirror this structure under `test/`, with cross-cutting HTTP tests in `test/integration/`, shared test helpers in `test/helpers/`, and fixtures in `test/fixtures/`.
 
 ---
 
-## ⚙️ Configuration Guide
+## Configuration Guide
 
 Waypoint reads configuration from `config/config.yaml` (copy from `config.example.yaml` at the repo root) or a path designated in `process.env.WAYPOINT_CONFIG_PATH`. Environment variables referenced in the YAML are loaded from `.env` (copy from `.env.example`).
 
@@ -549,5 +554,5 @@ providers:
 
 ---
 
-## 🛡️ License
+## License
 Waypoint is open-source software licensed under the [MIT License](./LICENSE).

@@ -6,10 +6,12 @@
 
  
 import { isRetryable, shouldCooldownKey } from '../errors/policy.js';
-import { logDebug, logWarning } from '../logging/loggerWrapper.js';
+import { getAppLogger } from '../logging/logger.js';
 import { buildUpstreamErrorLogFields } from '../logging/upstreamErrorLogMeta.js';
 import { buildCancelledError, buildFinalError } from './retryStrategy.js';
 import { createStreamWithAbortGuard } from './streamGuard.js';
+
+const logger = getAppLogger('retry');
 
 /**
  * Abstracts the retry/key-rotation loop for a single provider.
@@ -36,7 +38,6 @@ export const executeWithRetry = async ({
   abortController,
   requestLog,
   retryLimit,
-  logger,
   onStreamResponse,
 }) => {
   let attempt = 0;
@@ -44,7 +45,7 @@ export const executeWithRetry = async ({
 
   while (attempt < retryLimit) {
     if (abortController.signal.aborted) {
-      logDebug(logger, 'Request aborted during retry loop check');
+      logger.debug('Request aborted during retry loop check');
       return buildCancelledError(provider);
     }
 
@@ -54,9 +55,9 @@ export const executeWithRetry = async ({
     }
 
     if (!apiKey) {
-      logDebug(logger, 'No active keys available in pool for provider', { provider });
+      logger.debug('No active keys available in pool for provider', { provider });
       if (req.isFallback) {
-        return buildFinalError(provider, keyRegistry, adapter, lastError, req, logger);
+        return buildFinalError(provider, keyRegistry, adapter, lastError, req);
       }
       if (req.fallbackModel) {
         return { triggerFallback: true };
@@ -64,8 +65,8 @@ export const executeWithRetry = async ({
       break;
     }
 
-    logDebug(logger, 'Key selected from pool for provider', { provider });
-    logDebug(logger, `Attempting execution: attempt=${attempt + 1}/${retryLimit} for provider=${provider}`);
+    logger.debug('Key selected from pool for provider', { provider });
+    logger.debug(`Attempting execution: attempt=${attempt + 1}/${retryLimit} for provider=${provider}`);
     attempt += 1;
 
     try {
@@ -91,7 +92,6 @@ export const executeWithRetry = async ({
           abortController,
           keyRegistry,
           provider,
-          logger,
           firstResult,
           iterator,
         });
@@ -109,7 +109,7 @@ export const executeWithRetry = async ({
         requestLog.logProviderResponse(response, Date.now() - providerStartTime);
       }
 
-      logDebug(logger, 'Completion execution succeeded', {
+      logger.debug('Completion execution succeeded', {
         provider,
         model: req.model,
         usage: response?.usage || 'unknown',
@@ -119,17 +119,17 @@ export const executeWithRetry = async ({
       if (error.isDryRun) throw error;
 
       if (abortController.signal.aborted) {
-        logDebug(logger, 'Request aborted during adapter call exception handling');
+        logger.debug('Request aborted during adapter call exception handling');
         return buildCancelledError(provider);
       }
       lastError = error;
       const normalized = adapter.normalizeError(error, req);
       const reasonMsg = normalized.message || error?.message || String(error);
       const msg = `Attempt ${attempt} of ${retryLimit} for provider '${provider}' failed. Reason: ${reasonMsg}`;
-      logWarning(logger, msg, buildUpstreamErrorLogFields(normalized));
+      logger.warning(msg, buildUpstreamErrorLogFields(normalized));
 
       if (!isRetryable(normalized.category, normalized.code)) {
-        return buildFinalError(provider, keyRegistry, adapter, lastError, req, logger);
+        return buildFinalError(provider, keyRegistry, adapter, lastError, req);
       }
 
       if (shouldCooldownKey(normalized.category, normalized.code)) {
@@ -146,5 +146,5 @@ export const executeWithRetry = async ({
     return { triggerFallback: true };
   }
 
-  return buildFinalError(provider, keyRegistry, adapter, lastError, req, logger);
+  return buildFinalError(provider, keyRegistry, adapter, lastError, req);
 };

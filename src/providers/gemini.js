@@ -2,10 +2,6 @@ import { BaseProvider } from './base.js';
 import { executeCompletion } from './gemini/geminiCompletion.js';
 import { executeStream } from './gemini/geminiStream.js';
 
-/**
- * WHAT: Provider adapter for Google's Gemini API endpoints.
- * WHY: Serves as the core contract delegator for Gemini standard and stream generation.
- */
 export class GeminiAdapter extends BaseProvider {
   constructor({
     baseUrl = null,

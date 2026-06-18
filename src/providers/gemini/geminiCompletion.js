@@ -3,10 +3,6 @@ import { FORMATS, translateRequest, translateResponse } from '../../transforms/i
 import { getThinkingLevel } from './geminiFormatter.js';
 import { mapOpenAICompletionResponse } from '../shared/openaiResponse.js';
 
-/**
- * WHAT: Executes standard unary text completion for Gemini.
- * WHY: Supports two different upstream endpoints based on whether reasoning (thinking) is active.
- */
 export const executeCompletion = async (req, apiKey, signal, requestLog, adapter) => {
   const reasoningSupported = req.reasoningSupported || false;
 

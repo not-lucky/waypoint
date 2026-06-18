@@ -12,7 +12,7 @@ export async function bootstrap() {
     const logger = getAppLogger( 'server' )
     logger.debug( 'Configuration loaded successfully' )
 
-    const services = wireServices( config, logger )
+    const services = wireServices( config )
     const app = createApp( config, services, logger )
 
     const { port } = config.gateway

@@ -3,36 +3,19 @@ import {
 } from 'vitest';
 import { ConfigLoader } from '../../src/config/loader.js';
 
-describe('ConfigLoader Logger Integration', () => {
-  let consoleWarnSpy;
-
+describe('ConfigLoader – Module Logger Integration', () => {
   beforeEach(() => {
-    consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it('stores and overrides the injected logger', () => {
+  it('interpolateAndValidate succeeds with valid config', () => {
     const loader = new ConfigLoader();
-    expect(loader.logger).toBeNull();
 
-    const logger = { warn: vi.fn(), debug: vi.fn() };
-    loader.setLogger(logger);
-    expect(loader.logger).toBe(logger);
-
-    const replacement = { warn: vi.fn(), debug: vi.fn() };
-    loader.setLogger(replacement);
-    expect(loader.logger).toBe(replacement);
-  });
-
-  it('warns about reserved provider type fields via logger when set', () => {
-    const loader = new ConfigLoader();
-    const logger = { warn: vi.fn(), debug: vi.fn() };
-    loader.setLogger(logger);
-
-    loader.interpolateAndValidate({
+    const result = loader.interpolateAndValidate({
       gateway: { port: 20128, routing: { strategy: 'round-robin' } },
       logging: { enableConsole: true, enableFile: false, format: 'json' },
       clients: [{ name: 'c', token: 't', rateLimit: { windowMs: 60000, max: 1 } }],
@@ -45,37 +28,33 @@ describe('ConfigLoader Logger Integration', () => {
       },
     });
 
-    expect(logger.warn).toHaveBeenCalled();
-    expect(consoleWarnSpy).not.toHaveBeenCalled();
+    expect(result).toBeDefined();
+    expect(result.providers.gemini).toBeDefined();
   });
 
-  it('falls back to console.warn when logger is not set', () => {
+  it('interpolate skips empty provider keys without crashing', () => {
     const loader = new ConfigLoader();
-    loader.interpolateAndValidate({
-      gateway: { port: 20128, routing: { strategy: 'round-robin' } },
-      logging: { enableConsole: true, enableFile: false, format: 'json' },
-      clients: [{ name: 'c', token: 't', rateLimit: { windowMs: 60000, max: 1 } }],
-      providers: {
-        gemini: {
-          type: 'openai-compatible',
-          keys: ['key'],
-          models: [{ id: 'model' }],
-        },
-      },
-    });
 
-    expect(consoleWarnSpy).toHaveBeenCalled();
-  });
-
-  it('warns when provider keys are empty', () => {
-    const loader = new ConfigLoader();
-    const logger = { warn: vi.fn(), debug: vi.fn() };
-    loader.setLogger(logger);
-
-    loader.interpolate({
+    const result = loader.interpolate({
       keys: [''],
     }, ['providers', 'gemini', 'keys']);
 
-    expect(logger.warn).toHaveBeenCalled();
+    expect(result).toEqual({ keys: [] });
+  });
+
+  it('interpolate skips null provider keys without crashing', () => {
+    const loader = new ConfigLoader();
+
+    const result = loader.interpolate({
+      keys: [null, undefined],
+    }, ['providers', 'gemini', 'keys']);
+
+    expect(result).toEqual({ keys: [] });
+  });
+
+  it('does not expose setLogger or logger property', () => {
+    const loader = new ConfigLoader();
+    expect(loader.setLogger).toBeUndefined();
+    expect(loader.logger).toBeUndefined();
   });
 });

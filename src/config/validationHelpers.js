@@ -1,4 +1,4 @@
-import { logErrorAndExitOrThrow } from '../logging/loggerWrapper.js';
+import { logErrorAndExitOrThrow } from './validationErrors.js';
 
 export const isPositiveInteger = (val) => Number.isInteger(val) && val > 0;
 
@@ -16,7 +16,6 @@ export const validateFallbackModel = (
   providers,
   originalProviders,
   shouldExit,
-  customLogger = null,
 ) => {
   const fallbackRef = model.fallbackModel;
 
@@ -24,7 +23,6 @@ export const validateFallbackModel = (
     logErrorAndExitOrThrow(
       `Invalid 'fallbackModel' at index ${modelIndex} for provider '${providerName}'. Must be a non-empty string.`,
       shouldExit,
-      customLogger,
     );
   }
 
@@ -33,7 +31,6 @@ export const validateFallbackModel = (
     logErrorAndExitOrThrow(
       `Invalid 'fallbackModel' format '${fallbackRef}' at index ${modelIndex} for provider '${providerName}'. Must be in 'provider/model-id' format.`,
       shouldExit,
-      customLogger,
     );
   }
 
@@ -45,7 +42,6 @@ export const validateFallbackModel = (
     logErrorAndExitOrThrow(
       `Invalid 'fallbackModel' reference '${fallbackRef}' at index ${modelIndex} for provider '${providerName}': provider '${fallbackProvider}' does not exist in configuration.`,
       shouldExit,
-      customLogger,
     );
   }
 
@@ -55,7 +51,6 @@ export const validateFallbackModel = (
     logErrorAndExitOrThrow(
       `Invalid 'fallbackModel' reference '${fallbackRef}' at index ${modelIndex} for provider '${providerName}': model ID or alias '${fallbackModelId}' does not exist in provider '${fallbackProvider}'.`,
       shouldExit,
-      customLogger,
     );
   }
 
@@ -63,7 +58,6 @@ export const validateFallbackModel = (
     logErrorAndExitOrThrow(
       `Invalid 'fallbackModel' reference '${fallbackRef}' at index ${modelIndex} for provider '${providerName}': model cannot fall back to itself.`,
       shouldExit,
-      customLogger,
     );
   }
 

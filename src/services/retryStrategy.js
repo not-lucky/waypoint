@@ -5,7 +5,9 @@
  */
 
 import { buildClientErrorEnvelope } from '../errors/envelope.js';
-import { logWarning } from '../logging/loggerWrapper.js';
+import { getAppLogger } from '../logging/logger.js';
+
+const logger = getAppLogger('retry');
 
 /**
  * Builds an error envelope indicating all keys for a provider are in cooldown.
@@ -70,10 +72,9 @@ export function buildCancelledError(provider) {
  * @param {Object} adapter - The provider adapter instance.
  * @param {any} lastError - The last captured error, or null.
  * @param {Object} req - The normalized request payload.
- * @param {Object|null} logger - Logger instance.
  * @returns {Object} Client error envelope.
  */
-export function buildFinalError(provider, keyRegistry, adapter, lastError, req, logger) {
+export function buildFinalError(provider, keyRegistry, adapter, lastError, req) {
   if (lastError) {
     const normalized = adapter.normalizeError(lastError, req);
     return buildClientErrorEnvelope(
@@ -88,7 +89,7 @@ export function buildFinalError(provider, keyRegistry, adapter, lastError, req, 
     );
   }
 
-  logWarning(logger, `All keys for provider '${provider}' are in cooldown.`, {
+  logger.warning(`All keys for provider '${provider}' are in cooldown.`, {
     error_code: 'poolUnavailable',
     category: undefined,
     lifecycle_tier: 'none',

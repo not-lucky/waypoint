@@ -1,10 +1,6 @@
 import fs from 'node:fs';
 import yaml from 'js-yaml';
-import {
-  logDebug,
-  logWarning,
-  logFatal,
-} from '../logging/loggerWrapper.js';
+import { getAppLogger } from '../logging/logger.js';
 import {
   RESERVED_PROVIDERS,
   replaceEnvVars,
@@ -12,6 +8,8 @@ import {
   coerceToInt,
 } from './configUtils.js';
 import { validateConfig } from './validator.js';
+
+const logger = getAppLogger('config');
 
 /**
  * Processes model numeric properties.
@@ -108,14 +106,6 @@ export class ConfigLoader {
   constructor() {
     this.currentConfig = null;
     this.currentConfigPath = null;
-    this.logger = null;
-  }
-
-  /**
-   * Injects the logger instance after initial config load.
-   */
-  setLogger(logger) {
-    this.logger = logger;
   }
 
   /**
@@ -132,13 +122,13 @@ export class ConfigLoader {
 
     this.currentConfigPath = configPath;
     try {
-      logDebug(this.logger, `Reading configuration file from path: ${configPath}`);
+      logger.debug(`Reading configuration file from path: ${configPath}`);
       const raw = fs.readFileSync(configPath, 'utf8');
       const parsed = yaml.load(raw);
       this.currentConfig = this.interpolateAndValidate(parsed, reservedProviders);
     } catch (err) {
       // Initial startup validation failure: log fatal error and throw.
-      logFatal(this.logger, `FATAL ERROR: Failed to load config file at ${configPath}: ${err.message}`);
+      logger.fatal(`FATAL ERROR: Failed to load config file at ${configPath}: ${err.message}`);
       throw new Error(`Failed to load config file at ${configPath}: ${err.message}`);
     }
 
@@ -170,7 +160,7 @@ export class ConfigLoader {
     const coerced = ConfigLoader.coerceNumericProperties(interpolated);
 
     // Call validateConfig with shouldExit = false for test flexibility.
-    validateConfig(coerced, false, reservedProviders, this.logger);
+    validateConfig(coerced, false, reservedProviders);
 
     return coerced;
   }
@@ -212,7 +202,7 @@ export class ConfigLoader {
         return val.flatMap((item, i) => {
           if (item == null || (typeof item === 'string' && item.trim() === '')) {
             const msg = `WARNING: Skipping undefined or empty key for provider '${providerName}' at index ${i}.`;
-            logWarning(this.logger, msg);
+            logger.warning(msg);
             return [];
           }
 
@@ -223,7 +213,7 @@ export class ConfigLoader {
           const missingVar = getMissingEnvVar(item);
           if (missingVar) {
             const msg = `WARNING: Missing or empty environment variable ${missingVar} for key at path ${path.join('.')}[${i}]. Skipping key.`;
-            logWarning(this.logger, msg);
+            logger.warning(msg);
             return [];
           }
 
@@ -247,7 +237,7 @@ export class ConfigLoader {
         );
       }
       const resolved = replaceEnvVars(val);
-      logDebug(this.logger, `Interpolated config value at ${path.join('.')}`);
+      logger.debug(`Interpolated config value at ${path.join('.')}`);
       return resolved;
     }
 

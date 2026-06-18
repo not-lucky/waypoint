@@ -81,7 +81,7 @@ export default [
     },
   },
   {
-    files: [ 'src/app/bootstrap.js', 'src/lifecycle/lifecycle.js', 'src/logging/loggerWrapper.js' ],
+    files: [ 'src/app/bootstrap.js', 'src/lifecycle/lifecycle.js', 'src/config/validationErrors.js' ],
     rules: {
       'n/no-process-exit': 'off',
     },

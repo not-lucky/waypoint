@@ -7,7 +7,10 @@
  */
 
 import { isPositiveInteger, isNonEmptyString, validateFallbackModel } from './validationHelpers.js'
-import { logWarning, logErrorAndExitOrThrow } from '../logging/loggerWrapper.js'
+import { getAppLogger } from '../logging/logger.js'
+import { logErrorAndExitOrThrow } from './validationErrors.js'
+
+const logger = getAppLogger( 'config' )
 
 const SETTINGS_CONFIG = {
   temperature: {
@@ -68,13 +71,13 @@ export class ProviderValidator {
    * @throws {Error} Throws validation errors if shouldExit is false.
    * @returns {Object} Processed providers config
    */
-  validate( providers, shouldExit, customLogger ) {
+  validate( providers, shouldExit ) {
     if (
       !providers
       || typeof providers !== 'object'
       || Object.keys( providers ).length === 0
     ) {
-      logErrorAndExitOrThrow( "Configuration must define at least one provider under 'providers'.", shouldExit, customLogger )
+      logErrorAndExitOrThrow( "Configuration must define at least one provider under 'providers'.", shouldExit )
     }
 
     const processedProviders = structuredClone( providers )
@@ -82,13 +85,13 @@ export class ProviderValidator {
 
     Object.entries( processedProviders ).forEach( ( [ providerName, providerConf ] ) => {
       if ( !providerConf || typeof providerConf !== 'object' ) {
-        logErrorAndExitOrThrow( `Invalid configuration for provider '${ providerName }'.`, shouldExit, customLogger )
+        logErrorAndExitOrThrow( `Invalid configuration for provider '${ providerName }'.`, shouldExit )
       }
 
       if ( this.reservedProviders.has( providerName ) ) {
         if ( providerConf.type !== undefined ) {
           const msg = `WARNING: Reserved provider '${ providerName }' does not accept a 'type' field. It will be ignored.`
-          logWarning( customLogger, msg )
+          logger.warning( msg )
           delete providerConf.type
         }
       } else if ( providerConf.type === undefined ) {
@@ -97,7 +100,6 @@ export class ProviderValidator {
         logErrorAndExitOrThrow(
           `Invalid 'type' value '${ providerConf.type }' for custom provider '${ providerName }'. unknown provider type.`,
           shouldExit,
-          customLogger,
         )
       }
 
@@ -105,7 +107,6 @@ export class ProviderValidator {
         logErrorAndExitOrThrow(
           `Provider '${ providerName }' is a custom provider and must specify a non-empty 'baseUrl'. custom provider requires baseUrl.`,
           shouldExit,
-          customLogger,
         )
       }
 
@@ -114,7 +115,7 @@ export class ProviderValidator {
         const validKeys = providerConf.keys.filter( ( key, index ) => {
           if ( key == null || ( typeof key === 'string' && key.trim() === '' ) ) {
             const msg = `WARNING: Skipping undefined or empty key for provider '${ providerName }' at index ${ index }.`
-            logWarning( customLogger, msg )
+            logger.warning( msg )
             return false
           }
           return true
@@ -128,22 +129,21 @@ export class ProviderValidator {
         logErrorAndExitOrThrow(
           `Provider '${ providerName }' has zero active keys remaining in the pool.`,
           shouldExit,
-          customLogger,
         )
         return
       }
 
       if ( !providerConf.models || !Array.isArray( providerConf.models )
         || providerConf.models.length === 0 ) {
-        logErrorAndExitOrThrow( `Provider '${ providerName }' must have a non-empty 'models' array.`, shouldExit, customLogger )
+        logErrorAndExitOrThrow( `Provider '${ providerName }' must have a non-empty 'models' array.`, shouldExit )
       }
 
       providerConf.models.forEach( ( model, j ) => {
         if ( !model || typeof model !== 'object' ) {
-          logErrorAndExitOrThrow( `Invalid model at index ${ j } for provider '${ providerName }'.`, shouldExit, customLogger )
+          logErrorAndExitOrThrow( `Invalid model at index ${ j } for provider '${ providerName }'.`, shouldExit )
         }
         if ( !isNonEmptyString( model.id ) ) {
-          logErrorAndExitOrThrow( `Missing or empty model 'id' at index ${ j } for provider '${ providerName }'.`, shouldExit, customLogger )
+          logErrorAndExitOrThrow( `Missing or empty model 'id' at index ${ j } for provider '${ providerName }'.`, shouldExit )
         }
 
         Object.entries( model ).forEach( ( [ key, val ] ) => {
@@ -151,7 +151,6 @@ export class ProviderValidator {
             logErrorAndExitOrThrow(
               `Invalid model configuration key '${ key }' at index ${ j } for provider '${ providerName }'.`,
               shouldExit,
-              customLogger,
             )
           }
 
@@ -160,7 +159,6 @@ export class ProviderValidator {
               logErrorAndExitOrThrow(
                 `Invalid 'aliases' at index ${ j } for provider '${ providerName }'. Must be an array.`,
                 shouldExit,
-                customLogger,
               )
             }
           } else if ( key === 'actualModelId' ) {
@@ -168,7 +166,6 @@ export class ProviderValidator {
               logErrorAndExitOrThrow(
                 `Invalid 'actualModelId' at index ${ j } for provider '${ providerName }'. Must be a non-empty string.`,
                 shouldExit,
-                customLogger,
               )
             }
           } else if ( VALID_SETTING_KEYS.has( key ) ) {
@@ -177,10 +174,9 @@ export class ProviderValidator {
               `models[${ j }]`,
               providerName,
               shouldExit,
-              customLogger,
             )
           } else if ( key === 'overrides' ) {
-            ProviderValidator.validateSettings( val, `models[${ j }].overrides`, providerName, shouldExit, customLogger )
+            ProviderValidator.validateSettings( val, `models[${ j }].overrides`, providerName, shouldExit )
           }
         } )
 
@@ -192,7 +188,6 @@ export class ProviderValidator {
             processedProviders,
             originalProviders,
             shouldExit,
-            customLogger,
           )
         }
       } )
@@ -210,12 +205,11 @@ export class ProviderValidator {
    * @param {boolean} shouldExit - Whether the process should exit on validation failure.
    * @param {Object|null} customLogger - Logger instance.
    */
-  static validateSettings( settings, path, providerName, shouldExit, customLogger ) {
+  static validateSettings( settings, path, providerName, shouldExit ) {
     if ( !settings || typeof settings !== 'object' || Array.isArray( settings ) ) {
       logErrorAndExitOrThrow(
         `Invalid settings object at '${ path }' for provider '${ providerName }'.`,
         shouldExit,
-        customLogger,
       )
       return
     }
@@ -225,14 +219,12 @@ export class ProviderValidator {
         logErrorAndExitOrThrow(
           `Invalid setting key '${ key }' at '${ path }' for provider '${ providerName }'.`,
           shouldExit,
-          customLogger,
         )
       }
       if ( !SETTINGS_CONFIG[ key ].validate( val ) ) {
         logErrorAndExitOrThrow(
           SETTINGS_CONFIG[ key ].errorMsg( path, providerName ),
           shouldExit,
-          customLogger,
         )
       }
     } )

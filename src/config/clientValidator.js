@@ -5,7 +5,7 @@
  */
 
 import { isPositiveInteger, isNonEmptyString } from './validationHelpers.js';
-import { logErrorAndExitOrThrow } from '../logging/loggerWrapper.js';
+import { logErrorAndExitOrThrow } from './validationErrors.js';
 
 /**
  * Validates the clients configuration block.
@@ -15,36 +15,34 @@ import { logErrorAndExitOrThrow } from '../logging/loggerWrapper.js';
  * @param {Object|null} customLogger - Logger instance for warning/error reporting.
  * @throws {Error} Throws validation errors if shouldExit is false.
  */
-export const validateClients = (clients, shouldExit, customLogger) => {
+export const validateClients = (clients, shouldExit) => {
   if (!clients || !Array.isArray(clients)) {
-    logErrorAndExitOrThrow("Missing structural field 'clients'.", shouldExit, customLogger);
+    logErrorAndExitOrThrow("Missing structural field 'clients'.", shouldExit);
   }
 
   clients.forEach((client, i) => {
     if (!client || typeof client !== 'object') {
-      logErrorAndExitOrThrow(`Invalid client configuration at index ${i}.`, shouldExit, customLogger);
+      logErrorAndExitOrThrow(`Invalid client configuration at index ${i}.`, shouldExit);
     }
     if (!isNonEmptyString(client.name)) {
-      logErrorAndExitOrThrow(`Missing or empty 'name' for client at index ${i}.`, shouldExit, customLogger);
+      logErrorAndExitOrThrow(`Missing or empty 'name' for client at index ${i}.`, shouldExit);
     }
     if (!isNonEmptyString(client.token)) {
-      logErrorAndExitOrThrow(`Missing or empty 'token' for client at index ${i}.`, shouldExit, customLogger);
+      logErrorAndExitOrThrow(`Missing or empty 'token' for client at index ${i}.`, shouldExit);
     }
     if (!client.rateLimit || typeof client.rateLimit !== 'object') {
-      logErrorAndExitOrThrow(`Missing structural field 'rateLimit' for client at index ${i}.`, shouldExit, customLogger);
+      logErrorAndExitOrThrow(`Missing structural field 'rateLimit' for client at index ${i}.`, shouldExit);
     }
     if (!isPositiveInteger(client.rateLimit.windowMs)) {
       logErrorAndExitOrThrow(
         `Invalid or missing 'rateLimit.windowMs' for client at index ${i}. Must be a positive integer.`,
         shouldExit,
-        customLogger,
       );
     }
     if (!isPositiveInteger(client.rateLimit.max)) {
       logErrorAndExitOrThrow(
         `Invalid or missing 'rateLimit.max' for client at index ${i}. Must be a positive integer.`,
         shouldExit,
-        customLogger,
       );
     }
   });

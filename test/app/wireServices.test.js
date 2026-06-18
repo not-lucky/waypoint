@@ -27,6 +27,7 @@ describe('wireServices', () => {
       openAIController: expect.any(Object),
       anthropicController: expect.any(Object),
       modelCache: expect.any(Object),
+      metricsCollector: expect.any(Object),
     }));
   });
 

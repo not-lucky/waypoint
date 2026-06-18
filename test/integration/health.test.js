@@ -86,6 +86,9 @@ describe('Health Endpoint Integration Tests', () => {
       expect(body.providers).toHaveProperty(provider);
       const p = body.providers[provider];
 
+      expect(p).toHaveProperty('status');
+      expect(typeof p.status).toBe('string');
+
       expect(p).toHaveProperty('totalKeys');
       expect(typeof p.totalKeys).toBe('number');
 
@@ -101,6 +104,15 @@ describe('Health Endpoint Integration Tests', () => {
       expect(p).toHaveProperty('coolingUntil');
       // Should be null initially
       expect(p.coolingUntil).toBeNull();
+      expect(p.status).toBe('ok');
+    });
+
+    expect(body).toHaveProperty('keyPool');
+    expect(body.keyPool).toEqual({
+      active: 8,
+      cooldown: 0,
+      exhausted: 0,
+      total: 8,
     });
 
     // Check routing structure
@@ -138,6 +150,13 @@ describe('Health Endpoint Integration Tests', () => {
     expect(res.body.providers.gemini.exhaustedKeys).toBe(0);
     expect(res.body.providers.gemini.coolingKeys).toBe(1);
     expect(res.body.providers.gemini.coolingUntil).not.toBeNull();
+    expect(res.body.providers.gemini.status).toBe('degraded');
+    expect(res.body.keyPool).toEqual({
+      active: 7,
+      cooldown: 1,
+      exhausted: 0,
+      total: 8,
+    });
   });
 
   it('should transition to degraded when a key is cooling (429)', async () => {
@@ -157,6 +176,7 @@ describe('Health Endpoint Integration Tests', () => {
     expect(res.body.status).toBe('degraded');
     expect(res.body.providers.gemini.activeKeys).toBe(1);
     expect(res.body.providers.gemini.coolingKeys).toBe(1);
+    expect(res.body.providers.gemini.status).toBe('degraded');
 
     const { coolingUntil } = res.body.providers.gemini;
     expect(coolingUntil).toBeGreaterThanOrEqual(Math.floor(beforeTime / 1000));
@@ -171,6 +191,7 @@ describe('Health Endpoint Integration Tests', () => {
     expect(res.body.providers.gemini.activeKeys).toBe(2);
     expect(res.body.providers.gemini.coolingKeys).toBe(0);
     expect(res.body.providers.gemini.coolingUntil).toBeNull();
+    expect(res.body.providers.gemini.status).toBe('ok');
   });
 
   it('should report the earliest coolingUntil timestamp when multiple keys are cooling', async () => {
@@ -198,6 +219,12 @@ describe('Health Endpoint Integration Tests', () => {
     expect(res.body.providers.gemini.coolingKeys).toBe(2);
     // Should match the earliest (key1CooldownTime)
     expect(res.body.providers.gemini.coolingUntil).toBe(Math.floor(key1CooldownTime / 1000));
+    expect(res.body.keyPool).toEqual({
+      active: 6,
+      cooldown: 2,
+      exhausted: 0,
+      total: 8,
+    });
   });
 
   it('should return correct JSON headers', async () => {
@@ -236,6 +263,7 @@ describe('Health Endpoint Integration Tests', () => {
     expect(res.body.status).toBe('degraded');
     expect(res.body.providers.gemini.activeKeys).toBe(1);
     expect(res.body.providers.gemini.coolingKeys).toBe(1);
+    expect(res.body.providers.gemini.status).toBe('degraded');
 
     // Advance time past the 60s server cooldown
     await vi.advanceTimersByTimeAsync(60000);
@@ -245,5 +273,6 @@ describe('Health Endpoint Integration Tests', () => {
     expect(res.body.status).toBe('ok');
     expect(res.body.providers.gemini.activeKeys).toBe(2);
     expect(res.body.providers.gemini.coolingKeys).toBe(0);
+    expect(res.body.providers.gemini.status).toBe('ok');
   });
 });

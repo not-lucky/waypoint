@@ -11,7 +11,7 @@ import { ThinkingBuffer } from '../../streaming/thinkingBuffer.js';
  */
 export async function* executeThinkingStream(req, apiKey, signal, requestLog, adapter) {
   const url = adapter.baseUrl
-    ? `${adapter.baseUrl.replace(/\/$/, '')}/chat/completions`
+    ? `${adapter.baseUrl}/chat/completions`
     : 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
 
   const headers = {

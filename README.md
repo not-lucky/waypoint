@@ -113,7 +113,8 @@ For OpenAI-compatible requests, `max_tokens` takes precedence when present; `max
 - Secure endpoint authentication with bearer token mappings (`Authorization: Bearer <token>`).
 - Client-level sliding window rate limiting.
 - Ingress payload size constraints and CORS controls.
-- **Health endpoint** (`GET /health`): requires authentication; returns `status` (`ok` or `degraded`), `uptimeSeconds`, per-provider key pool stats (`providers`), and routing state (`routing`).
+- **Health endpoint** (`GET /health`): requires authentication; returns `status` (`ok` or `degraded`), `uptimeSeconds`, per-provider key pool stats (`providers`) including provider-level status, an aggregate `keyPool` summary across all pools, and routing state (`routing`).
+- **Metrics endpoint** (`GET /metrics`): requires authentication; returns Prometheus-compatible text output tracking request count (by provider, model, and status code), request latency histograms, key pool gauges (active/cooling/exhausted), and cooldown activation counters.
 - **Dry-run endpoints**: mirror the live OpenAI and Anthropic routes under `/dryrun/openai/*` and `/dryrun/anthropic/*`. Requests are validated and logged but never sent upstream; the response includes `{ dryRun: true, ... }`. Requires `logging.logRequests: true` in config.
 
 ### 9. Error Responses (v1)
@@ -383,7 +384,7 @@ npm start
 ```
 
 ### Running Tests
-Waypoint features a comprehensive test suite (478 tests across 59 test files) executed via **Vitest**:
+Waypoint features a comprehensive test suite (502 tests across 68 test files) executed via **Vitest**:
 ```bash
 npm test
 npm run test:watch   # watch mode

@@ -10,11 +10,14 @@ export function createHealthRouter({ auth, keyRegistry }) {
   const router = express.Router();
 
   router.get('/', auth, (_, res) => {
-    const { status, providers, routing } = keyRegistry.getHealthStats();
+    const {
+      status, providers, keyPool, routing,
+    } = keyRegistry.getHealthStats();
     res.json({
       status,
       uptimeSeconds: Math.floor(process.uptime()),
       providers,
+      keyPool,
       routing,
     });
   });

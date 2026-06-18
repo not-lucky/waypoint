@@ -15,6 +15,11 @@ export default [
         ...globals.node,
       },
     },
+    settings: {
+      'import-x/resolver-next': [
+        importXPlugin.createNodeResolver(),
+      ],
+    },
     rules: {
       'import-x/extensions': [ 'error', 'ignorePackages', {
         js: 'always',

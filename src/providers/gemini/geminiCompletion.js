@@ -1,24 +1,24 @@
- 
-import { FORMATS, translateRequest, translateResponse } from '../../transforms/index.js';
-import { getThinkingLevel } from './geminiFormatter.js';
-import { mapOpenAICompletionResponse } from '../shared/openaiResponse.js';
 
-export const executeCompletion = async (req, apiKey, signal, requestLog, adapter) => {
-  const reasoningSupported = req.reasoningSupported || false;
+import { FORMATS, translateRequest, translateResponse } from '../../transforms/index.js'
+import { getThinkingLevel } from './geminiFormatter.js'
+import { mapOpenAICompletionResponse } from '../shared/openaiResponse.js'
 
-  let payload;
-  let url;
-  let headers;
+export const executeCompletion = async ( req, apiKey, signal, requestLog, adapter ) => {
+  const reasoningSupported = req.reasoningSupported || false
 
-  if (reasoningSupported) {
+  let payload
+  let url
+  let headers
+
+  if ( reasoningSupported ) {
     url = adapter.baseUrl
-      ? `${adapter.baseUrl.replace(/\/$/, '')}/chat/completions`
-      : 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
+      ? `${ adapter.baseUrl }/chat/completions`
+      : 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'
 
     headers = {
       'content-type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    };
+      Authorization: `Bearer ${ apiKey }`,
+    }
 
     payload = {
       model: req.actualModelId || req.model,
@@ -27,27 +27,27 @@ export const executeCompletion = async (req, apiKey, signal, requestLog, adapter
       extra_body: {
         google: {
           thinking_config: {
-            thinking_level: getThinkingLevel(req),
+            thinking_level: getThinkingLevel( req ),
             include_thoughts: true,
           },
         },
       },
-    };
-    if (req.temperature !== undefined) payload.temperature = req.temperature;
-    if (req.maxTokens !== undefined) payload.max_tokens = req.maxTokens;
+    }
+    if ( req.temperature !== undefined ) payload.temperature = req.temperature
+    if ( req.maxTokens !== undefined ) payload.max_tokens = req.maxTokens
   } else {
-    payload = translateRequest(FORMATS.OPENAI, FORMATS.GEMINI, req);
+    payload = translateRequest( FORMATS.OPENAI, FORMATS.GEMINI, req )
     const base = adapter.baseUrl
-      ? adapter.baseUrl.replace(/\/$/, '')
-      : 'https://generativelanguage.googleapis.com/v1beta';
+      ? adapter.baseUrl
+      : 'https://generativelanguage.googleapis.com/v1beta'
 
-    const urlObj = new URL(`${base}/models/${req.actualModelId}:generateContent`);
-    urlObj.searchParams.set('key', apiKey);
-    url = urlObj.toString();
+    const urlObj = new URL( `${ base }/models/${ req.actualModelId }:generateContent` )
+    urlObj.searchParams.set( 'key', apiKey )
+    url = urlObj.toString()
 
     headers = {
       'content-type': 'application/json',
-    };
+    }
   }
 
   const { response, cleanup } = await adapter.performFetch(
@@ -57,17 +57,17 @@ export const executeCompletion = async (req, apiKey, signal, requestLog, adapter
     signal,
     requestLog,
     adapter.timeoutMs,
-  );
+  )
 
   try {
-    const resultJson = await response.json();
+    const resultJson = await response.json()
 
-    if (reasoningSupported) {
-      return mapOpenAICompletionResponse(req, resultJson, { extractThoughts: true });
+    if ( reasoningSupported ) {
+      return mapOpenAICompletionResponse( req, resultJson, { extractThoughts: true } )
     }
 
-    return translateResponse(FORMATS.OPENAI, FORMATS.GEMINI, resultJson, req);
+    return translateResponse( FORMATS.OPENAI, FORMATS.GEMINI, resultJson, req )
   } finally {
-    cleanup();
+    cleanup()
   }
-};
+}

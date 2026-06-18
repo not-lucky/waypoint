@@ -1,12 +1,14 @@
 import { KeyRegistry } from '../registry/keyRegistry.js';
 import { ProviderFactory } from '../providers/factory.js';
+import { MetricsCollector } from '../monitoring/metricsCollector.js';
 import { UnifiedOrchestrator } from '../services/unifiedOrchestrator.js';
 import { OpenAIController } from '../controllers/openaiController.js';
 import { AnthropicController } from '../controllers/anthropicController.js';
 import { ModelCache } from '../domain/modelCache.js';
 
 export function wireServices(config) {
-  const keyRegistry = new KeyRegistry(config);
+  const metricsCollector = new MetricsCollector();
+  const keyRegistry = new KeyRegistry(config, null, metricsCollector);
   const providerFactory = new ProviderFactory(config);
   const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
   const openAIController = new OpenAIController(orchestrator);
@@ -20,5 +22,6 @@ export function wireServices(config) {
     openAIController,
     anthropicController,
     modelCache,
+    metricsCollector,
   };
 }

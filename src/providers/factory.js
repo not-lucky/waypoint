@@ -96,6 +96,8 @@ export class ProviderFactory {
 ProviderFactory.registerStrategy({
   match: (name) => name === 'gemini',
   create: (name, provider, timeouts) => new GeminiAdapter({
+    baseUrl: provider?.baseUrl,
+    providerName: name,
     timeoutMs: timeouts.httpTimeoutMs,
     streamTimeoutMs: timeouts.streamTimeoutMs,
   }),

@@ -1,32 +1,29 @@
-import { BaseProvider } from './base.js';
-import { executeCompletion } from './gemini/geminiCompletion.js';
-import { executeStream } from './gemini/geminiStream.js';
+import { BaseProvider } from './base.js'
+import { executeCompletion } from './gemini/geminiCompletion.js'
+import { executeStream } from './gemini/geminiStream.js'
 
 export class GeminiAdapter extends BaseProvider {
-  constructor({
+  constructor ( {
     baseUrl = null,
+    providerName = 'gemini',
     timeoutMs = null,
     streamTimeoutMs = null,
-  } = {}) {
-    super();
-    this.baseUrl = baseUrl?.replace(/\/$/, '') ?? null;
-    this.timeoutMs = timeoutMs;
-    this.streamTimeoutMs = streamTimeoutMs;
+  } = {} ) {
+    super( {
+      baseUrl,
+      providerName,
+      timeoutMs,
+      streamTimeoutMs,
+    } )
   }
 
-  async generateCompletion(req, apiKey, signal, requestLog = null) {
+  async generateCompletion( req, apiKey, signal, requestLog = null ) {
     // Delegate non-streaming request lifecycle to executeCompletion
-    return executeCompletion(req, apiKey, signal, requestLog, this);
+    return executeCompletion( req, apiKey, signal, requestLog, this )
   }
 
-  async* generateStream(req, apiKey, signal, requestLog = null) {
+  async* generateStream( req, apiKey, signal, requestLog = null ) {
     // Delegate streaming request lifecycle to executeStream
-    yield* executeStream(req, apiKey, signal, requestLog, this);
-  }
-
-   
-  normalizeError(error, req = null) {
-    // Convert upstream Google API error messages and status codes to normalized internal codes
-    return BaseProvider.normalizeProviderError(error, 'gemini', req);
+    yield* executeStream( req, apiKey, signal, requestLog, this )
   }
 }

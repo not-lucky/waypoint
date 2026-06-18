@@ -19,11 +19,12 @@ export class OpenAICompatibleAdapter extends BaseProvider {
     timeoutMs = null,
     streamTimeoutMs = null,
   } = {}) {
-    super();
-    this.baseUrl = baseUrl?.replace(/\/$/, '') ?? null;
-    this.providerName = providerName;
-    this.timeoutMs = timeoutMs;
-    this.streamTimeoutMs = streamTimeoutMs;
+    super({
+      baseUrl,
+      providerName,
+      timeoutMs,
+      streamTimeoutMs,
+    });
   }
 
   async generateCompletion(req, apiKey, signal, requestLog = null) {
@@ -102,9 +103,5 @@ export class OpenAICompatibleAdapter extends BaseProvider {
         });
       }
     }
-  }
-
-  normalizeError(error, req = null) {
-    return BaseProvider.normalizeProviderError(error, this.providerName, req);
   }
 }

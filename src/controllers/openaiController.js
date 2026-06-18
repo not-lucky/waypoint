@@ -1,5 +1,6 @@
 import { formatOpenAiSseError } from '../errors/envelope.js';
 import { StreamAccumulator } from '../streaming/streamAccumulator.js';
+import { startSSEStream } from '../streaming/sseUtils.js';
 import { BaseController } from './baseController.js';
 
 /**
@@ -35,9 +36,7 @@ export class OpenAIController extends BaseController {
   async handleStream(res, response, reqLog) {
     this.logger.debug('Starting OpenAI SSE response stream');
 
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('X-Accel-Buffering', 'no');
+    startSSEStream(res);
 
     let chunkCount = 0;
     const accumulator = new StreamAccumulator();

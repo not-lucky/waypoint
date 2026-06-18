@@ -6,11 +6,11 @@
  */
 
 /* eslint-disable no-unused-vars */
- 
-import { sanitizeUrl, serializeHeaders, redactHeaders } from '../logging/requestLoggerUtils.js';
-import { NotImplementedError } from '../utils/notImplementedError.js';
-import { classifyUpstreamError } from '../errors/httpRules.js';
-import { UpstreamError, normalizeUpstreamError } from '../errors/upstream.js';
+
+import { sanitizeUrl, serializeHeaders, redactHeaders } from '../logging/requestLoggerUtils.js'
+import { NotImplementedError } from '../utils/notImplementedError.js'
+import { classifyUpstreamError } from '../errors/httpRules.js'
+import { UpstreamError, normalizeUpstreamError } from '../errors/upstream.js'
 
 /**
  * @typedef {Object} UnifiedMessage
@@ -104,13 +104,32 @@ import { UpstreamError, normalizeUpstreamError } from '../errors/upstream.js';
  */
 export class BaseProvider {
   /**
+   * @param {Object} [options={}] - Shared provider configuration.
+   * @param {string|null} [options.baseUrl=null] - Optional provider base URL.
+   * @param {string} [options.providerName='unknown'] - Provider name used for normalization.
+   * @param {number|null} [options.timeoutMs=null] - Unary request timeout.
+   * @param {number|null} [options.streamTimeoutMs=null] - Streaming request timeout.
+   */
+  constructor ( {
+    baseUrl = null,
+    providerName = 'unknown',
+    timeoutMs = null,
+    streamTimeoutMs = null,
+  } = {} ) {
+    this.baseUrl = baseUrl?.replace( /\/$/, '' ) ?? null
+    this.providerName = providerName
+    this.timeoutMs = timeoutMs
+    this.streamTimeoutMs = streamTimeoutMs
+  }
+
+  /**
    * Resolves the timeout for streaming upstream calls.
    * Falls back to the completion timeout when no stream-specific timeout is set.
    *
    * @returns {number|null}
    */
   resolveStreamTimeoutMs() {
-    return this.streamTimeoutMs ?? this.timeoutMs ?? null;
+    return this.streamTimeoutMs ?? this.timeoutMs ?? null
   }
 
   /**
@@ -121,8 +140,8 @@ export class BaseProvider {
    * @param {Object} [req] - The normalized internal request.
    * @returns {NormalizedError} Mapped/standardized error payload.
    */
-  static normalizeProviderError(error, providerName, req = null) {
-    return normalizeUpstreamError(error, providerName, req);
+  static normalizeProviderError( error, providerName, req = null ) {
+    return normalizeUpstreamError( error, providerName, req )
   }
 
   /**
@@ -132,22 +151,22 @@ export class BaseProvider {
    * @param {string} [fallbackMessage='Upstream error'] - Fallback error message.
    * @returns {Promise<Error>} Standardized Error instance with statusCode and response properties.
    */
-  static async parseUpstreamError(response, fallbackMessage = 'Upstream error') {
-    const errorText = await response.text();
-    let errorJson;
+  static async parseUpstreamError( response, fallbackMessage = 'Upstream error' ) {
+    const errorText = await response.text()
+    let errorJson
     try {
-      errorJson = JSON.parse(errorText);
-    } catch (e) {
-      errorJson = { message: errorText };
+      errorJson = JSON.parse( errorText )
+    } catch ( e ) {
+      errorJson = { message: errorText }
     }
 
     const headersObj = response.headers
-      ? Object.fromEntries(response.headers.entries())
-      : {};
+      ? Object.fromEntries( response.headers.entries() )
+      : {}
 
-    const classification = classifyUpstreamError(response.status, errorJson, headersObj);
+    const classification = classifyUpstreamError( response.status, errorJson, headersObj )
 
-    const err = new UpstreamError(errorJson.error?.message
+    const err = new UpstreamError( errorJson.error?.message
       || errorJson.message
       || fallbackMessage, {
       statusCode: response.status,
@@ -157,10 +176,10 @@ export class BaseProvider {
       provider: 'unknown', // Will be filled by normalization or adapter
       retryAfterSeconds: classification.retryAfterSeconds,
       category: classification.category,
-    });
+    } )
 
-    err.response = response;
-    return err;
+    err.response = response
+    return err
   }
 
   /**
@@ -176,50 +195,50 @@ export class BaseProvider {
    *    Resolves to HTTP response payload, active signal, and cleanup hook.
    * @throws {Error} Relays HTTP transmission failure or non-2xx status code parsed error.
    */
-  async performFetch(url, headers, payload, signal, requestLog = null, timeoutMs = null) {
-    if (requestLog && requestLog.isDryRun) {
-      requestLog.logProviderRequest(sanitizeUrl(url), {}, payload);
+  async performFetch( url, headers, payload, signal, requestLog = null, timeoutMs = null ) {
+    if ( requestLog && requestLog.isDryRun ) {
+      requestLog.logProviderRequest( sanitizeUrl( url ), {}, payload )
 
-      const dryRunErr = new Error('Dry Run Interrupt');
-      dryRunErr.isDryRun = true;
-      dryRunErr.url = sanitizeUrl(url);
-      dryRunErr.headers = redactHeaders(headers);
-      dryRunErr.payload = payload;
-      throw dryRunErr;
+      const dryRunErr = new Error( 'Dry Run Interrupt' )
+      dryRunErr.isDryRun = true
+      dryRunErr.url = sanitizeUrl( url )
+      dryRunErr.headers = redactHeaders( headers )
+      dryRunErr.payload = payload
+      throw dryRunErr
     }
 
-    const { signal: fetchSignal, cleanup } = this.getTimeoutSignal(signal, timeoutMs);
-    let response;
+    const { signal: fetchSignal, cleanup } = this.getTimeoutSignal( signal, timeoutMs )
+    let response
     try {
-      response = await fetch(url, {
+      response = await fetch( url, {
         method: 'POST',
         headers,
-        body: JSON.stringify(payload),
+        body: JSON.stringify( payload ),
         signal: fetchSignal,
-      });
-    } catch (fetchErr) {
-      if (requestLog) {
-        requestLog.logProviderRequest(sanitizeUrl(url), {}, payload);
+      } )
+    } catch ( fetchErr ) {
+      if ( requestLog ) {
+        requestLog.logProviderRequest( sanitizeUrl( url ), {}, payload )
       }
-      cleanup();
-      throw fetchErr;
+      cleanup()
+      throw fetchErr
     }
 
-    if (requestLog) {
+    if ( requestLog ) {
       requestLog.logProviderRequest(
-        sanitizeUrl(url),
-        serializeHeaders(response.headers),
+        sanitizeUrl( url ),
+        serializeHeaders( response.headers ),
         payload,
-      );
+      )
     }
 
-    if (!response.ok) {
-      const err = await BaseProvider.parseUpstreamError(response);
-      cleanup();
-      throw err;
+    if ( !response.ok ) {
+      const err = await BaseProvider.parseUpstreamError( response )
+      cleanup()
+      throw err
     }
 
-    return { response, fetchSignal, cleanup };
+    return { response, fetchSignal, cleanup }
   }
 
   /**
@@ -231,40 +250,40 @@ export class BaseProvider {
    * @param {number} [timeoutMs] - Configured timeout in milliseconds.
    * @returns {{ signal: AbortSignal, cleanup: Function }} Mapped signal and cleanup function.
    */
-  getTimeoutSignal(signal, timeoutMs) {
-    if (!timeoutMs) {
-      return { signal, cleanup: () => { } };
+  getTimeoutSignal( signal, timeoutMs ) {
+    if ( !timeoutMs ) {
+      return { signal, cleanup: () => { } }
     }
 
-    const timeoutSignal = AbortSignal.timeout(timeoutMs);
+    const timeoutSignal = AbortSignal.timeout( timeoutMs )
 
-    if (!signal) {
-      return { signal: timeoutSignal, cleanup: () => { } };
+    if ( !signal ) {
+      return { signal: timeoutSignal, cleanup: () => { } }
     }
 
     // Try using the native AbortSignal.any if running on newer Node versions
-    if (typeof AbortSignal.any === 'function') {
-      const combinedSignal = AbortSignal.any([signal, timeoutSignal]);
-      return { signal: combinedSignal, cleanup: () => { } };
+    if ( typeof AbortSignal.any === 'function' ) {
+      const combinedSignal = AbortSignal.any( [ signal, timeoutSignal ] )
+      return { signal: combinedSignal, cleanup: () => { } }
     }
 
     // Polyfill for AbortSignal.any
-    const controller = new AbortController();
-    const onAbort = () => controller.abort();
+    const controller = new AbortController()
+    const onAbort = () => controller.abort()
 
-    signal.addEventListener('abort', onAbort);
-    timeoutSignal.addEventListener('abort', onAbort);
+    signal.addEventListener( 'abort', onAbort )
+    timeoutSignal.addEventListener( 'abort', onAbort )
 
-    if (signal.aborted || timeoutSignal.aborted) {
-      controller.abort();
+    if ( signal.aborted || timeoutSignal.aborted ) {
+      controller.abort()
     }
 
     const cleanup = () => {
-      signal.removeEventListener('abort', onAbort);
-      timeoutSignal.removeEventListener('abort', onAbort);
-    };
+      signal.removeEventListener( 'abort', onAbort )
+      timeoutSignal.removeEventListener( 'abort', onAbort )
+    }
 
-    return { signal: controller.signal, cleanup };
+    return { signal: controller.signal, cleanup }
   }
 
   /**
@@ -276,8 +295,8 @@ export class BaseProvider {
    * @returns {Promise<NormalizedResponse>} Standardized response payload.
    * @throws {NotImplementedError} If subclasses do not override this method.
    */
-  async generateCompletion(req, apiKey, signal) {
-    throw new NotImplementedError();
+  async generateCompletion( req, apiKey, signal ) {
+    throw new NotImplementedError()
   }
 
   /**
@@ -289,8 +308,8 @@ export class BaseProvider {
    * @returns {Promise<AsyncIterable<StreamChunk>>} Async generator yielding chunks.
    * @throws {NotImplementedError} If subclasses do not override this method.
    */
-  async generateStream(req, apiKey, signal) {
-    throw new NotImplementedError();
+  async generateStream( req, apiKey, signal ) {
+    throw new NotImplementedError()
   }
 
   /**
@@ -299,9 +318,8 @@ export class BaseProvider {
    * @param {any} error - The caught upstream error.
    * @param {Object} [req] - The normalized request payload.
    * @returns {NormalizedError} Standardized internal error representation.
-   * @throws {NotImplementedError} If subclasses do not override this method.
    */
-  normalizeError(error, req = null) {
-    throw new NotImplementedError();
+  normalizeError( error, req = null ) {
+    return BaseProvider.normalizeProviderError( error, this.providerName, req )
   }
 }

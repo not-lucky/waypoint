@@ -3,7 +3,9 @@ import cors from 'cors';
 import { buildClientErrorEnvelope } from '../errors/envelope.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { dryRunMiddleware } from '../middleware/dryRun.js';
+import { createMetricsMiddleware } from '../middleware/metricsMiddleware.js';
 import { createHealthRouter } from '../routes/health.js';
+import { createMetricsRouter } from '../routes/metrics.js';
 import { createOpenaiRouter } from '../routes/openai.js';
 import { createAnthropicRouter } from '../routes/anthropic.js';
 
@@ -69,6 +71,7 @@ function errorHandler(logger) {
  * @param {Object} services.openAIController - OpenAI controller instance.
  * @param {Object} services.anthropicController - Anthropic controller instance.
  * @param {Object} services.modelCache - Model cache instance.
+ * @param {Object} services.metricsCollector - Metrics collector instance.
  * @param {Object} logger - Logger instance.
  * @returns {Object} Configured Express application.
  */
@@ -85,7 +88,13 @@ export function createApp(config, services, logger) {
   logger.debug(`Body parsing middleware configured with limit: ${maxPayloadSize}`);
   app.use(express.json({ limit: maxPayloadSize }));
 
+  app.use(createMetricsMiddleware(services.metricsCollector));
   app.use('/health', createHealthRouter({ auth, keyRegistry: services.keyRegistry }));
+  app.use('/metrics', createMetricsRouter({
+    auth,
+    metricsCollector: services.metricsCollector,
+    keyRegistry: services.keyRegistry,
+  }));
   mountProtocolRoutes(app, logger, { auth, ...services });
 
   app.use(errorHandler(logger));

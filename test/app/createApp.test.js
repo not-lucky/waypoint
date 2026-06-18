@@ -22,6 +22,7 @@ describe('createApp', () => {
   it('mounts health endpoint with auth', async () => {
     const res = await authed(app).get('/health').expect(200);
     expect(res.body).toHaveProperty('status');
+    expect(res.body).toHaveProperty('keyPool');
   });
 
   it('requires auth on health endpoint', async () => {
@@ -32,6 +33,11 @@ describe('createApp', () => {
   it('mounts OpenAI and Anthropic protocol routes', async () => {
     await authed(app).get('/openai/models').expect(200);
     await authed(app).get('/anthropic/models').expect(200);
+  });
+
+  it('mounts metrics endpoint with auth', async () => {
+    const res = await authed(app).get('/metrics').expect(200);
+    expect(res.text).toContain('# TYPE');
   });
 
   it('mounts dry-run routes', async () => {

@@ -26,8 +26,15 @@ describe('Key Registry Health & Edge Cases', () => {
       const stats = registry.getHealthStats();
 
       expect(stats.status).toBe('ok');
+      expect(stats.keyPool).toEqual({
+        active: 3,
+        cooldown: 0,
+        exhausted: 0,
+        total: 3,
+      });
       expect(stats.providers.gemini.totalKeys).toBe(2);
       expect(stats.providers.gemini.activeKeys).toBe(2);
+      expect(stats.providers.gemini.status).toBe('ok');
       expect(stats.routing.strategy).toBe('round-robin');
     });
 
@@ -44,6 +51,7 @@ describe('Key Registry Health & Edge Cases', () => {
       });
       expect(registry.getHealthStats().status).toBe('degraded');
       expect(registry.getHealthStats().providers.gemini.coolingKeys).toBe(1);
+      expect(registry.getHealthStats().providers.gemini.status).toBe('degraded');
 
       registry.flagFailure('gemini', 'Key_B', {
         category: ERROR_CATEGORIES.RATE_LIMIT,
@@ -52,6 +60,13 @@ describe('Key Registry Health & Edge Cases', () => {
       const coolingStats = registry.getHealthStats();
       expect(coolingStats.status).toBe('degraded');
       expect(coolingStats.providers.gemini.coolingKeys).toBe(2);
+      expect(coolingStats.providers.gemini.status).toBe('unhealthy');
+      expect(coolingStats.keyPool).toEqual({
+        active: 0,
+        cooldown: 2,
+        exhausted: 0,
+        total: 2,
+      });
     });
 
     it('should treat expired cooldowns as active in health stats', () => {
@@ -70,6 +85,7 @@ describe('Key Registry Health & Edge Cases', () => {
       const stats = registry.getHealthStats();
       expect(stats.status).toBe('ok');
       expect(stats.providers.gemini.coolingKeys).toBe(0);
+      expect(stats.providers.gemini.status).toBe('ok');
     });
   });
 

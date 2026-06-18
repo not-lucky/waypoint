@@ -1,5 +1,6 @@
  
 import { formatAnthropicSseError } from '../errors/envelope.js';
+import { startSSEStream } from '../streaming/sseUtils.js';
 import { FORMATS, translateRequest, translateResponse } from '../transforms/index.js';
 import { StreamAccumulator } from '../streaming/streamAccumulator.js';
 import { BaseController } from './baseController.js';
@@ -33,9 +34,7 @@ export class AnthropicController extends BaseController {
   async handleStreamingResponse(res, response, unifiedReq, reqLog, body) {
     this.logger.debug('Starting Anthropic SSE response stream');
 
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('X-Accel-Buffering', 'no');
+    startSSEStream(res);
 
     let messageStartSent = false;
     let activeBlockType = null;

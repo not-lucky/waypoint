@@ -16,11 +16,12 @@ export class AnthropicAdapter extends BaseProvider {
     streamTimeoutMs = null,
     providerName = 'anthropic',
   } = {}) {
-    super();
-    this.baseUrl = baseUrl?.replace(/\/$/, '') ?? null;
-    this.timeoutMs = timeoutMs;
-    this.streamTimeoutMs = streamTimeoutMs;
-    this.providerName = providerName;
+    super({
+      baseUrl,
+      providerName,
+      timeoutMs,
+      streamTimeoutMs,
+    });
   }
 
   /**
@@ -274,9 +275,5 @@ export class AnthropicAdapter extends BaseProvider {
       cleanup();
       this.logStreamSummary(requestLog, state, chunkId, req);
     }
-  }
-
-  normalizeError(error, req = null) {
-    return BaseProvider.normalizeProviderError(error, this.providerName, req);
   }
 }

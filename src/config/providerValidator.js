@@ -7,6 +7,7 @@
  */
 
 import { isPositiveInteger, isNonEmptyString, validateFallbackModel } from './validationHelpers.js'
+import { filterValidKeys } from './configKeyUtils.js'
 import { getAppLogger } from '../logging/logger.js'
 import { logErrorAndExitOrThrow } from './validationErrors.js'
 
@@ -112,14 +113,7 @@ export class ProviderValidator {
 
       if ( Array.isArray( providerConf.keys ) ) {
         const originalLength = providerConf.keys.length
-        const validKeys = providerConf.keys.filter( ( key, index ) => {
-          if ( key == null || ( typeof key === 'string' && key.trim() === '' ) ) {
-            const msg = `WARNING: Skipping undefined or empty key for provider '${ providerName }' at index ${ index }.`
-            logger.warning( msg )
-            return false
-          }
-          return true
-        } )
+        const validKeys = filterValidKeys( providerConf.keys, providerName, logger )
         if ( validKeys.length !== originalLength ) {
           providerConf.keys = validKeys
         }

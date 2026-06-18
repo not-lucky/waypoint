@@ -9,7 +9,36 @@ describe('BaseProvider Tests', () => {
     const provider = new BaseProvider();
     await expect(provider.generateCompletion({}, 'key')).rejects.toThrow(NotImplementedError);
     await expect(provider.generateStream({}, 'key')).rejects.toThrow(NotImplementedError);
-    expect(() => provider.normalizeError({})).toThrow(NotImplementedError);
+  });
+
+  it('initializes shared provider fields in the constructor', () => {
+    const provider = new BaseProvider({
+      baseUrl: 'https://example.com/',
+      providerName: 'custom-provider',
+      timeoutMs: 5000,
+      streamTimeoutMs: 30000,
+    });
+
+    expect(provider.baseUrl).toBe('https://example.com');
+    expect(provider.providerName).toBe('custom-provider');
+    expect(provider.timeoutMs).toBe(5000);
+    expect(provider.streamTimeoutMs).toBe(30000);
+  });
+
+  it('uses the default normalizeError implementation', () => {
+    const provider = new BaseProvider({ providerName: 'gemini' });
+
+    expect(provider.normalizeError({ statusCode: 429 })).toEqual({
+      code: 'rate_limit_exceeded',
+      type: 'rate_limit_error',
+      message: expect.any(String),
+      httpStatus: 429,
+      provider: 'gemini',
+      category: 'rate_limit',
+      upstreamBody: undefined,
+      upstreamStatus: 429,
+      retryAfterSeconds: undefined,
+    });
   });
 
   describe('getTimeoutSignal', () => {

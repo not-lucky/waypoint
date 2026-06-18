@@ -26,11 +26,12 @@ export class KeyRegistry {
    * @param {Object} [config={}] - Application configuration object.
    * @param {string|null} [strategy=null] - Overridden routing strategy.
    */
-  constructor(config = {}, strategy = null) {
+  constructor(config = {}, strategy = null, metricsCollector = null) {
     /**
      * @type {Object}
      */
     this.config = config;
+    this.metricsCollector = metricsCollector;
 
     /**
      * The active routing strategy.
@@ -98,7 +99,20 @@ export class KeyRegistry {
    */
   flagFailure(provider, keyStr, descriptor) {
     const key = this.findKey(provider, keyStr);
+    const previousCooldownUntil = key?.cooldownUntil ?? null;
     handleKeyFailure(key, descriptor, this.cooldown, this.timers);
+
+    if (
+      this.metricsCollector
+      && key
+      && key.cooldownUntil !== null
+      && key.cooldownUntil !== previousCooldownUntil
+    ) {
+      this.metricsCollector.incrementCounter('waypoint_cooldown_activations_total', {
+        provider,
+        category: descriptor.category || 'unknown',
+      });
+    }
   }
 
   /**
@@ -142,10 +156,12 @@ export class KeyRegistry {
     const activeKeys = totalKeys - exhaustedKeys - coolingKeys;
     const coolingUntil = coolingUntilMs !== null ? Math.floor(coolingUntilMs / 1000) : null;
 
-    const isDegraded = exhaustedKeys > 0 || coolingKeys > 0;
+    const status = activeKeys === 0 ? 'unhealthy' : (exhaustedKeys > 0 || coolingKeys > 0 ? 'degraded' : 'ok');
+    const isDegraded = status !== 'ok';
 
     return {
       stats: {
+        status,
         totalKeys,
         activeKeys,
         exhaustedKeys,
@@ -183,10 +199,46 @@ export class KeyRegistry {
     return {
       status: allKeysFullyActive ? 'ok' : 'degraded',
       providers,
+      keyPool: this.getAggregateKeyPoolStats(now),
       routing: {
         strategy: this.strategy,
         currentPointer,
       },
+    };
+  }
+
+  /**
+   * Aggregates key pool counts across all providers.
+   *
+   * @param {number} [now=Date.now()] - Timestamp used for cooldown evaluation.
+   * @returns {{active: number, cooldown: number, exhausted: number, total: number}}
+   */
+  getAggregateKeyPoolStats(now = Date.now()) {
+    let active = 0;
+    let cooldown = 0;
+    let exhausted = 0;
+    let total = 0;
+
+    Object.values(this.pools).forEach((pool) => {
+      const { keys } = pool;
+      total += keys.length;
+
+      keys.forEach((key) => {
+        if (key.exhausted) {
+          exhausted += 1;
+        } else if (key.cooldownUntil !== null && key.cooldownUntil > now) {
+          cooldown += 1;
+        } else {
+          active += 1;
+        }
+      });
+    });
+
+    return {
+      active,
+      cooldown,
+      exhausted,
+      total,
     };
   }
 

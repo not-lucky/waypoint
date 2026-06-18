@@ -10,7 +10,7 @@ import { throwIfGeminiStreamError } from '../../errors/upstream.js';
 export async function* executeStandardStream(req, apiKey, signal, requestLog, adapter) {
   const payload = translateRequest(FORMATS.OPENAI, FORMATS.GEMINI, req);
   const base = adapter.baseUrl
-    ? adapter.baseUrl.replace(/\/$/, '')
+    ? adapter.baseUrl
     : 'https://generativelanguage.googleapis.com/v1beta';
 
   const urlObj = new URL(`${base}/models/${req.actualModelId}:streamGenerateContent`);

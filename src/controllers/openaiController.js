@@ -31,7 +31,7 @@ export class OpenAIController extends BaseController {
   /**
    * Handles the Server-Sent Events (SSE) stream for an OpenAI response.
    */
-  // eslint-disable-next-line class-methods-use-this
+   
   async handleStream(res, response, reqLog) {
     this.logger.debug('Starting OpenAI SSE response stream');
 
@@ -43,7 +43,7 @@ export class OpenAIController extends BaseController {
     const accumulator = new StreamAccumulator();
 
     try {
-      /* eslint-disable no-restricted-syntax */
+       
       for await (const chunk of response) {
         chunkCount += 1;
         const sseData = `data: ${JSON.stringify(chunk)}\n\n`;
@@ -52,7 +52,7 @@ export class OpenAIController extends BaseController {
         reqLog.appendStreamEvent('client', sseData);
         res.write(sseData);
       }
-      /* eslint-enable no-restricted-syntax */
+       
 
       const doneMarker = 'data: [DONE]\n\n';
       reqLog.appendStreamEvent('client', doneMarker);

@@ -6,6 +6,7 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
     "ci": "npm run lint && echo 'Linting passed' && echo 'Running tests...' && npm test && echo 'Tests passed'",
     "lint": "eslint . --fix",
     "dev": "node --watch src/index.js",
@@ -28,10 +29,13 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "eslint": "8.57.1",
-    "eslint-config-airbnb-base": "15.0.0",
-    "eslint-plugin-import": "2.32.0",
+    "@eslint/js": "10.0.1",
+    "@vitest/coverage-v8": "4.1.8",
+    "eslint": "10.5.0",
+    "eslint-plugin-import-x": "4.16.2",
+    "eslint-plugin-n": "18.1.0",
+    "globals": "17.6.0",
     "supertest": "7.2.2",
-    "vitest": "4.1.7"
+    "vitest": "4.1.8"
   }
 }

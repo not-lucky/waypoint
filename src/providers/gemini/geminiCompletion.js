@@ -1,4 +1,4 @@
-/* eslint-disable max-len */
+ 
 import { FORMATS, translateRequest, translateResponse } from '../../transforms/index.js';
 import { getThinkingLevel } from './geminiFormatter.js';
 import { mapOpenAICompletionResponse } from '../shared/openaiResponse.js';

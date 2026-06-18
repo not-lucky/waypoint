@@ -4,7 +4,7 @@
  * @module services/retryLogic/keyRotationLoop
  */
 
-/* eslint-disable no-restricted-syntax, no-await-in-loop */
+ 
 import { isRetryable, shouldCooldownKey } from '../errors/policy.js';
 import { logDebug, logWarning } from '../logging/loggerWrapper.js';
 import { buildUpstreamErrorLogFields } from '../logging/upstreamErrorLogMeta.js';

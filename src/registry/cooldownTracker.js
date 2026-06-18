@@ -22,15 +22,15 @@ import {
  * @param {boolean} [reactivate=false] - Whether to reactivate key after cooldown.
  */
 export function setCooldown(key, durationMs, timers, reactivate = false) {
-  // eslint-disable-next-line no-param-reassign
+   
   key.cooldownUntil = Date.now() + durationMs;
 
   const timer = setTimeout(() => {
     if (reactivate) {
-      // eslint-disable-next-line no-param-reassign
+       
       key.active = true;
     }
-    // eslint-disable-next-line no-param-reassign
+     
     key.cooldownUntil = null;
     timers.delete(timer);
   }, durationMs);
@@ -46,7 +46,7 @@ export function setCooldown(key, durationMs, timers, reactivate = false) {
  * @param {Set<NodeJS.Timeout>} timers - Timer set for cleanup tracking.
  */
 export function applyCooldown(key, seconds, timers) {
-  // eslint-disable-next-line no-param-reassign
+   
   key.active = false;
   setCooldown(key, seconds * 1000, timers, true);
 }
@@ -61,7 +61,7 @@ export function applyCooldown(key, seconds, timers) {
  * @returns {number|null} Backoff duration in seconds, or null for immediate retry.
  */
 export function computeRateLimitBackoff(key, retryAfterSeconds, cooldownConfig) {
-  // eslint-disable-next-line no-param-reassign
+   
   key.consecutiveFailures += 1;
 
   if (retryAfterSeconds === 0) return null;
@@ -90,9 +90,9 @@ export function handleKeyFailure(key, descriptor, cooldownConfig, timers) {
   if (!key || code === 'no_api_key') return;
 
   if (code === 'invalid_api_key') {
-    // eslint-disable-next-line no-param-reassign
+     
     key.exhausted = true;
-    // eslint-disable-next-line no-param-reassign
+     
     key.active = false;
     return;
   }
@@ -119,7 +119,7 @@ export function handleKeyFailure(key, descriptor, cooldownConfig, timers) {
   if (RATE_LIMIT_CODES.has(code)) {
     const backoffSeconds = computeRateLimitBackoff(key, retryAfterSeconds, cooldownConfig);
     if (backoffSeconds === null) return;
-    // eslint-disable-next-line no-param-reassign
+     
     key.active = false;
     setCooldown(key, backoffSeconds * 1000, timers, true);
     return;
@@ -138,10 +138,10 @@ export function handleKeyFailure(key, descriptor, cooldownConfig, timers) {
 export function handleKeySuccess(key) {
   if (!key) return;
 
-  // eslint-disable-next-line no-param-reassign
+   
   key.consecutiveFailures = 0;
-  // eslint-disable-next-line no-param-reassign
+   
   key.active = true;
-  // eslint-disable-next-line no-param-reassign
+   
   key.cooldownUntil = null;
 }

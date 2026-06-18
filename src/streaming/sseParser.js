@@ -1,4 +1,4 @@
-/* eslint-disable no-restricted-syntax, no-await-in-loop, no-continue */
+ 
 
 /**
  * Parses a ReadableStream or Node.js async iterable yielding binary chunks
@@ -141,7 +141,7 @@ export function parseSSEEventData(data) {
   }
   try {
     return JSON.parse(data);
-  } catch (err) {
+  } catch (_err) {
     return null;
   }
 }

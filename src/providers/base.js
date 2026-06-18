@@ -5,8 +5,8 @@
  * @module adapters/BaseProvider
  */
 
-/* eslint-disable class-methods-use-this, no-unused-vars */
-/* eslint-disable no-restricted-syntax, generator-star-spacing, camelcase */
+/* eslint-disable no-unused-vars */
+ 
 import { sanitizeUrl, serializeHeaders, redactHeaders } from '../logging/requestLoggerUtils.js';
 import { NotImplementedError } from '../utils/notImplementedError.js';
 import { classifyUpstreamError } from '../errors/httpRules.js';

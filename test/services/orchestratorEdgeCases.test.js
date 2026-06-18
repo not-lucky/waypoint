@@ -1,5 +1,5 @@
-/* eslint-disable max-classes-per-file, no-restricted-syntax */
-/* eslint-disable class-methods-use-this, no-unused-vars */
+ 
+/* eslint-disable no-unused-vars */
 import {
   vi,
   describe,

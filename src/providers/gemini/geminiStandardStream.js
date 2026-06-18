@@ -1,4 +1,4 @@
-/* eslint-disable no-restricted-syntax */
+ 
 import { FORMATS, translateRequest, translateStreamChunk } from '../../transforms/index.js';
 import { parseSSEStream, parseSSEEventData } from '../../streaming/sseParser.js';
 import { throwIfGeminiStreamError } from '../../errors/upstream.js';

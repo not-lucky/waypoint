@@ -1,4 +1,4 @@
-/* eslint-disable max-len, no-await-in-loop, no-restricted-syntax */
+ 
 import os from 'node:os';
 import path from 'node:path';
 import fsp from 'node:fs/promises';

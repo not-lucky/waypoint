@@ -1,5 +1,5 @@
-/* eslint-disable class-methods-use-this, no-unused-vars */
-/* eslint-disable no-restricted-syntax, generator-star-spacing */
+/* eslint-disable no-unused-vars */
+ 
 import { normalizeTestError } from './normalizeTestError.js';
 
 /**

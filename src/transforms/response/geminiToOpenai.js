@@ -1,4 +1,4 @@
-/* eslint-disable no-restricted-syntax, no-unused-vars, max-len */
+/* eslint-disable no-unused-vars */
 
 import { mapFinishReason, synthesizeMetadata } from '../utils.js';
 

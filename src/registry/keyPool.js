@@ -66,7 +66,7 @@ export function getKeyFromPool(pool, strategy, now = Date.now()) {
   for (let i = 0; i < n; i += 1) {
     const idx = pool.roundRobinIndex;
     const key = keys[idx];
-    // eslint-disable-next-line no-param-reassign
+     
     pool.roundRobinIndex = (idx + 1) % n;
 
     if (key.isAvailable(now)) return key.keyStr;

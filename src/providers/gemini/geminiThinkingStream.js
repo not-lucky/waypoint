@@ -1,4 +1,4 @@
-/* eslint-disable no-restricted-syntax */
+ 
 import { parseSSEStream, parseSSEEventData } from '../../streaming/sseParser.js';
 import { throwIfStreamErrorPayload } from '../../errors/upstream.js';
 import { getThinkingLevel } from './geminiFormatter.js';

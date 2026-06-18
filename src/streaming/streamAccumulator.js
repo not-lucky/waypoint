@@ -1,4 +1,4 @@
-/* eslint-disable max-len */
+ 
 import { extractReasoningText } from '../providers/shared/openaiResponse.js';
 import { mergeToolCallDeltas } from '../providers/shared/openaiToolCalls.js';
 

@@ -1,12 +1,12 @@
 import {
   describe, it, expect, beforeEach, afterEach, vi,
-} from 'vitest';
-import fs from 'fs';
-import path from 'path';
-import { ConfigLoader } from '../../src/config/loader.js';
+} from 'vitest'
+import fs from 'fs'
+import path from 'path'
+import { ConfigLoader } from '../../src/config/loader.js'
 
 // Resolve the absolute path for a temporary configuration file used during tests.
-const tempConfigPath = path.resolve('test/temp_config.yaml');
+const tempConfigPath = path.resolve( 'test/temp_config.yaml' )
 
 /**
  * Utility function to write string content to the temporary test configuration file.
@@ -14,17 +14,17 @@ const tempConfigPath = path.resolve('test/temp_config.yaml');
  *
  * @param {string} content - YAML content string.
  */
-function writeTempConfig(content) {
-  let fullContent = content;
-  if (!content.includes('logging:')) {
+function writeTempConfig( content ) {
+  let fullContent = content
+  if ( !content.includes( 'logging:' ) ) {
     fullContent += `
 logging:
   enableConsole: true
   enableFile: false
   format: "json"
-`;
+`
   }
-  if (!content.includes('clients:')) {
+  if ( !content.includes( 'clients:' ) ) {
     fullContent += `
 clients:
   - name: "test-client"
@@ -32,174 +32,155 @@ clients:
     rateLimit:
       windowMs: 60000
       max: 100
-`;
+`
   }
-  fs.writeFileSync(tempConfigPath, fullContent, 'utf8');
+  fs.writeFileSync( tempConfigPath, fullContent, 'utf8' )
 }
 
 /**
  * Utility function to cleanly remove the temporary test configuration file.
  */
 function removeTempConfig() {
-  if (fs.existsSync(tempConfigPath)) {
+  if ( fs.existsSync( tempConfigPath ) ) {
     try {
-      fs.unlinkSync(tempConfigPath);
-    } catch (err) {
+      fs.unlinkSync( tempConfigPath )
+    } catch ( _err ) {
       // Ignore cleanup errors
     }
   }
 }
 
-describe('Configuration Loader Tests', () => {
-  let originalEnv;
-  let configLoader;
+describe( 'Configuration Loader Tests', () => {
+  let originalEnv
+  let configLoader
 
   // Setup environment variable mock pool and reset loader state before each test.
-  beforeEach(() => {
-    configLoader = new ConfigLoader();
-    originalEnv = { ...process.env };
+  beforeEach( () => {
+    configLoader = new ConfigLoader()
+    originalEnv = { ...process.env }
 
     // Set standard mock environment variables for the gateway configuration.
-    process.env.OPEN_WEBUI_TOKEN = 'mock-webui-token';
-    process.env.CODEX_AGENT_TOKEN = 'mock-codex-token';
-    process.env.GEMINI_API_KEY_1 = 'gemini-key-1';
-    process.env.GEMINI_API_KEY_2 = 'gemini-key-2';
-    process.env.ANTHROPIC_API_KEY_1 = 'anthropic-key-1';
-    process.env.OPENAI_API_KEY_1 = 'openai-key-1';
-    process.env.REQUESTY_API_KEY_1 = 'requesty-key-1';
+    process.env.OPEN_WEBUI_TOKEN = 'mock-webui-token'
+    process.env.CODEX_AGENT_TOKEN = 'mock-codex-token'
+    process.env.GEMINI_API_KEY_1 = 'gemini-key-1'
+    process.env.GEMINI_API_KEY_2 = 'gemini-key-2'
+    process.env.ANTHROPIC_API_KEY_1 = 'anthropic-key-1'
+    process.env.OPENAI_API_KEY_1 = 'openai-key-1'
+    process.env.REQUESTY_API_KEY_1 = 'requesty-key-1'
 
     // Point the path environment variable to config.example.yaml
-    process.env.WAYPOINT_CONFIG_PATH = 'config.example.yaml';
-  });
+    process.env.WAYPOINT_CONFIG_PATH = 'config.example.yaml'
+  } )
 
   // Restore the original environment and cleanup files after each test.
-  afterEach(() => {
-    process.env = originalEnv;
-    configLoader.resetConfig();
-    removeTempConfig();
-    vi.restoreAllMocks();
-  });
+  afterEach( () => {
+    process.env = originalEnv
+    configLoader.resetConfig()
+    removeTempConfig()
+    vi.restoreAllMocks()
+  } )
 
-  describe('Standard Config Loading', () => {
-    it('should parse standard config.yaml and correctly interpolate env vars', () => {
-      const config = configLoader.loadConfig();
+  describe( 'Standard Config Loading', () => {
+    it( 'should parse standard config.yaml and correctly interpolate env vars', () => {
+      const config = configLoader.loadConfig()
 
       // Verify that structural scalar configurations match.
-      expect(config.gateway.port).toBe(20128);
+      expect( config.gateway.port ).toBe( 20128 )
 
       // Verify that non-key variables are correctly replaced.
-      expect(config.clients[0].token).toBe('mock-webui-token');
+      expect( config.clients[ 0 ].token ).toBe( 'mock-webui-token' )
 
       // Verify that all keys in the providers are resolved.
-      expect(config.providers.gemini.keys).toContain('gemini-key-1');
-      expect(config.providers.gemini.keys).toContain('gemini-key-2');
-      expect(config.providers.anthropic.keys).toContain('anthropic-key-1');
-      expect(config.providers.openai.keys).toContain('openai-key-1');
-    });
-  });
+      expect( config.providers.gemini.keys ).toContain( 'gemini-key-1' )
+      expect( config.providers.gemini.keys ).toContain( 'gemini-key-2' )
+      expect( config.providers.anthropic.keys ).toContain( 'anthropic-key-1' )
+      expect( config.providers.openai.keys ).toContain( 'openai-key-1' )
+    } )
+  } )
 
-  describe('Validation & Fail-Fast behavior', () => {
-    it('should call process.exit(1) and log fatal error when non-key env var is missing', () => {
-      // Spy on process.exit to verify it was called, and throw to break execution flow.
-      const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
-        throw new Error('process.exit called');
-      });
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
+  describe( 'Validation & Fail-Fast behavior', () => {
+    it( 'should throw and log fatal error when non-key env var is missing', () => {
+      const consoleErrorSpy = vi.spyOn( console, 'error' ).mockImplementation( () => { } )
 
       // Simulate a missing client token (non-key environment variable).
-      delete process.env.OPEN_WEBUI_TOKEN;
+      delete process.env.OPEN_WEBUI_TOKEN
 
-      // Assertion: process should fail-fast and abort execution immediately.
-      expect(() => {
-        configLoader.loadConfig('config.example.yaml');
-      }).toThrow('process.exit called');
+      // Assertion: process should fail-fast and throw immediately.
+      expect( () => {
+        configLoader.loadConfig( 'config.example.yaml' )
+      } ).toThrow( 'Missing or empty environment variable OPEN_WEBUI_TOKEN' )
 
-      expect(exitSpy).toHaveBeenCalledWith(1);
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Missing or empty environment variable OPEN_WEBUI_TOKEN'),
-      );
+      expect( consoleErrorSpy ).toHaveBeenCalledWith(
+        expect.stringContaining( 'Missing or empty environment variable OPEN_WEBUI_TOKEN' ),
+      )
 
-      exitSpy.mockRestore();
-      consoleErrorSpy.mockRestore();
-    });
+      consoleErrorSpy.mockRestore()
+    } )
 
-    it('should skip the key and log warning if a key env var is missing but other keys remain', () => {
-      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
+    it( 'should skip the key and log warning if a key env var is missing but other keys remain', () => {
+      const consoleWarnSpy = vi.spyOn( console, 'warn' ).mockImplementation( () => { } )
 
       // Simulate a single missing Gemini key, keeping the second key active.
-      delete process.env.GEMINI_API_KEY_1;
+      delete process.env.GEMINI_API_KEY_1
 
-      const config = configLoader.loadConfig('config.example.yaml');
+      const config = configLoader.loadConfig( 'config.example.yaml' )
 
       // Assertion: The missing key should be filtered out, leaving the remaining valid key.
-      expect(config.providers.gemini.keys).not.toContain('gemini-key-1');
-      expect(config.providers.gemini.keys).toContain('gemini-key-2');
-      expect(config.providers.gemini.keys.length).toBe(1);
+      expect( config.providers.gemini.keys ).not.toContain( 'gemini-key-1' )
+      expect( config.providers.gemini.keys ).toContain( 'gemini-key-2' )
+      expect( config.providers.gemini.keys.length ).toBe( 1 )
 
       // Warning should be logged to alert the degraded startup mode.
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Missing or empty environment variable GEMINI_API_KEY_1'),
-      );
+      expect( consoleWarnSpy ).toHaveBeenCalledWith(
+        expect.stringContaining( 'Missing or empty environment variable GEMINI_API_KEY_1' ),
+      )
 
-      consoleWarnSpy.mockRestore();
-    });
+      consoleWarnSpy.mockRestore()
+    } )
 
-    it('should exit with FATAL error if all keys for a provider are missing even if other providers have keys', () => {
-      const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
-        throw new Error('process.exit called');
-      });
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
+    it( 'should throw with FATAL error if all keys for a provider are missing even if other providers have keys', () => {
+      const consoleErrorSpy = vi.spyOn( console, 'error' ).mockImplementation( () => { } )
 
       // Simulate complete key exhaustion for the Gemini provider.
-      delete process.env.GEMINI_API_KEY_1;
-      delete process.env.GEMINI_API_KEY_2;
+      delete process.env.GEMINI_API_KEY_1
+      delete process.env.GEMINI_API_KEY_2
 
-      expect(() => {
-        configLoader.loadConfig('config.example.yaml');
-      }).toThrow('process.exit called');
+      expect( () => {
+        configLoader.loadConfig( 'config.example.yaml' )
+      } ).toThrow( "Provider 'gemini' has zero active keys remaining in the pool" )
 
-      expect(exitSpy).toHaveBeenCalledWith(1);
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Provider 'gemini' has zero active keys remaining in the pool"),
-      );
+      expect( consoleErrorSpy ).toHaveBeenCalledWith(
+        expect.stringContaining( "Provider 'gemini' has zero active keys remaining in the pool" ),
+      )
 
-      exitSpy.mockRestore();
-      consoleErrorSpy.mockRestore();
-    });
+      consoleErrorSpy.mockRestore()
+    } )
 
-    it('should fatal error if all providers have zero active keys', () => {
-      const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
-        throw new Error('process.exit called');
-      });
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
+    it( 'should throw fatal error if all providers have zero active keys', () => {
+      const consoleErrorSpy = vi.spyOn( console, 'error' ).mockImplementation( () => { } )
 
       // Simulate complete key exhaustion for all providers.
-      delete process.env.GEMINI_API_KEY_1;
-      delete process.env.GEMINI_API_KEY_2;
-      delete process.env.ANTHROPIC_API_KEY_1;
-      delete process.env.OPENAI_API_KEY_1;
+      delete process.env.GEMINI_API_KEY_1
+      delete process.env.GEMINI_API_KEY_2
+      delete process.env.ANTHROPIC_API_KEY_1
+      delete process.env.OPENAI_API_KEY_1
 
-      expect(() => {
-        configLoader.loadConfig('config.example.yaml');
-      }).toThrow('process.exit called');
+      expect( () => {
+        configLoader.loadConfig( 'config.example.yaml' )
+      } ).toThrow( 'has zero active keys remaining in the pool' )
 
-      expect(exitSpy).toHaveBeenCalledWith(1);
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining('has zero active keys remaining in the pool'),
-      );
+      expect( consoleErrorSpy ).toHaveBeenCalledWith(
+        expect.stringContaining( 'has zero active keys remaining in the pool' ),
+      )
 
-      exitSpy.mockRestore();
-      consoleErrorSpy.mockRestore();
-    });
+      consoleErrorSpy.mockRestore()
+    } )
 
-    it('should exit with error if a custom provider lacks a baseUrl', () => {
-      const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
-        throw new Error('process.exit called');
-      });
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
+    it( 'should throw error if a custom provider lacks a baseUrl', () => {
+      const consoleErrorSpy = vi.spyOn( console, 'error' ).mockImplementation( () => { } )
 
       // Write a custom provider 'my-ollama' without the required baseUrl property.
-      writeTempConfig(`
+      writeTempConfig( `
 gateway:
   port: 20128
   routing:
@@ -210,25 +191,23 @@ providers:
       - "ollama-key"
     models:
       - id: "llama3"
-`);
+`)
 
       // Assertion: Custom provider without baseUrl is a fatal error.
-      expect(() => {
-        configLoader.loadConfig(tempConfigPath);
-      }).toThrow('process.exit called');
+      expect( () => {
+        configLoader.loadConfig( tempConfigPath )
+      } ).toThrow( "Provider 'my-ollama' is a custom provider and must specify a non-empty 'baseUrl'" )
 
-      expect(exitSpy).toHaveBeenCalledWith(1);
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Provider 'my-ollama' is a custom provider and must specify a non-empty 'baseUrl'"),
-      );
+      expect( consoleErrorSpy ).toHaveBeenCalledWith(
+        expect.stringContaining( "Provider 'my-ollama' is a custom provider and must specify a non-empty 'baseUrl'" ),
+      )
 
-      exitSpy.mockRestore();
-      consoleErrorSpy.mockRestore();
-    });
+      consoleErrorSpy.mockRestore()
+    } )
 
-    it('should load successfully if custom provider has baseUrl and keys', () => {
+    it( 'should load successfully if custom provider has baseUrl and keys', () => {
       // Write custom provider with correct baseUrl config.
-      writeTempConfig(`
+      writeTempConfig( `
 gateway:
   port: 20128
   routing:
@@ -240,18 +219,18 @@ providers:
       - "ollama-key"
     models:
       - id: "llama3"
-`);
+`)
 
-      const config = configLoader.loadConfig(tempConfigPath);
+      const config = configLoader.loadConfig( tempConfigPath )
 
       // Assertion: Validation passes.
-      expect(config.providers['my-ollama'].baseUrl).toBe('http://localhost:11434/v1');
-      expect(config.providers['my-ollama'].keys).toContain('ollama-key');
-    });
+      expect( config.providers[ 'my-ollama' ].baseUrl ).toBe( 'http://localhost:11434/v1' )
+      expect( config.providers[ 'my-ollama' ].keys ).toContain( 'ollama-key' )
+    } )
 
-    it('should support custom injected reserved provider registry', () => {
+    it( 'should support custom injected reserved provider registry', () => {
       // Write custom provider 'cohere' without baseUrl, but it will be in the custom reserved set.
-      writeTempConfig(`
+      writeTempConfig( `
 gateway:
   port: 20128
   routing:
@@ -262,19 +241,19 @@ providers:
       - "cohere-key"
     models:
       - id: "cohere-model"
-`);
+`)
 
-      const customReserved = new Set(['cohere']);
-      const config = configLoader.loadConfig(tempConfigPath, customReserved);
+      const customReserved = new Set( [ 'cohere' ] )
+      const config = configLoader.loadConfig( tempConfigPath, customReserved )
 
       // Cohere must not crash validation (no baseUrl needed) because it was injected as reserved.
-      expect(config.providers.cohere.keys).toContain('cohere-key');
-    });
+      expect( config.providers.cohere.keys ).toContain( 'cohere-key' )
+    } )
 
-    it('should filter out literal empty string, null, or undefined keys in providers with a warning (BUG-2)', () => {
-      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
+    it( 'should filter out literal empty string, null, or undefined keys in providers with a warning (BUG-2)', () => {
+      const consoleWarnSpy = vi.spyOn( console, 'warn' ).mockImplementation( () => { } )
 
-      writeTempConfig(`
+      writeTempConfig( `
 gateway:
   port: 20128
   routing:
@@ -288,18 +267,18 @@ providers:
       - "key-2"
     models:
       - id: "gemini-2.5-pro"
-`);
+`)
 
-      const config = configLoader.loadConfig(tempConfigPath);
-      expect(config.providers.gemini.keys).toEqual(['key-1', 'key-2']);
-      expect(consoleWarnSpy).toHaveBeenCalledTimes(2);
-      consoleWarnSpy.mockRestore();
-    });
-  });
+      const config = configLoader.loadConfig( tempConfigPath )
+      expect( config.providers.gemini.keys ).toEqual( [ 'key-1', 'key-2' ] )
+      expect( consoleWarnSpy ).toHaveBeenCalledTimes( 2 )
+      consoleWarnSpy.mockRestore()
+    } )
+  } )
 
-  describe('Custom Provider type Field', () => {
-    it('should default type to "openai-compatible" when omitted on custom provider', () => {
-      writeTempConfig(`
+  describe( 'Custom Provider type Field', () => {
+    it( 'should default type to "openai-compatible" when omitted on custom provider', () => {
+      writeTempConfig( `
 gateway:
   port: 20128
   routing:
@@ -311,32 +290,32 @@ providers:
       - "ollama-key"
     models:
       - id: "llama3"
-`);
+`)
 
-      const config = configLoader.loadConfig(tempConfigPath);
+      const config = configLoader.loadConfig( tempConfigPath )
 
-      expect(config.providers['my-ollama'].type).toBe('openai-compatible');
-      expect(config.providers['my-ollama'].keys).toContain('ollama-key');
-    });
+      expect( config.providers[ 'my-ollama' ].type ).toBe( 'openai-compatible' )
+      expect( config.providers[ 'my-ollama' ].keys ).toContain( 'ollama-key' )
+    } )
 
-    it('should ignore process.env.PORT and use YAML gateway.port', () => {
-      const loader = new ConfigLoader();
-      const config = loader.interpolateAndValidate({
+    it( 'should ignore process.env.PORT and use YAML gateway.port', () => {
+      const loader = new ConfigLoader()
+      const config = loader.interpolateAndValidate( {
         gateway: { port: 20128 },
-        clients: [{ name: 'c', token: 't', rateLimit: { windowMs: 60000, max: 100 } }],
+        clients: [ { name: 'c', token: 't', rateLimit: { windowMs: 60000, max: 100 } } ],
         logging: { enableConsole: true, enableFile: false, format: 'json' },
         providers: {
           openai: {
-            keys: ['mock-key'],
-            models: [{ id: 'mock-model' }],
+            keys: [ 'mock-key' ],
+            models: [ { id: 'mock-model' } ],
           },
         },
-      });
-      expect(config.gateway.port).toBe(20128);
-    });
+      } )
+      expect( config.gateway.port ).toBe( 20128 )
+    } )
 
-    it('should preserve type "anthropic-compatible" when set on custom provider', () => {
-      writeTempConfig(`
+    it( 'should preserve type "anthropic-compatible" when set on custom provider', () => {
+      writeTempConfig( `
 gateway:
   port: 20128
   routing:
@@ -349,18 +328,18 @@ providers:
       - "proxy-key"
     models:
       - id: "claude-proxy"
-`);
+`)
 
-      const config = configLoader.loadConfig(tempConfigPath);
+      const config = configLoader.loadConfig( tempConfigPath )
 
-      expect(config.providers['my-proxy'].type).toBe('anthropic-compatible');
-      expect(config.providers['my-proxy'].keys).toContain('proxy-key');
-    });
+      expect( config.providers[ 'my-proxy' ].type ).toBe( 'anthropic-compatible' )
+      expect( config.providers[ 'my-proxy' ].keys ).toContain( 'proxy-key' )
+    } )
 
-    it('should warn and strip type field from reserved providers', () => {
-      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
+    it( 'should warn and strip type field from reserved providers', () => {
+      const consoleWarnSpy = vi.spyOn( console, 'warn' ).mockImplementation( () => { } )
 
-      writeTempConfig(`
+      writeTempConfig( `
 gateway:
   port: 20128
   routing:
@@ -372,27 +351,24 @@ providers:
       - "gemini-key"
     models:
       - id: "gemini-2.5-pro"
-`);
+`)
 
-      const config = configLoader.loadConfig(tempConfigPath);
+      const config = configLoader.loadConfig( tempConfigPath )
 
       // type field should be stripped from reserved providers
-      expect(config.providers.gemini.type).toBeUndefined();
+      expect( config.providers.gemini.type ).toBeUndefined()
       // Warning should be logged
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Reserved provider 'gemini' does not accept a 'type' field"),
-      );
+      expect( consoleWarnSpy ).toHaveBeenCalledWith(
+        expect.stringContaining( "Reserved provider 'gemini' does not accept a 'type' field" ),
+      )
 
-      consoleWarnSpy.mockRestore();
-    });
+      consoleWarnSpy.mockRestore()
+    } )
 
-    it('should exit with error if custom provider has invalid type value', () => {
-      const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
-        throw new Error('process.exit called');
-      });
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
+    it( 'should throw error if custom provider has invalid type value', () => {
+      const consoleErrorSpy = vi.spyOn( console, 'error' ).mockImplementation( () => { } )
 
-      writeTempConfig(`
+      writeTempConfig( `
 gateway:
   port: 20128
   routing:
@@ -405,29 +381,27 @@ providers:
       - "some-key"
     models:
       - id: "model-1"
-`);
+`)
 
-      expect(() => {
-        configLoader.loadConfig(tempConfigPath);
-      }).toThrow('process.exit called');
+      expect( () => {
+        configLoader.loadConfig( tempConfigPath )
+      } ).toThrow( "Invalid 'type' value 'invalid-type' for custom provider 'my-provider'" )
 
-      expect(exitSpy).toHaveBeenCalledWith(1);
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Invalid 'type' value 'invalid-type' for custom provider 'my-provider'"),
-      );
+      expect( consoleErrorSpy ).toHaveBeenCalledWith(
+        expect.stringContaining( "Invalid 'type' value 'invalid-type' for custom provider 'my-provider'" ),
+      )
 
-      exitSpy.mockRestore();
-      consoleErrorSpy.mockRestore();
-    });
-  });
+      consoleErrorSpy.mockRestore()
+    } )
+  } )
 
-  describe('Extended Loader Features', () => {
-    it('should coerce stringified environment variables for numeric fields into actual numbers', () => {
-      process.env.GATEWAY_PORT = '30001';
-      process.env.RATE_LIMIT_MAX = '50';
-      process.env.RATE_LIMIT_WINDOW = '30000';
+  describe( 'Extended Loader Features', () => {
+    it( 'should coerce stringified environment variables for numeric fields into actual numbers', () => {
+      process.env.GATEWAY_PORT = '30001'
+      process.env.RATE_LIMIT_MAX = '50'
+      process.env.RATE_LIMIT_WINDOW = '30000'
 
-      writeTempConfig(`
+      writeTempConfig( `
 gateway:
   port: "\${GATEWAY_PORT}"
   routing:
@@ -448,19 +422,19 @@ providers:
       - "gemini-key"
     models:
       - id: "gemini-2.5-pro"
-`);
+`)
 
-      const config = configLoader.loadConfig(tempConfigPath);
+      const config = configLoader.loadConfig( tempConfigPath )
 
       // Check type of coerced parameters
-      expect(typeof config.gateway.port).toBe('number');
-      expect(config.gateway.port).toBe(30001);
+      expect( typeof config.gateway.port ).toBe( 'number' )
+      expect( config.gateway.port ).toBe( 30001 )
 
-      expect(typeof config.clients[0].rateLimit.max).toBe('number');
-      expect(config.clients[0].rateLimit.max).toBe(50);
+      expect( typeof config.clients[ 0 ].rateLimit.max ).toBe( 'number' )
+      expect( config.clients[ 0 ].rateLimit.max ).toBe( 50 )
 
-      expect(typeof config.clients[0].rateLimit.windowMs).toBe('number');
-      expect(config.clients[0].rateLimit.windowMs).toBe(30000);
-    });
-  });
-});
+      expect( typeof config.clients[ 0 ].rateLimit.windowMs ).toBe( 'number' )
+      expect( config.clients[ 0 ].rateLimit.windowMs ).toBe( 30000 )
+    } )
+  } )
+} )

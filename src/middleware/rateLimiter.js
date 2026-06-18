@@ -88,7 +88,7 @@ function setWindowHeadIndex(timestamps, headIndex) {
     });
     return;
   }
-  // eslint-disable-next-line no-param-reassign
+   
   timestamps[WINDOW_HEAD_INDEX] = headIndex;
 }
 
@@ -104,15 +104,15 @@ function compactTimestampWindow(timestamps) {
   if (headIndex <= 0) return;
 
   if (headIndex >= timestamps.length) {
-    // eslint-disable-next-line no-param-reassign
+     
     timestamps.length = 0;
     setWindowHeadIndex(timestamps, 0);
     return;
   }
 
-  // eslint-disable-next-line no-param-reassign
+   
   timestamps.copyWithin(0, headIndex);
-  // eslint-disable-next-line no-param-reassign
+   
   timestamps.length -= headIndex;
   setWindowHeadIndex(timestamps, 0);
 }

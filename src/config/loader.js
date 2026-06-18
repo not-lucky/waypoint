@@ -137,9 +137,9 @@ export class ConfigLoader {
       const parsed = yaml.load(raw);
       this.currentConfig = this.interpolateAndValidate(parsed, reservedProviders);
     } catch (err) {
-      // Initial startup validation failure: log fatal error and abort startup.
+      // Initial startup validation failure: log fatal error and throw.
       logFatal(this.logger, `FATAL ERROR: Failed to load config file at ${configPath}: ${err.message}`);
-      process.exit(1);
+      throw new Error(`Failed to load config file at ${configPath}: ${err.message}`);
     }
 
     return this.currentConfig;

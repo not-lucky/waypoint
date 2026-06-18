@@ -203,7 +203,7 @@ describe('Graceful Teardown Sequence', () => {
     await vi.advanceTimersByTimeAsync(10000);
     // Flush promise queue
     for (let i = 0; i < 20; i++) {
-      // eslint-disable-next-line no-await-in-loop
+       
       await Promise.resolve();
     }
 

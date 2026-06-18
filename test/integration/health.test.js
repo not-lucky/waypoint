@@ -31,7 +31,7 @@ describe('Health Endpoint Integration Tests', () => {
     vi.useFakeTimers();
     // Reset all keys to healthy state before each test
     if (keyRegistry && keyRegistry.pools) {
-      /* eslint-disable no-param-reassign */
+       
       Object.values(keyRegistry.pools).forEach((pool) => {
         pool.keys.forEach((key) => {
           key.active = true;
@@ -41,7 +41,7 @@ describe('Health Endpoint Integration Tests', () => {
         });
         pool.roundRobinIndex = 0;
       });
-      /* eslint-enable no-param-reassign */
+       
     }
   });
 

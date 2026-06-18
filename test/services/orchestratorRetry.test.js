@@ -27,7 +27,7 @@ class MockAdapter {
     return next;
   }
 
-  /* eslint-disable-next-line class-methods-use-this */
+   
   normalizeError(error) {
     return normalizeTestError(error, 'mock-provider');
   }

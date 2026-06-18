@@ -32,7 +32,7 @@ class MockAdapter {
     return next;
   }
 
-  /* eslint-disable-next-line class-methods-use-this */
+   
   normalizeError(error) {
     return normalizeTestError(error, 'mock-provider');
   }
@@ -215,7 +215,7 @@ describe('UnifiedOrchestrator – Logger Integration', () => {
     mockAdapter.generateCompletion = async () => {
       mockAdapter.callCount += 1;
       if (mockAdapter.callCount === 1) {
-        throw 'raw string error'; // eslint-disable-line no-throw-literal
+        throw 'raw string error';  
       }
       return { id: 'ok' };
     };

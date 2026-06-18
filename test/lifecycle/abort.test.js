@@ -1,4 +1,4 @@
-/* eslint-disable no-restricted-syntax, class-methods-use-this, func-names, require-yield */
+ 
 import {
   describe,
   it,

@@ -26,7 +26,7 @@ async function* consumeStreamChunks(iterator, abortController, logger) {
       return false;
     }
 
-    // eslint-disable-next-line no-await-in-loop
+     
     const nextResult = await iterator.next();
     if (nextResult.done) return true;
 

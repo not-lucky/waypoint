@@ -1,4 +1,4 @@
-/* eslint-disable no-restricted-syntax, class-methods-use-this */
+ 
 import { BaseProvider } from './base.js';
 import { parseSSEStream } from '../streaming/sseParser.js';
 import {
@@ -78,7 +78,7 @@ export class AnthropicAdapter extends BaseProvider {
         default:
           break;
       }
-    } catch (err) {
+    } catch (_err) {
       // Ignore parsing errors for non-JSON events
     }
     return newState;
@@ -251,7 +251,7 @@ export class AnthropicAdapter extends BaseProvider {
         let dataJson = null;
         try {
           dataJson = JSON.parse(sseEvent.data);
-        } catch (err) {
+        } catch (_err) {
           // ignore
         }
 

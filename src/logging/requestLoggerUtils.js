@@ -15,7 +15,7 @@ export const sanitizeUrl = (urlString) => {
     const url = new URL(urlString);
     url.searchParams.delete('key');
     return url.toString();
-  } catch (e) {
+  } catch (_e) {
     return urlString.replace(/[?&]key=[^&]*/g, '');
   }
 };

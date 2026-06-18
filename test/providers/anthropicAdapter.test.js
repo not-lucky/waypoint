@@ -1,4 +1,4 @@
-/* eslint-disable no-restricted-syntax, max-len, generator-star-spacing */
+ 
 import {
   vi,
   describe,

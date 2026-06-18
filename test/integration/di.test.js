@@ -1,6 +1,6 @@
-/* eslint-disable max-len */
-/* eslint-disable class-methods-use-this, no-unused-vars */
-/* eslint-disable no-restricted-syntax, generator-star-spacing */
+ 
+/* eslint-disable no-unused-vars */
+ 
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
 import { createTestApp } from '../helpers/testServer.js';

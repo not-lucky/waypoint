@@ -42,7 +42,7 @@ export class TeardownRegistry {
   async execute(logger) {
     for (const hook of this.hooks) {
       try {
-        // eslint-disable-next-line no-await-in-loop
+         
         await hook(logger);
       } catch (err) {
         if (logger && typeof logger.error === 'function') {

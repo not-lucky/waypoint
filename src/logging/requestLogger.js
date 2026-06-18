@@ -1,4 +1,4 @@
-/* eslint-disable no-underscore-dangle */
+ 
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { getAppLogger } from './logger.js';

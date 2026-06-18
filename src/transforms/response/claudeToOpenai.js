@@ -1,4 +1,4 @@
-/* eslint-disable no-restricted-syntax, no-unused-vars */
+/* eslint-disable no-unused-vars */
 
 import { anthropicContentToOpenAIMessage } from '../shared/anthropicTools.js';
 import { mapFinishReason, synthesizeMetadata } from '../utils.js';

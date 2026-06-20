@@ -1,6 +1,7 @@
 import { ConfigLoader } from '../config/loader.js'
 import { configureLogging, flushLogs, getAppLogger } from '../logging/logger.js'
 import { registerLifecycle } from '../lifecycle/lifecycle.js'
+import { installGlobalDispatcher } from '../providers/dispatcher.js'
 import { wireServices } from './wireServices.js'
 import { createApp } from './createApp.js'
 
@@ -37,6 +38,16 @@ const installSafetyNets = () => {
 
 export async function bootstrap () {
   installSafetyNets()
+
+  // Install the shared keep-alive undici dispatcher before any HTTP work.
+  // Node's global `fetch` does not keep idle connections open by default;
+  // without this, every upstream call pays a fresh TCP+TLS handshake.
+  installGlobalDispatcher()
+
+  // Trim stack capture overhead in the common error path. Node's default is
+  // 10 frames; Waypoint's error envelope is enough with 5, and the smaller
+  // cap measurably reduces V8 Error allocation cost on retry storms.
+  Error.stackTraceLimit = 5
 
   try {
     const config = new ConfigLoader().loadConfig()

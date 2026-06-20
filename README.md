@@ -318,7 +318,7 @@ When `retryAfterSeconds` is present in the error envelope:
 ## Getting Started
 
 ### Prerequisites
-- Node.js v18+
+- Node.js v26.1+
 - npm
 
 ### Installation

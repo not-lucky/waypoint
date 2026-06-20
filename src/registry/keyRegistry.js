@@ -166,27 +166,26 @@ export class KeyRegistry {
    * @returns {{active: number, cooldown: number, exhausted: number, total: number}}
    */
   getAggregateKeyPoolStats(now = Date.now()) {
-    let active = 0;
-    let cooldown = 0;
-    let exhausted = 0;
-    let total = 0;
+    const allKeys = Object.values(this.pools).flatMap((pool) => pool.keys);
+    const total = allKeys.length;
 
-    Object.values(this.pools).forEach((pool) => {
-      const { keys } = pool;
-      total += keys.length;
+    // Classify each key once and let `Object.groupBy` (Node ≥ 21) bucket them
+    // in a single pass. Group key is the state string itself, so the result
+    // is `{ active: [...], cooldown: [...], exhausted: [...] }`. Missing
+    // buckets come back as `undefined`; we coerce to 0 below.
+    const classify = (key) => {
+      if (key.exhausted) return 'exhausted';
+      if (key.cooldownUntil !== null && key.cooldownUntil > now) return 'cooldown';
+      return 'active';
+    };
+    const groups = Object.groupBy(allKeys, classify);
 
-      keys.forEach((key) => {
-        if (key.exhausted) {
-          exhausted += 1;
-        } else if (key.cooldownUntil !== null && key.cooldownUntil > now) {
-          cooldown += 1;
-        } else {
-          active += 1;
-        }
-      });
-    });
-
-    return { active, cooldown, exhausted, total };
+    return {
+      active: groups.active?.length ?? 0,
+      cooldown: groups.cooldown?.length ?? 0,
+      exhausted: groups.exhausted?.length ?? 0,
+      total,
+    };
   }
 
   cleanup() {

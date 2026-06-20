@@ -61,16 +61,19 @@ export async function teardown({
     if (logger && typeof logger.debug === 'function') {
       logger.debug('Graceful shutdown: closing server to new connections');
     }
-    const serverClosePromise = new Promise((resolve, reject) => {
-      if (server && typeof server.close === 'function') {
-        server.close((err) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      } else {
-        resolve();
-      }
-    });
+    // `Promise.withResolvers` (Node ≥ 22) lets us name the resolve/reject
+    // callbacks up front and pass them straight to `server.close`, avoiding
+    // the nested `new Promise((resolve, reject) => ...)` wrapper.
+    const serverClose = Promise.withResolvers();
+    const serverClosePromise = serverClose.promise;
+    if (server && typeof server.close === 'function') {
+      server.close((err) => {
+        if (err) serverClose.reject(err);
+        else serverClose.resolve();
+      });
+    } else {
+      serverClose.resolve();
+    }
 
     await teardownRegistry.execute(logger);
 

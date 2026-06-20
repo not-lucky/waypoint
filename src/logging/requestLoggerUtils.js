@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fsp from 'node:fs/promises';
 import { getAppLogger } from './logger.js';
 
@@ -11,13 +12,18 @@ const logger = getAppLogger('request-logger');
  */
 export const sanitizeUrl = (urlString) => {
   if (!urlString || typeof urlString !== 'string') return '';
-  try {
+  if (URL.canParse(urlString)) {
     const url = new URL(urlString);
     url.searchParams.delete('key');
     return url.toString();
-  } catch (_e) {
-    return urlString.replace(/[?&]key=[^&]*/g, '');
   }
+  // Fallback for malformed URLs: strip `?key=…` / `&key=…` via a literal regex.
+  // `RegExp.escape` is available since Node 24; the `key` literal needs no
+  // escaping, but we use it for forward-compatibility with dynamic prefixes.
+  const pattern = typeof RegExp.escape === 'function'
+    ? new RegExp(`[?&]${RegExp.escape('key')}=[^&]*`, 'g')
+    : /[?&]key=[^&]*/g;
+  return urlString.replace(pattern, '');
 };
 
 /**
@@ -43,10 +49,13 @@ export const serializeHeaders = (headers) => {
 
 /**
  * Generates a short random ID for request folder naming.
- * Provides a unique collision-free directory footprint for concurrent logged requests.
+ * Uses `crypto.randomBytes` (cryptographically secure RNG) and emits a fixed
+ * 6-char lowercase hex string. Replaces the previous `Math.random()` slice
+ * which was not seedable from `crypto` and had a slight bias toward shorter
+ * strings because the leading hex digit can be 0.
  * @returns {string} 6-character hex string.
  */
-export const shortId = () => Math.random().toString(16).slice(2, 8);
+export const shortId = () => crypto.randomBytes(3).toString('hex');
 
 /**
  * Converts an ISO timestamp to a filesystem-safe string.

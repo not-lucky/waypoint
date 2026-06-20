@@ -1,11 +1,39 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { styleText } from 'node:util'
 import {
   configure, configureSync, getConsoleSink, getLogger, reset,
 } from '@logtape/logtape'
 import { getFileSink } from '@logtape/file'
 
 const sessionTimestamp = new Date().toISOString().replace( /[:.]/g, '-' )
+
+/**
+ * Per-level ANSI foreground color used by the text formatter when stdout is a
+ * TTY. `styleText` (Node ≥ 21.3) is a no-op for non-TTY destinations, so the
+ * map is safe to apply unconditionally; the values only render in a terminal.
+ * @const {Record<string, string>}
+ */
+const LEVEL_COLORS = {
+  debug: 'gray',
+  info: 'cyan',
+  warning: 'yellow',
+  error: 'red',
+  fatal: 'magenta',
+}
+
+/**
+ * Returns the colored `[LEVEL]` tag for the text formatter when stdout is a
+ * TTY; otherwise returns the plain string. `styleText` is wrapped here so the
+ * formatter stays simple and so the no-TTY path is allocation-free.
+ * @param {string} level
+ * @returns {string}
+ */
+const colorizeLevelTag = (level) => {
+  if (!process.stdout.isTTY) return level;
+  const color = LEVEL_COLORS[level] || 'white';
+  return styleText(color, level);
+}
 
 /**
  * Early-boot logger initialization using synchronous configuration.
@@ -156,7 +184,7 @@ const customTextFormatter = ( record ) => {
   }
 
   const metaStr = pairs.length > 0 ? ` ${ pairs.join( ' ' ) }` : ''
-  return `[${ level }] ${ timestamp } ${ category }: ${ message }${ metaStr }\n`
+  return `[${ colorizeLevelTag( level ) }] ${ timestamp } ${ category }: ${ message }${ metaStr }\n`
 }
 
 /**

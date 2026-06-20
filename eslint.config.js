@@ -37,8 +37,7 @@ export default [
       'no-continue': 'off',
       'preserve-caught-error': 'off',
       'n/no-unsupported-features/node-builtins': [ 'error', {
-        version: '>=18.0.0',
-        ignores: [ 'fetch', 'AbortSignal.any' ],
+        version: '>=26.1.0',
       } ],
     },
   },

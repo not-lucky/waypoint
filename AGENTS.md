@@ -100,7 +100,7 @@ npm start
 
 ## Runtime & Tooling
 
-- **Node** — `>=18` (declared in `package.json#engines.node`). ESLint gates `n/no-unsupported-features/node-builtins` to `>=18.0.0` with `fetch` and `AbortSignal.any` ignored.
+- **Node** — `>=26.1.0` (declared in `package.json#engines.node`). ESLint gates `n/no-unsupported-features/node-builtins` to `>=26.1.0`.
 - **Module system** — ESM (`"type": "module"`); `src/index.js` is plain Node ESM, loaded with `dotenv/config` and awaited only when run as the main module.
 - **Package manager** — npm; lockfile is `package-lock.json`. CI uses `npm ci`.
 - **Bundler / TS** — None. No `tsconfig`, no Vite/Rollup/webpack/esbuild config, no `.ts` files under `src/`.

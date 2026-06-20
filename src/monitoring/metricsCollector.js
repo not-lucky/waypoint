@@ -113,7 +113,10 @@ export class MetricsCollector {
   observeHistogram(name, value, labels = {}, buckets = DEFAULT_HISTOGRAM_BUCKETS) {
     const metric = getOrCreateMetric(this.histograms, name, () => ({
       type: 'histogram',
-      buckets: [...buckets].sort((left, right) => left - right),
+      // `Array.prototype.toSorted` (Node ≥ 20) returns a new array without
+      // mutating the caller's buckets. Avoids the `[...buckets].sort(...)`
+      // copy-then-sort dance and is a single allocation.
+      buckets: buckets.toSorted((left, right) => left - right),
       values: new Map(),
     }));
     const entry = getHistogramEntry(metric, labels);

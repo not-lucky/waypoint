@@ -4,8 +4,7 @@
  * @module services/retryLogic/keyRotationLoop
  */
 
- 
-import { isRetryable, shouldCooldownKey } from '../errors/policy.js';
+import { decideKeyAction, isRetryable } from '../errors/policy.js';
 import { getAppLogger } from '../logging/logger.js';
 import { buildUpstreamErrorLogFields } from '../logging/upstreamErrorLogMeta.js';
 import { buildCancelledError, buildFinalError } from './retryStrategy.js';
@@ -17,18 +16,16 @@ const logger = getAppLogger('retry');
  * Abstracts the retry/key-rotation loop for a single provider.
  * Rotates through keys, invokes the adapter, and tracks success/failure.
  *
- * @param {Object} options - Retry parameters.
- * @param {string} options.provider - The provider name.
- * @param {Object} options.req - Normalized request payload.
- * @param {Object} options.adapter - The provider adapter instance (e.g. GeminiAdapter).
- * @param {Object} options.keyRegistry - Stateful API key registry instance.
- * @param {AbortController} options.abortController - Abort controller for tracking client
- *   disconnects.
- * @param {Object|null} options.requestLog - Telemetry / request logger.
- * @param {number} options.retryLimit - Max retry attempts for key rotation.
- * @param {Object|null} options.logger - Logger instance.
- * @param {Function} options.onStreamResponse - Callback triggered when streaming starts.
- * @returns {Promise<Object|AsyncGenerator>} The provider adapter's result or error structure.
+ * @param {Object} options
+ * @param {string} options.provider
+ * @param {Object} options.req
+ * @param {Object} options.adapter
+ * @param {Object} options.keyRegistry
+ * @param {AbortController} options.abortController
+ * @param {Object|null} options.requestLog - Per-request debug logger.
+ * @param {number} options.retryLimit
+ * @param {Function} options.onStreamResponse
+ * @returns {Promise<Object|AsyncGenerator>}
  */
 export const executeWithRetry = async ({
   provider,
@@ -68,9 +65,9 @@ export const executeWithRetry = async ({
     logger.debug('Key selected from pool for provider', { provider });
     logger.debug(`Attempting execution: attempt=${attempt + 1}/${retryLimit} for provider=${provider}`);
     attempt += 1;
+    const providerStartTime = Date.now();
 
     try {
-      const providerStartTime = Date.now();
 
       if (req.stream) {
         const stream = adapter.generateStream(req, apiKey, abortController.signal, requestLog);
@@ -128,16 +125,37 @@ export const executeWithRetry = async ({
       const msg = `Attempt ${attempt} of ${retryLimit} for provider '${provider}' failed. Reason: ${reasonMsg}`;
       logger.warning(msg, buildUpstreamErrorLogFields(normalized));
 
-      if (!isRetryable(normalized.category, normalized.code)) {
-        return buildFinalError(provider, keyRegistry, adapter, lastError, req);
+      // Persist the upstream's actual response to the per-request debug folder.
+      // Without this, the operator cannot see what the provider returned on failure.
+      if (requestLog && typeof requestLog.logProviderResponse === 'function') {
+        requestLog.logProviderResponse(
+          {
+            error: true,
+            statusCode: normalized.statusCode,
+            code: normalized.errorCode,
+            type: normalized.errorType,
+            transportCode: normalized.transportCode,
+            message: normalized.message,
+            retryAfterSeconds: normalized.retryAfterSeconds,
+            provider: normalized.provider,
+            upstreamBody: normalized.upstreamBody,
+          },
+          Date.now() - providerStartTime,
+        );
       }
 
-      if (shouldCooldownKey(normalized.category, normalized.code)) {
+      // Apply the key-state action (retire / cooldown) regardless of retryability
+      // so the registry reflects what the upstream told us about this key.
+      const action = decideKeyAction(normalized.statusCode);
+      if (action !== 'none') {
         keyRegistry.flagFailure(provider, apiKey, {
-          category: normalized.category,
-          code: normalized.code,
+          statusCode: normalized.statusCode,
           retryAfterSeconds: normalized.retryAfterSeconds,
         });
+      }
+
+      if (!isRetryable(normalized.statusCode)) {
+        return buildFinalError(provider, keyRegistry, adapter, lastError, req);
       }
     }
   }

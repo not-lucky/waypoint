@@ -150,10 +150,11 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
     expect(geminiAdapter.callCount).toBe(0);
     expect(openaiAdapter.callCount).toBe(1);
     expect(res.error).toBeDefined();
-    expect(res.error.code).toBe('internal_server_error');
+    // Passthrough: code is 'upstream_error' (no upstream code provided in this test).
+    expect(res.error.code).toBe('upstream_error');
     expect(res.error.message).toBe('OpenAI transient error');
     expect(res.error.provider).toBe('openai');
-    expect(res.error.httpStatus).toBe(502);
+    expect(res.error.httpStatus).toBe(500);
   });
 
   it('assert: request arrives with isFallback:true -> fallback logic is entirely skipped', async () => {
@@ -440,7 +441,8 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
 
     expect(geminiAdapter.callCount).toBe(1);
     expect(res.error).toBeDefined();
-    expect(res.error.code).toBe('rate_limit_exceeded');
+    // Passthrough: code defaults to 'upstream_error' when the test error has no code.
+    expect(res.error.code).toBe('upstream_error');
     expect(res.error.message).toBe('Rate Limited');
     expect(res.error.provider).toBe('gemini');
     expect(res.error.httpStatus).toBe(429);

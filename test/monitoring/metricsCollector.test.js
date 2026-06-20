@@ -88,8 +88,7 @@ describe('MetricsCollector', () => {
     });
 
     registry.flagFailure('gemini', 'key-1', {
-      category: 'rate_limit',
-      code: 'rate_limit_exceeded',
+      statusCode: 429,
     });
 
     syncKeyPoolMetrics(collector, registry);

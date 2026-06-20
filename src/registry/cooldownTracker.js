@@ -1,40 +1,30 @@
 /**
- * @fileoverview Cooldown timing and tiered lifecycle management for API keys.
- * Implements exponential backoff and tiered failure handling (T0-T5) for key health.
- * @module registry/keyManagement/cooldownTracker
+ * @fileoverview HTTP-status-driven key lifecycle.
+ * Replaces the historical T0–T5 taxonomy with a minimal decision table:
+ *
+ * - 401: retire (the key itself is invalid).
+ * - 408 / 429 / 5xx: cooldown (Retry-After when present, otherwise the configured default).
+ * - Other 4xx: no key-state change (the request was wrong, not the key).
+ * - No status (transport failure): no key-state change.
+ *
+ * The active cooldown auto-reactivates the key when the timer expires. Retired keys
+ * are never reactivated.
  */
-
-import {
-  ERROR_CATEGORIES,
-  BILLING_CODES,
-  PERMISSION_CODES,
-  RATE_LIMIT_CODES,
-  SERVER_CODES,
-} from '../errors/policy.js';
 
 /**
  * Sets a cooldown timer on a key with automatic cleanup.
- * This implements temporary key suspension without permanent deactivation.
  *
  * @param {Object} key - The KeyObject instance to put on cooldown.
  * @param {number} durationMs - Cooldown duration in milliseconds.
  * @param {Set<NodeJS.Timeout>} timers - Timer set for cleanup tracking.
- * @param {boolean} [reactivate=false] - Whether to reactivate key after cooldown.
  */
-export function setCooldown(key, durationMs, timers, reactivate = false) {
-   
+export function setCooldown(key, durationMs, timers) {
   key.cooldownUntil = Date.now() + durationMs;
-
   const timer = setTimeout(() => {
-    if (reactivate) {
-       
-      key.active = true;
-    }
-     
+    key.active = true;
     key.cooldownUntil = null;
     timers.delete(timer);
   }, durationMs);
-
   timers.add(timer);
 }
 
@@ -46,88 +36,80 @@ export function setCooldown(key, durationMs, timers, reactivate = false) {
  * @param {Set<NodeJS.Timeout>} timers - Timer set for cleanup tracking.
  */
 export function applyCooldown(key, seconds, timers) {
-   
+  if (!seconds || seconds <= 0) return;
   key.active = false;
-  setCooldown(key, seconds * 1000, timers, true);
+  setCooldown(key, seconds * 1000, timers);
 }
 
 /**
- * Computes exponential backoff duration for rate limit failures.
- * Returns null when retryAfterSeconds is 0 (immediate retry allowed).
+ * Computes exponential backoff duration for rate limit (429) failures.
  *
- * @param {Object} key - The KeyObject instance.
- * @param {number} [retryAfterSeconds] - Optional Retry-After header value.
- * @param {Object} cooldownConfig - Cooldown configuration with baseSeconds and maxSeconds.
- * @returns {number|null} Backoff duration in seconds, or null for immediate retry.
+ * @param {number} consecutiveFailures - Current consecutive failure count (already incremented).
+ * @param {number|undefined} retryAfterSeconds - Parsed Retry-After.
+ * @param {Object} cooldownConfig - `{ baseSeconds, maxSeconds }`.
+ * @returns {number} Backoff duration in seconds.
  */
-export function computeRateLimitBackoff(key, retryAfterSeconds, cooldownConfig) {
-   
-  key.consecutiveFailures += 1;
-
-  if (retryAfterSeconds === 0) return null;
-
-  if (retryAfterSeconds !== undefined) return retryAfterSeconds;
-
+export function computeRateLimitBackoff(consecutiveFailures, retryAfterSeconds, cooldownConfig) {
+  if (retryAfterSeconds !== undefined && retryAfterSeconds > 0) {
+    return retryAfterSeconds;
+  }
   const { baseSeconds, maxSeconds } = cooldownConfig;
-  return Math.min(baseSeconds * (2 ** (key.consecutiveFailures - 1)), maxSeconds);
+  if (!baseSeconds) return 0;
+  return Math.min(baseSeconds * (2 ** (consecutiveFailures - 1)), maxSeconds);
 }
 
 /**
- * Flags a key as failed and applies tiered lifecycle policy (T0-T5)
- * from structured error meaning.
+ * Flags a key as failed and applies HTTP-status-based lifecycle policy.
  *
  * @param {Object} key - The KeyObject instance that failed.
- * @param {Object} descriptor - Structured failure descriptor.
- * @param {string} descriptor.category - Error category slug.
- * @param {string} descriptor.code - Machine-readable error code.
- * @param {number} [descriptor.retryAfterSeconds] - Optional cooldown override from Retry-After.
+ * @param {Object} descriptor
+ * @param {number|undefined} descriptor.statusCode - Upstream HTTP status code.
+ * @param {number} [descriptor.consecutiveFailures] - Override for consecutive failure count.
+ * @param {number} [descriptor.retryAfterSeconds] - Parsed Retry-After in seconds.
  * @param {Object} cooldownConfig - Cooldown configuration object.
  * @param {Set<NodeJS.Timeout>} timers - Timer set for cleanup tracking.
+ * @returns {'retire' | 'cooldown' | 'none'} The action that was applied.
  */
 export function handleKeyFailure(key, descriptor, cooldownConfig, timers) {
-  const { category, code, retryAfterSeconds } = descriptor;
+  if (!key) return 'none';
+  const { statusCode, retryAfterSeconds } = descriptor;
+  const consecutiveFailures = descriptor.consecutiveFailures
+    ?? (key.consecutiveFailures + 1);
 
-  if (!key || code === 'no_api_key') return;
-
-  if (code === 'invalid_api_key') {
-     
+  // 401 / 403: retire permanently. The key cannot authenticate or is denied
+  // by the upstream's permission policy; further attempts will not succeed.
+  if (statusCode === 401 || statusCode === 403) {
     key.exhausted = true;
-     
     key.active = false;
-    return;
+    return 'retire';
   }
 
-  if (BILLING_CODES.has(code)) {
-    applyCooldown(key, retryAfterSeconds ?? cooldownConfig.billingSeconds, timers);
-    return;
-  }
-
-  if (PERMISSION_CODES.has(code)) {
-    applyCooldown(key, retryAfterSeconds ?? cooldownConfig.permissionSeconds, timers);
-    return;
-  }
-
-  if (code === 'rate_reduction_required') {
-    const seconds = Math.max(
-      retryAfterSeconds ?? 0,
-      cooldownConfig.slowDownMinimumSeconds,
-    );
+  // 5xx: short server cooldown (Retry-After wins when present).
+  if (typeof statusCode === 'number' && statusCode >= 500 && statusCode < 600) {
+    const seconds = retryAfterSeconds !== undefined && retryAfterSeconds > 0
+      ? retryAfterSeconds
+      : cooldownConfig.serverSeconds;
     applyCooldown(key, seconds, timers);
-    return;
+    return 'cooldown';
   }
 
-  if (RATE_LIMIT_CODES.has(code)) {
-    const backoffSeconds = computeRateLimitBackoff(key, retryAfterSeconds, cooldownConfig);
-    if (backoffSeconds === null) return;
-     
-    key.active = false;
-    setCooldown(key, backoffSeconds * 1000, timers, true);
-    return;
+  // 402 / 408 / 429: rate-limit style cooldown with exponential backoff.
+  if (statusCode === 402 || statusCode === 408 || statusCode === 429) {
+    if (retryAfterSeconds === 0) {
+      // 0 means "no cooldown, you may retry immediately".
+      return 'cooldown';
+    }
+    // Mutate the key's own consecutiveFailures so the backoff formula sees the
+    // current failure count. The next 429 with the same key will use a
+    // doubled backoff.
+    key.consecutiveFailures = consecutiveFailures;
+    const backoff = computeRateLimitBackoff(key.consecutiveFailures, retryAfterSeconds, cooldownConfig);
+    applyCooldown(key, backoff, timers);
+    return 'cooldown';
   }
 
-  if (SERVER_CODES.has(code) || category === ERROR_CATEGORIES.SERVER) {
-    applyCooldown(key, retryAfterSeconds ?? cooldownConfig.serverSeconds, timers);
-  }
+  // Transport errors (no status) and other 4xx: no key-state change.
+  return 'none';
 }
 
 /**
@@ -137,11 +119,7 @@ export function handleKeyFailure(key, descriptor, cooldownConfig, timers) {
  */
 export function handleKeySuccess(key) {
   if (!key) return;
-
-   
   key.consecutiveFailures = 0;
-   
   key.active = true;
-   
   key.cooldownUntil = null;
 }

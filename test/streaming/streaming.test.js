@@ -14,7 +14,7 @@ import { AnthropicController } from '../../src/controllers/anthropicController.j
 import { UnifiedOrchestrator } from '../../src/services/unifiedOrchestrator.js';
 import { KeyRegistry } from '../../src/registry/keyRegistry.js';
 import { ProviderFactory } from '../../src/providers/factory.js';
-import { ERROR_CATEGORIES } from '../../src/errors/policy.js';
+
 import { UpstreamError } from '../../src/errors/upstream.js';
 import { makeHttpError, normalizeTestError } from '../helpers/normalizeTestError.js';
 
@@ -220,7 +220,7 @@ describe('Streaming End-to-End Tests', () => {
         statusCode: 503,
         errorCode: 'service_unavailable',
         errorType: 'api_error',
-        category: ERROR_CATEGORIES.SERVER,
+        
         provider: 'mock-provider',
       });
     };
@@ -242,8 +242,7 @@ describe('Streaming End-to-End Tests', () => {
 
     await expect(iterator.next()).rejects.toThrow('Mid-stream failure');
     expect(flagFailureSpy).toHaveBeenCalledWith('mock-provider', 'mock-key-1', {
-      category: ERROR_CATEGORIES.SERVER,
-      code: 'service_unavailable',
+      statusCode: 503,
       retryAfterSeconds: undefined,
     });
     expect(flagSuccessSpy).not.toHaveBeenCalled();
@@ -298,8 +297,7 @@ describe('Streaming End-to-End Tests', () => {
     expect(flagSuccessSpy).not.toHaveBeenCalled();
     expect(failingAdapter.callCount).toBe(2);
     expect(flagFailureSpy).toHaveBeenCalledWith('mock-provider', 'key-1', {
-      category: 'server',
-      code: 'service_unavailable',
+      statusCode: 503,
       retryAfterSeconds: undefined,
     });
 

@@ -53,10 +53,11 @@ function errorHandler(logger) {
     let code = 'internalServerError';
     if (status === 413) code = 'payloadTooLarge';
     else if (status === 400) code = 'badRequest';
-    res.status(status).json(buildClientErrorEnvelope(
-      { code, message: err.message },
-      status,
-    ));
+    res.status(status).json(buildClientErrorEnvelope({
+      code,
+      message: err.message,
+      httpStatus: status,
+    }));
   };
 }
 

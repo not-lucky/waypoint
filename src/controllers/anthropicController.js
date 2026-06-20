@@ -1,4 +1,3 @@
- 
 import { formatAnthropicSseError } from '../errors/envelope.js';
 import { startSSEStream } from '../streaming/sseUtils.js';
 import { FORMATS, translateRequest, translateResponse } from '../transforms/index.js';
@@ -17,6 +16,10 @@ function writeSseEvent(res, reqLog, eventType, data) {
   res.write(event);
 }
 
+/**
+ * Protocol controller for the Anthropic Messages ingress.
+ * Upstream may be OpenAI/Anthropic/Gemini; ingress is Anthropic-shape.
+ */
 export class AnthropicController extends BaseController {
   constructor(orchestrator) {
     super(orchestrator, 'anthropic');
@@ -25,6 +28,7 @@ export class AnthropicController extends BaseController {
   async handleCompletion(req, res) {
     return this.executeRequest(req, res, {
       protocolName: 'Anthropic',
+      ingressFormat: FORMATS.ANTHROPIC,
       translateReq: (body) => translateRequest(FORMATS.ANTHROPIC, FORMATS.OPENAI, body),
       translateRes: (response, body) => translateResponse(FORMATS.ANTHROPIC, FORMATS.OPENAI, response, body),
       handleStream: (resp, response, unifiedReq, reqLog, body) => this.handleStreamingResponse(resp, response, unifiedReq, reqLog, body),
@@ -195,7 +199,18 @@ export class AnthropicController extends BaseController {
       });
     } catch (err) {
       this.logger.debug('Anthropic SSE response stream aborted or failed', { chunkCount, error: err.message });
-      this.emitStreamError(res, reqLog, err, formatAnthropicSseError, 'anthropic', chunkCount);
+      // Upstream format is best-effort: the orchestrator's normalized response doesn't
+      // carry the upstream format; we default to OPENAI since the unified shape is
+      // OpenAI-shaped after the orchestrator returns.
+      this.emitStreamError(
+        res,
+        reqLog,
+        err,
+        formatAnthropicSseError,
+        FORMATS.OPENAI,
+        FORMATS.ANTHROPIC,
+        chunkCount,
+      );
     } finally {
       await reqLog.finalize();
       res.end();

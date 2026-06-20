@@ -75,12 +75,11 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
     expect(mockAdapter.keysUsed[1]).toBe('key-2');
 
     // Check final error surfaces the last upstream failure
-    expect(res.error).toEqual({
-      code: 'internal_server_error',
-      type: 'api_error',
+    expect(res.error).toMatchObject({
+      code: 'upstream_error',
       message: 'Failure 2',
       provider: 'mock-provider',
-      httpStatus: 502,
+      httpStatus: 500,
     });
   });
 
@@ -111,9 +110,9 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
 
     // Should call adapter exactly once and then stop because no keys are left
     expect(mockAdapter.callCount).toBe(1);
-    expect(res.error).toEqual({
-      code: 'rate_limit_exceeded',
-      type: 'rate_limit_error',
+    // Passthrough: no classifier is applied. The error's message and status are forwarded.
+    expect(res.error).toMatchObject({
+      code: 'upstream_error',
       message: 'Rate Limited',
       provider: 'mock-provider',
       httpStatus: 429,
@@ -163,13 +162,12 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
     expect(primaryMock.callCount).toBe(1);
     expect(fallbackMock.callCount).toBe(1);
 
-    // Returns the fallback provider's upstream error
-    expect(res.error).toEqual({
-      code: 'internal_server_error',
-      type: 'api_error',
+    // Returns the fallback provider's upstream error (passthrough envelope)
+    expect(res.error).toMatchObject({
+      code: 'upstream_error',
       message: 'Fallback Error',
       provider: 'mock-provider',
-      httpStatus: 502,
+      httpStatus: 500,
     });
   });
 

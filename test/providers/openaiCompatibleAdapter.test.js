@@ -537,9 +537,10 @@ describe('OpenAICompatibleAdapter Tests', () => {
     mockFetch.mockResolvedValue({ ok: true, body: mockBody });
 
     const iterator = adapter.generateStream({ messages: [] }, 'key')[Symbol.asyncIterator]();
+    // With the passthrough envelope, the upstream's errorCode is preserved verbatim.
     await expect(iterator.next()).rejects.toMatchObject({
       errorCode: 'rate_limit_exceeded',
-      category: 'streaming',
+      errorType: 'rate_limit_error',
     });
   });
 

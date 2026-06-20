@@ -1,141 +1,22 @@
 /**
- * @fileoverview UpstreamError class, error normalization, stream/transport error handling.
- * Consolidates stream error classification, transport error classification, and
- * the canonical UpstreamError class with normalization logic.
- */
-
-import { ERROR_CATEGORIES, PERMISSION_CODES } from './policy.js';
-import { classifyUpstreamError } from './httpRules.js';
-
-// ─── Stream Rules ─────────────────────────────────────────────
-
-/**
- * Factory for creating stream error classification rules.
+ * @fileoverview UpstreamError class and minimal normalization.
  *
- * @param {Function} match - Predicate function receiving context.
- * @param {number} status - HTTP status code to return.
- * @returns {Object} Rule object with match and result functions.
+ * The error path is intentionally simple: the upstream's HTTP status, the raw parsed
+ * body, and the upstream's own message / code / type are surfaced verbatim to the
+ * caller (translated into the ingress protocol's native error shape at the controller
+ * boundary via `translateError`). No keyword matching, no tier classification, no
+ * per-code overrides: if the upstream says "This model is currently experiencing high
+ * demand", the client receives exactly that.
  */
-function streamRule(match, status) {
-  return { match, result: () => ({ status }) };
-}
 
-/**
- * Stream error classification rules.
- * Maps error type/code patterns to HTTP status codes.
- */
-const STREAM_STATUS_RULES = [
-  streamRule((ctx) => ctx.typeLower.includes('rate_limit') || ctx.codeLower.includes('rate_limit'), 429),
-  streamRule((ctx) => ctx.typeLower.includes('authentication') || ctx.codeLower.includes('api_key') || ctx.codeLower === 'no_api_key', 401),
-  streamRule((ctx) => ctx.typeLower.includes('permission') || ctx.codeLower === 'forbidden' || ctx.codeLower === 'region_not_supported', 403),
-  streamRule((ctx) => ctx.typeLower.includes('billing') || ctx.codeLower.includes('quota') || ctx.codeLower.includes('billing'), 402),
-  streamRule((ctx) => ctx.typeLower.includes('invalid_request') || ctx.codeLower.includes('invalid_'), 400),
-  streamRule((ctx) => ctx.typeLower.includes('not_found') || ctx.codeLower.includes('not_found'), 404),
-  streamRule((ctx) => ctx.typeLower.includes('overloaded') || ctx.codeLower === 'engine_overloaded', 503),
-];
 
-function isValidStatusCode(val) {
-  return typeof val === 'number' && val >= 100 && val < 600;
-}
-
-/**
- * Resolves an HTTP status code from a stream error payload.
- *
- * @param {any} errorPayload - Parsed SSE error JSON.
- * @param {number} [fallback=502] - Default status when none is present.
- * @returns {number}
- */
-export function resolveStreamErrorStatus(errorPayload, fallback = 502) {
-  const err = errorPayload?.error || errorPayload;
-  if (isValidStatusCode(err?.code)) return err.code;
-  if (isValidStatusCode(err?.status_code)) return err.status_code;
-  if (isValidStatusCode(err?.status)) return err.status;
-
-  const ctx = {
-    codeLower: String(err?.code || '').toLowerCase(),
-    typeLower: String(err?.type || '').toLowerCase(),
-  };
-
-  for (const r of STREAM_STATUS_RULES) {
-    if (r.match(ctx)) {
-      return r.result(ctx).status;
-    }
-  }
-
-  return fallback;
-}
-
-// ─── Transport Rules ──────────────────────────────────────────
-
-const CLIENT_STATUS_RULES = [
-  {
-    match: (_upstreamStatus, _category, code) => code === 'forbidden' || code === 'region_not_supported',
-    status: 403,
-  },
-  {
-    match: (_upstreamStatus, _category, code) => code === 'insufficient_quota' || code === 'billing_hard_limit_reached',
-    status: 402,
-  },
-  {
-    match: (_upstreamStatus, _category, code) => code === 'invalid_api_key' || code === 'no_api_key',
-    status: 401,
-  },
-  {
-    match: (_upstreamStatus, _category, code) => (
-      PERMISSION_CODES.has(code)
-      && code !== 'forbidden'
-      && code !== 'region_not_supported'
-    ),
-    status: 401,
-  },
-  {
-    match: (upstreamStatus, category) => (
-      category === ERROR_CATEGORIES.AUTH && upstreamStatus === 402
-    ),
-    status: 402,
-  },
-  {
-    match: (upstreamStatus, category) => (
-      category === ERROR_CATEGORIES.AUTH && upstreamStatus === 403
-    ),
-    status: 403,
-  },
-  {
-    match: (_upstreamStatus, category) => category === ERROR_CATEGORIES.AUTH,
-    status: 401,
-  },
-  {
-    match: (_upstreamStatus, category, code) => category === ERROR_CATEGORIES.SERVER && code === 'internal_server_error',
-    status: 502,
-  },
-  {
-    match: (upstreamStatus) => upstreamStatus === 500,
-    status: 502,
-  },
-];
-
-/**
- * Maps upstream status code and category/code to the status code we return to the client.
- *
- * @param {number} upstreamStatus - HTTP status code from upstream.
- * @param {string} category - Error category slug.
- * @param {string} code - Machine-readable error code.
- * @returns {number} HTTP status code to return to client.
- */
-export function getClientHttpStatus(upstreamStatus, category, code) {
-  for (const rule of CLIENT_STATUS_RULES) {
-    if (rule.match(upstreamStatus, category, code)) {
-      return rule.status;
-    }
-  }
-  return upstreamStatus || 502;
-}
+// ─── Transport classification (preserved for logging/metrics only) ──────────
 
 /**
  * Classifies network/transport failures that have no HTTP status from the provider.
  *
  * @param {any} error - Caught transport error.
- * @returns {{ code: string, category: string, message: string, httpStatus: number }}
+ * @returns {{ code: string, message: string, httpStatus: number }}
  */
 export function classifyTransportError(error) {
   const message = error?.message || String(error);
@@ -150,49 +31,60 @@ export function classifyTransportError(error) {
     code = 'connect_timeout';
   }
 
-  let httpStatus = 503;
-  if (code === 'read_timeout') {
-    httpStatus = 504;
-  }
+  const httpStatus = code === 'read_timeout' ? 504 : 503;
 
-  return {
-    code,
-    category: ERROR_CATEGORIES.TRANSPORT,
-    message: `Upstream connection failed: ${message}`,
-    httpStatus,
-  };
+  return { code, message: `Upstream connection failed: ${message}`, httpStatus };
 }
 
-// ─── UpstreamError Class & Normalization ──────────────────────
+/**
+ * Parses a Retry-After header value per RFC 7231 (delay-seconds or HTTP-date).
+ *
+ * @param {string|number} [headerValue] - Raw Retry-After header value.
+ * @returns {number|undefined}
+ */
+export function parseRetryAfter(headerValue) {
+  if (headerValue === undefined || headerValue === null) {
+    return undefined;
+  }
+  const trimmed = String(headerValue).trim();
+  if (!trimmed) return undefined;
+  if (/^\d+$/.test(trimmed)) {
+    return Math.max(0, parseInt(trimmed, 10));
+  }
+  const dateMs = Date.parse(trimmed);
+  if (!Number.isNaN(dateMs)) {
+    return Math.max(0, Math.ceil((dateMs - Date.now()) / 1000));
+  }
+  return undefined;
+}
+
+// ─── UpstreamError class ───────────────────────────────────────────────────
 
 /**
  * Canonical error class for upstream failures.
- * Extends Error with structured error metadata for logging and client responses.
+ * Carries the upstream's raw status code, parsed body, and headers so callers
+ * can inspect exactly what the upstream returned.
  */
 export class UpstreamError extends Error {
   /**
-   * Creates an instance of UpstreamError.
-   *
-   * @param {string} message - Error message.
-   * @param {Object} options - Error options.
-   * @param {number} [options.statusCode] - HTTP status code.
-   * @param {string} [options.errorType] - Error type (e.g., 'authentication_error').
-   * @param {string} [options.errorCode] - Machine-readable error code.
-   * @param {any} [options.upstreamBody] - Raw upstream error body.
+   * @param {string} message - Error message (typically the upstream's own message).
+   * @param {Object} [options]
+   * @param {number} [options.statusCode] - HTTP status code from upstream.
+   * @param {string} [options.errorType] - Upstream error type (e.g., 'rate_limit_error').
+   * @param {string} [options.errorCode] - Upstream error code (e.g., 'rate_limit_exceeded').
+   * @param {any} [options.upstreamBody] - Raw upstream response body (parsed).
    * @param {string} [options.provider] - Provider name.
-   * @param {number} [options.retryAfterSeconds] - Retry-After header value in seconds.
-   * @param {string} [options.category] - Error category slug.
+   * @param {number} [options.retryAfterSeconds] - Parsed Retry-After in seconds.
    */
   constructor(message, options = {}) {
     super(message);
     this.name = 'UpstreamError';
-    this.statusCode = options.statusCode || 500;
-    this.errorType = options.errorType || 'api_error';
-    this.errorCode = options.errorCode || 'internal_server_error';
-    this.upstreamBody = options.upstreamBody || null;
+    this.statusCode = options.statusCode;
+    this.errorType = options.errorType;
+    this.errorCode = options.errorCode;
+    this.upstreamBody = options.upstreamBody ?? null;
     this.provider = options.provider || 'unknown';
-    this.retryAfterSeconds = options.retryAfterSeconds || undefined;
-    this.category = options.category || ERROR_CATEGORIES.SERVER;
+    this.retryAfterSeconds = options.retryAfterSeconds;
   }
 
   /**
@@ -202,14 +94,16 @@ export class UpstreamError extends Error {
    */
   toJSON() {
     return {
-      errorCode: this.errorCode,
-      category: this.category,
       statusCode: this.statusCode,
+      errorCode: this.errorCode,
+      errorType: this.errorType,
       provider: this.provider,
       retryAfterSeconds: this.retryAfterSeconds,
     };
   }
 }
+
+// ─── Normalization (passthrough) ───────────────────────────────────────────
 
 /**
  * Extracts response headers from an error object.
@@ -219,9 +113,7 @@ export class UpstreamError extends Error {
  */
 function extractResponseHeaders(error) {
   const rawHeaders = error?.response?.headers ?? error?.headers;
-  if (!rawHeaders) {
-    return {};
-  }
+  if (!rawHeaders) return {};
   if (typeof rawHeaders.entries === 'function') {
     const headers = {};
     for (const [key, value] of rawHeaders.entries()) {
@@ -233,127 +125,147 @@ function extractResponseHeaders(error) {
 }
 
 /**
- * Computes an override message for authentication-category errors.
- * Returns null when no override applies, so the caller can fall back to the classified message.
+ * Resolves the upstream HTTP status from a caught error.
+ * Looks at `statusCode`, `status`, and `response.status` in that order.
  *
- * @param {string} errorCode - Machine-readable error code.
- * @param {string} fallbackMessage - The currently resolved message.
- * @param {Object|null} req - Normalized request (for model context in forbidden messages).
- * @returns {string|null}
+ * @param {any} error
+ * @returns {number|undefined}
  */
-function authMessageOverride(errorCode, fallbackMessage, req) {
-  if (errorCode === 'invalid_api_key') {
-    return 'Authentication failed: Invalid upstream API key.';
-  }
-  if (errorCode === 'no_api_key') {
-    return 'Authentication failed: No Authorization header sent to the upstream provider.';
-  }
-  if (errorCode === 'forbidden') {
-    const attemptedModel = req?.model || 'unknown';
-    return `Permission denied: access forbidden. Model attempted: ${attemptedModel}. ${fallbackMessage}`;
-  }
-  return null;
+function resolveStatusCode(error) {
+  if (typeof error?.statusCode === 'number') return error.statusCode;
+  if (typeof error?.status === 'number') return error.status;
+  if (typeof error?.response?.status === 'number') return error.response.status;
+  return undefined;
 }
 
 /**
  * Normalizes any upstream or transport error into the canonical provider error shape.
+ * Pure passthrough: the upstream's message, code, and type are preserved verbatim.
  *
  * @param {any} error - Caught error from adapter or fetch.
  * @param {string} providerName - Provider name for the normalized error.
- * @param {Object} [req] - Normalized internal request (for auth message context).
- * @returns {Object} Normalized error with code, category, type, message, httpStatus, provider.
+ * @returns {{
+ *   message: string,
+ *   statusCode: number|undefined,
+ *   errorCode: string|undefined,
+ *   errorType: string|undefined,
+ *   retryAfterSeconds: number|undefined,
+ *   provider: string,
+ *   upstreamBody: any,
+ *   transportCode: string|undefined,
+ * }}
  */
-export function normalizeUpstreamError(error, providerName, req = null) {
-  const status = error?.statusCode ?? error?.status ?? error?.response?.status;
-
-  if (!(error instanceof UpstreamError) && status === undefined) {
-    const transport = classifyTransportError(error);
+export function normalizeUpstreamError(error, providerName) {
+  if (error instanceof UpstreamError) {
     return {
-      code: transport.code,
-      type: undefined,
-      message: transport.message,
-      httpStatus: transport.httpStatus,
-      provider: providerName,
-      category: transport.category,
-      retryAfterSeconds: undefined,
-      upstreamBody: undefined,
+      message: error.message,
+      statusCode: error.statusCode,
+      errorCode: error.errorCode,
+      errorType: error.errorType,
+      retryAfterSeconds: error.retryAfterSeconds,
+      provider: error.provider && error.provider !== 'unknown' ? error.provider : providerName,
+      upstreamBody: error.upstreamBody ?? null,
+      transportCode: undefined,
     };
   }
 
-  let errorCode = error?.errorCode;
-  let errorType = error?.errorType;
-  let category = error?.category;
-  const upstreamBody = error?.upstreamBody;
-  let retryAfterSeconds = error?.retryAfterSeconds;
-  let message = error?.message || String(error);
+  const status = resolveStatusCode(error);
 
-  if (!(error instanceof UpstreamError)) {
-    const errorBody = error?.upstreamBody
-      ?? (error?.error ? { error: error.error } : error);
-    const classification = classifyUpstreamError(
-      status,
-      errorBody,
-      extractResponseHeaders(error),
-    );
-    errorCode = classification.code;
-    errorType = classification.type;
-    category = classification.category;
-    retryAfterSeconds = classification.retryAfterSeconds ?? retryAfterSeconds;
-    message = classification.message || message;
+  // Transport-level failure: no upstream HTTP response was received.
+  if (status === undefined) {
+    const transport = classifyTransportError(error);
+    return {
+      message: transport.message,
+      statusCode: undefined,
+      errorCode: transport.code,
+      errorType: 'transport_error',
+      retryAfterSeconds: undefined,
+      provider: providerName,
+      upstreamBody: null,
+      transportCode: transport.code,
+    };
   }
 
-  if (category === ERROR_CATEGORIES.AUTH) {
-    message = authMessageOverride(errorCode, message, req) ?? message;
-  }
+  // HTTP-level failure: extract the upstream's own message / code / type, if any.
+  const upstreamBody = error?.upstreamBody
+    ?? (error?.error ? { error: error.error } : undefined);
+  const errorObj = upstreamBody?.error || upstreamBody || {};
+  const message = errorObj?.message
+    || error?.message
+    || `Upstream returned HTTP ${status}`;
+  const headers = extractResponseHeaders(error);
+  const retryAfterSeconds = parseRetryAfter(
+    headers['retry-after'] || headers['Retry-After'] || error?.retryAfterSeconds,
+  );
 
   return {
-    code: errorCode,
-    type: errorType,
     message,
-    httpStatus: getClientHttpStatus(status, category, errorCode),
-    provider: (error?.provider && error.provider !== 'unknown') ? error.provider : providerName,
+    statusCode: status,
+    errorCode: errorObj?.code,
+    errorType: errorObj?.type,
     retryAfterSeconds,
-    category,
-    upstreamBody,
-    upstreamStatus: status,
+    provider: providerName,
+    upstreamBody: upstreamBody ?? null,
+    transportCode: undefined,
   };
 }
 
+// ─── Stream error helpers ──────────────────────────────────────────────────
+
 /**
- * Classifies and throws an UpstreamError for a mid-stream SSE failure.
+ * Resolves the HTTP status code to surface for an inline stream error payload.
+ * Falls back to `fallback` (502) when the upstream does not surface a clear status.
+ *
+ * @param {any} errorPayload
+ * @param {number} [fallback=502]
+ * @returns {number}
+ */
+export function resolveStreamErrorStatus(errorPayload, fallback = 502) {
+  const err = errorPayload?.error || errorPayload;
+  if (typeof err?.code === 'number' && err.code >= 100 && err.code < 600) return err.code;
+  if (typeof err?.status_code === 'number' && err.status_code >= 100 && err.status_code < 600) {
+    return err.status_code;
+  }
+  if (typeof err?.status === 'number' && err.status >= 100 && err.status < 600) return err.status;
+  return fallback;
+}
+
+/**
+ * Builds an UpstreamError from a mid-stream SSE error payload.
  *
  * @param {any} upstreamBody - Parsed SSE error payload.
  * @param {number} statusCode - HTTP status for classification.
  * @param {string} provider - Provider name.
- * @param {Object} [headers] - Optional response headers (Retry-After).
- * @throws {UpstreamError}
+ * @param {Object} [headers] - Optional response headers.
+ * @returns {UpstreamError}
  */
 export function createStreamUpstreamError(upstreamBody, statusCode, provider, headers = {}) {
-  const classification = classifyUpstreamError(statusCode, upstreamBody, headers);
-  throw new UpstreamError(classification.message || 'Stream error', {
+  const err = upstreamBody?.error || upstreamBody || {};
+  const retryAfterSeconds = parseRetryAfter(
+    headers['retry-after'] || headers['Retry-After'],
+  );
+  return new UpstreamError(err?.message || 'Stream error', {
     statusCode,
-    errorType: classification.type,
-    errorCode: classification.code,
+    errorType: err?.type,
+    errorCode: err?.code,
     upstreamBody,
     provider,
-    category: ERROR_CATEGORIES.STREAMING,
-    retryAfterSeconds: classification.retryAfterSeconds,
+    retryAfterSeconds,
   });
 }
 
 /**
- * Detects and throws on inline stream error payloads (OpenAI-compatible shape).
+ * Detects inline stream error payloads and throws an UpstreamError when present.
+ * Used for both OpenAI-compatible and Gemini streams.
  *
  * @param {any} parsedData - Parsed SSE event data.
  * @param {string} provider - Provider name.
  * @param {Object} [headers] - Optional response headers.
  */
 export function throwIfStreamErrorPayload(parsedData, provider, headers = {}) {
-  if (!parsedData?.error) {
-    return;
-  }
+  if (!parsedData?.error) return;
   const statusCode = resolveStreamErrorStatus(parsedData);
-  createStreamUpstreamError(parsedData, statusCode, provider, headers);
+  throw createStreamUpstreamError(parsedData, statusCode, provider, headers);
 }
 
 export const throwIfGeminiStreamError = throwIfStreamErrorPayload;

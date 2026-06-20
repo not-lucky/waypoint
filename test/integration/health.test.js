@@ -137,10 +137,9 @@ describe('Health Endpoint Integration Tests', () => {
     expect(res.body.providers.gemini.activeKeys).toBe(2);
     expect(res.body.providers.gemini.exhaustedKeys).toBe(0);
 
-    // Trigger billing failure against a key in the gemini pool
+    // Trigger 5xx server failure against a key in the gemini pool (triggers cooldown)
     keyRegistry.flagFailure('gemini', 'gemini-key-1', {
-      category: 'billing',
-      code: 'insufficient_quota',
+      statusCode: 503,
     });
 
     // Check status becomes degraded with cooling, not exhaustion
@@ -166,10 +165,7 @@ describe('Health Endpoint Integration Tests', () => {
 
     // Trigger 429 against a key in the gemini pool
     const beforeTime = Date.now();
-    keyRegistry.flagFailure('gemini', 'gemini-key-1', {
-      category: 'rate_limit',
-      code: 'rate_limit_exceeded',
-    });
+    keyRegistry.flagFailure('gemini', 'gemini-key-1', { statusCode: 429 });
 
     // Check status becomes degraded and coolingKeys is 1
     res = await getHealth().expect(200);
@@ -196,20 +192,14 @@ describe('Health Endpoint Integration Tests', () => {
 
   it('should report the earliest coolingUntil timestamp when multiple keys are cooling', async () => {
     // Trigger 429 on gemini-key-1
-    keyRegistry.flagFailure('gemini', 'gemini-key-1', {
-      category: 'rate_limit',
-      code: 'rate_limit_exceeded',
-    });
+    keyRegistry.flagFailure('gemini', 'gemini-key-1', { statusCode: 429 });
     const key1CooldownTime = keyRegistry.pools.gemini.keys[0].cooldownUntil;
 
     // Advance time slightly
     await vi.advanceTimersByTimeAsync(5000);
 
     // Trigger 429 on gemini-key-2 (will have a later cooldown time)
-    keyRegistry.flagFailure('gemini', 'gemini-key-2', {
-      category: 'rate_limit',
-      code: 'rate_limit_exceeded',
-    });
+    keyRegistry.flagFailure('gemini', 'gemini-key-2', { statusCode: 429 });
     const key2CooldownTime = keyRegistry.pools.gemini.keys[1].cooldownUntil;
 
     expect(key2CooldownTime).toBeGreaterThan(key1CooldownTime);
@@ -254,8 +244,7 @@ describe('Health Endpoint Integration Tests', () => {
 
     // Trigger a server transient failure for key 1
     keyRegistry.flagFailure('gemini', 'gemini-key-1', {
-      category: 'server',
-      code: 'internal_server_error',
+      statusCode: 500,
     });
 
     res = await getHealth().expect(200);

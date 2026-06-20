@@ -1,22 +1,22 @@
 import { formatOpenAiSseError } from '../errors/envelope.js';
 import { StreamAccumulator } from '../streaming/streamAccumulator.js';
 import { startSSEStream } from '../streaming/sseUtils.js';
+import { FORMATS } from '../transforms/index.js';
 import { BaseController } from './baseController.js';
 
 /**
  * Protocol controller for the OpenAI-compatible ingress endpoints.
+ * Upstream is OpenAI-compatible; ingress is OpenAI-shape; no translation needed.
  */
 export class OpenAIController extends BaseController {
   constructor(orchestrator) {
     super(orchestrator, 'openai');
   }
 
-  /**
-   * Main HTTP handler for OpenAI chat completion requests.
-   */
   async handleCompletion(req, res) {
     return this.executeRequest(req, res, {
       protocolName: 'OpenAI',
+      ingressFormat: FORMATS.OPENAI,
       translateReq: (body) => ({
         ...body,
         messages: body.messages || [],
@@ -29,10 +29,6 @@ export class OpenAIController extends BaseController {
     });
   }
 
-  /**
-   * Handles the Server-Sent Events (SSE) stream for an OpenAI response.
-   */
-   
   async handleStream(res, response, reqLog) {
     this.logger.debug('Starting OpenAI SSE response stream');
 
@@ -42,7 +38,6 @@ export class OpenAIController extends BaseController {
     const accumulator = new StreamAccumulator();
 
     try {
-       
       for await (const chunk of response) {
         chunkCount += 1;
         const sseData = `data: ${JSON.stringify(chunk)}\n\n`;
@@ -51,7 +46,6 @@ export class OpenAIController extends BaseController {
         reqLog.appendStreamEvent('client', sseData);
         res.write(sseData);
       }
-       
 
       const doneMarker = 'data: [DONE]\n\n';
       reqLog.appendStreamEvent('client', doneMarker);
@@ -68,7 +62,15 @@ export class OpenAIController extends BaseController {
       });
     } catch (err) {
       this.logger.debug('OpenAI SSE response stream aborted or failed', { chunkCount, error: err.message });
-      this.emitStreamError(res, reqLog, err, formatOpenAiSseError, 'openai', chunkCount);
+      this.emitStreamError(
+        res,
+        reqLog,
+        err,
+        formatOpenAiSseError,
+        FORMATS.OPENAI,
+        FORMATS.OPENAI,
+        chunkCount,
+      );
     } finally {
       await reqLog.finalize();
       res.end();

@@ -229,71 +229,70 @@ describe('AnthropicAdapter Tests', () => {
   it('assert: normalizeError uses the configured provider name for custom adapters', () => {
     const adapter = new AnthropicAdapter({ baseUrl: 'https://router.requesty.ai', providerName: 'requesty' });
 
+    // Passthrough: the upstream's status, message, and provider name are preserved.
+    // No classifier is applied, so errorCode/errorType are null when the upstream
+    // didn't supply them.
     expect(adapter.normalizeError({ statusCode: 404, message: '404 page not found' })).toEqual({
-      code: 'endpoint_not_found',
-      type: 'not_found_error',
       message: '404 page not found',
-      httpStatus: 404,
-      provider: 'requesty',
-      category: 'model_resource',
-      upstreamBody: undefined,
-      upstreamStatus: 404,
+      statusCode: 404,
+      errorCode: undefined,
+      errorType: undefined,
       retryAfterSeconds: undefined,
+      provider: 'requesty',
+      upstreamBody: null,
+      transportCode: undefined,
     });
   });
 
-  it('assert: normalizeError covers 429, 402/403 with correct codes and httpStatus values', () => {
+  it('assert: normalizeError passes through upstream status codes', () => {
     const adapter = new AnthropicAdapter({});
 
-    // 429
+    // 429 - upstream status preserved, no classifier applied.
     expect(adapter.normalizeError({ statusCode: 429 })).toEqual({
-      code: 'rate_limit_exceeded',
-      type: 'rate_limit_error',
       message: expect.any(String),
-      httpStatus: 429,
-      provider: 'anthropic',
-      category: 'rate_limit',
-      upstreamBody: undefined,
-      upstreamStatus: 429,
+      statusCode: 429,
+      errorCode: undefined,
+      errorType: undefined,
       retryAfterSeconds: undefined,
+      provider: 'anthropic',
+      upstreamBody: null,
+      transportCode: undefined,
     });
 
     // 402
     expect(adapter.normalizeError({ response: { status: 402 } })).toEqual({
-      code: 'insufficient_quota',
-      type: 'billing_error',
       message: expect.any(String),
-      httpStatus: 402,
-      provider: 'anthropic',
-      category: 'billing',
-      upstreamBody: undefined,
-      upstreamStatus: 402,
+      statusCode: 402,
+      errorCode: undefined,
+      errorType: undefined,
       retryAfterSeconds: undefined,
+      provider: 'anthropic',
+      upstreamBody: null,
+      transportCode: undefined,
     });
 
     // 403
     expect(adapter.normalizeError({ response: { status: 403 } })).toEqual({
-      code: 'forbidden',
-      type: 'permission_denied_error',
       message: expect.any(String),
-      httpStatus: 403,
-      provider: 'anthropic',
-      category: 'auth',
-      upstreamBody: undefined,
-      upstreamStatus: 403,
+      statusCode: 403,
+      errorCode: undefined,
+      errorType: undefined,
       retryAfterSeconds: undefined,
+      provider: 'anthropic',
+      upstreamBody: null,
+      transportCode: undefined,
     });
 
-    // other
+    // Transport error: statusCode is undefined, transportCode is set.
     expect(adapter.normalizeError({ message: 'Unknown Error' })).toEqual({
-      code: 'connect_timeout',
-      type: undefined,
       message: 'Upstream connection failed: Unknown Error',
-      httpStatus: 503,
-      provider: 'anthropic',
-      category: 'transport',
+      statusCode: undefined,
+      errorCode: 'connect_timeout',
+      errorType: 'transport_error',
       retryAfterSeconds: undefined,
-      upstreamBody: undefined,
+      provider: 'anthropic',
+      upstreamBody: null,
+      transportCode: 'connect_timeout',
     });
   });
 
@@ -454,5 +453,25 @@ describe('AnthropicAdapter Tests', () => {
 
     await expect(adapter.generateCompletion(req, 'key', null, requestLog)).rejects.toThrow('Fetch failed');
     expect(requestLog.logProviderRequest).toHaveBeenCalled();
+  });
+
+  it('assert: generateStream throws UpstreamError when an SSE error event is received', async () => {
+    const adapter = new AnthropicAdapter({});
+    const req = { model: 'claude-3', actualModelId: 'claude-3', messages: [] };
+
+    const errorFrame = 'event: error\ndata: {"type":"error","error":{"type":"overloaded_error","message":"Upstream overloaded"}}\n\n';
+    const encoder = new TextEncoder();
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: (async function* () {
+        yield encoder.encode(errorFrame);
+      })(),
+      headers: new Headers(),
+    });
+
+    const stream = adapter.generateStream(req, 'key');
+    const iterator = stream[Symbol.asyncIterator]();
+    await expect(iterator.next()).rejects.toThrow('Upstream overloaded');
   });
 });

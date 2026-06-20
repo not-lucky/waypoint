@@ -424,7 +424,9 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
       .expect(502);
 
     expect(mockAdapter.callCount).toBe(1);
-    expect(res.body.error.code).toBe('bad_gateway');
+    // With the passthrough envelope, the upstream's own code is preserved.
+    // The custom error has no `error.code`, so the envelope falls back to 'upstream_error'.
+    expect(res.body.error.code).toBe('upstream_error');
     expect(res.body.error.message).toBe('Custom mock provider internal error');
     expect(res.body.error.httpStatus).toBe(502);
 

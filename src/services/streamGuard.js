@@ -5,7 +5,7 @@
  * @module services/retryLogic/streamGuard
  */
 
-import { shouldCooldownKey } from '../errors/policy.js';
+import { decideKeyAction } from '../errors/policy.js';
 import { getAppLogger } from '../logging/logger.js';
 import { buildUpstreamErrorLogFields } from '../logging/upstreamErrorLogMeta.js';
 
@@ -15,10 +15,10 @@ const logger = getAppLogger('stream');
  * Consumes remaining chunks from an async iterator while monitoring for abort signals.
  * Returns true if the stream completed successfully, false if aborted.
  *
- * @param {AsyncIterator} iterator - The stream iterator.
- * @param {AbortController} abortController - Abort controller for tracking client disconnects.
- * @yields {any} Stream chunks from the upstream provider.
- * @returns {Promise<boolean>} Whether the stream completed successfully.
+ * @param {AsyncIterator} iterator
+ * @param {AbortController} abortController
+ * @yields {any}
+ * @returns {Promise<boolean>}
  */
 async function* consumeStreamChunks(iterator, abortController) {
   while (true) {
@@ -27,7 +27,6 @@ async function* consumeStreamChunks(iterator, abortController) {
       return false;
     }
 
-     
     const nextResult = await iterator.next();
     if (nextResult.done) return true;
 
@@ -43,13 +42,11 @@ async function* consumeStreamChunks(iterator, abortController) {
 /**
  * Handles stream errors by logging and applying key cooldown when appropriate.
  *
- * @param {Error} streamErr - The stream error.
- * @param {Object} config - Stream configuration object.
+ * @param {Error} streamErr
+ * @param {Object} config
  */
 function handleStreamError(streamErr, config) {
-  const {
-    abortController, adapter, req, keyRegistry, provider, apiKey,
-  } = config;
+  const { abortController, adapter, req, keyRegistry, provider, apiKey } = config;
 
   if (abortController.signal.aborted) return;
 
@@ -60,10 +57,10 @@ function handleStreamError(streamErr, config) {
     buildUpstreamErrorLogFields(normalized),
   );
 
-  if (shouldCooldownKey(normalized.category, normalized.code)) {
+  const action = decideKeyAction(normalized.statusCode);
+  if (action !== 'none') {
     keyRegistry.flagFailure(provider, apiKey, {
-      category: normalized.category,
-      code: normalized.code,
+      statusCode: normalized.statusCode,
       retryAfterSeconds: normalized.retryAfterSeconds,
     });
   }
@@ -71,21 +68,9 @@ function handleStreamError(streamErr, config) {
 
 /**
  * Wraps an async stream iterator with abort signal monitoring and error handling.
- * Yields chunks from the stream while checking for client disconnection.
- * On successful completion, flags the key as successful.
- * On error, logs the failure and applies cooldown when appropriate.
  *
- * @param {Object} config - Stream configuration object.
- * @param {Object} config.adapter - The provider adapter instance.
- * @param {Object} config.req - The normalized request payload.
- * @param {string} config.apiKey - The API key used for this stream.
- * @param {AbortController} config.abortController - Abort controller for tracking client
- *   disconnects.
- * @param {Object} config.keyRegistry - The key registry instance.
- * @param {string} config.provider - The provider name.
- * @param {Object} config.firstResult - The first result from the iterator.
- * @param {AsyncIterator} config.iterator - The stream iterator.
- * @yields {any} Stream chunks from the upstream provider.
+ * @param {Object} config
+ * @yields {any}
  */
 export async function* createStreamWithAbortGuard(config) {
   const {

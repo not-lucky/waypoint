@@ -1,56 +1,73 @@
 import { describe, it, expect } from 'vitest';
 import { buildUpstreamErrorLogFields } from '../../src/logging/upstreamErrorLogMeta.js';
-import { ERROR_CATEGORIES } from '../../src/errors/policy.js';
 
 describe('upstreamErrorLogMeta', () => {
-  it('should build structured fields from a normalized upstream error', () => {
+  it('builds structured fields from a normalized upstream error', () => {
     const fields = buildUpstreamErrorLogFields({
-      code: 'rate_limit_exceeded',
-      category: ERROR_CATEGORIES.RATE_LIMIT,
+      message: 'High demand',
+      errorCode: 'service_unavailable',
+      errorType: 'api_error',
       retryAfterSeconds: 30,
       provider: 'openai',
-      upstreamStatus: 429,
-      httpStatus: 429,
+      statusCode: 503,
     });
 
     expect(fields).toEqual({
-      error_code: 'rate_limit_exceeded',
-      category: ERROR_CATEGORIES.RATE_LIMIT,
-      lifecycle_tier: 'T3',
+      error_code: 'service_unavailable',
+      error_type: 'api_error',
+      lifecycle_tier: 'cooldown',
       retryAfterSeconds: 30,
       provider: 'openai',
-      upstream_http_status: 429,
-      client_http_status: 429,
+      upstream_http_status: 503,
+      client_http_status: 503,
       error_source: 'upstream',
     });
   });
 
-  it('should not include upstream body or secrets', () => {
+  it('does not include upstream body or secrets', () => {
     const fields = buildUpstreamErrorLogFields({
-      code: 'invalid_api_key',
-      category: ERROR_CATEGORIES.AUTH,
+      message: 'High demand',
+      errorCode: 'service_unavailable',
       provider: 'openai',
-      httpStatus: 401,
-      upstreamStatus: 401,
+      statusCode: 503,
       upstreamBody: { secret: 'raw-upstream' },
     });
 
     expect(fields).not.toHaveProperty('upstreamBody');
-    expect(fields.lifecycle_tier).toBe('T0');
+    expect(fields.lifecycle_tier).toBe('cooldown');
   });
 
-  it('should accept a custom error_source', () => {
+  it('accepts a custom error_source', () => {
     const fields = buildUpstreamErrorLogFields(
       {
-        code: 'poolUnavailable',
-        category: undefined,
+        message: 'pool unavailable',
+        errorCode: 'poolUnavailable',
         provider: 'openai',
-        httpStatus: 503,
+        statusCode: 503,
       },
       { errorSource: 'pool' },
     );
 
     expect(fields.error_source).toBe('pool');
-    expect(fields.lifecycle_tier).toBe('none');
+    expect(fields.lifecycle_tier).toBe('cooldown');
+  });
+
+  it('uses retired tier for 401', () => {
+    const fields = buildUpstreamErrorLogFields({
+      message: 'Bad key',
+      errorCode: 'invalid_api_key',
+      provider: 'openai',
+      statusCode: 401,
+    });
+    expect(fields.lifecycle_tier).toBe('retired');
+  });
+
+  it('uses transport tier for status-less errors', () => {
+    const fields = buildUpstreamErrorLogFields({
+      message: 'fetch failed',
+      provider: 'openai',
+      statusCode: undefined,
+    });
+    expect(fields.lifecycle_tier).toBe('transport');
   });
 });

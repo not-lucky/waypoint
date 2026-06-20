@@ -259,7 +259,7 @@ export class AnthropicAdapter extends BaseProvider {
         if (sseEvent.event === 'error' || dataJson?.type === 'error') {
           const errorDetails = dataJson?.error || dataJson || {};
           const statusCode = typeof errorDetails.status === 'number' ? errorDetails.status : 502;
-          createStreamUpstreamError(
+          throw createStreamUpstreamError(
             dataJson || { error: errorDetails },
             statusCode,
             this.providerName,

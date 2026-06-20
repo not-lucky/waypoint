@@ -50,7 +50,8 @@ describe('retryExecutor upstream error propagation', () => {
     }, {});
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
-    expect(res.error.code).toBe('model_not_found');
+    // Passthrough: the upstream's exact error body is forwarded. No classifier is applied.
+    expect(res.error.code).toBe('upstream_error');
     expect(res.error.message).toBe('Not Found');
     expect(res.error.httpStatus).toBe(404);
     expect(res.error.provider).toBe('requesty');
@@ -90,9 +91,9 @@ describe('retryExecutor upstream error propagation', () => {
     const second = await orchestrator.executeCompletion(req, {});
 
     expect(mockFetch).toHaveBeenCalledTimes(2);
-    expect(first.error).toEqual({
-      code: 'endpoint_not_found',
-      type: 'not_found_error',
+    // Passthrough: the raw upstream body is preserved.
+    expect(first.error).toMatchObject({
+      code: 'upstream_error',
       message: '404 page not found',
       httpStatus: 404,
       provider: 'requesty',

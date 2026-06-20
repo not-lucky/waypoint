@@ -1,20 +1,21 @@
 /**
  * @fileoverview Error building and retry decision logic for the retry executor.
- * Constructs error envelopes for pool unavailability, cancellation, and final failures.
+ * Constructs error envelopes in the v1 client shape `{ error: { code, message, ... } }`.
+ * The shape is the public contract consumed by `BaseController.executeRequest`.
  * @module services/retryLogic/retryStrategy
  */
 
-import { buildClientErrorEnvelope } from '../errors/envelope.js';
 import { getAppLogger } from '../logging/logger.js';
+import { resolveLifecycleTier } from '../errors/policy.js';
 
 const logger = getAppLogger('retry');
 
 /**
  * Builds an error envelope indicating all keys for a provider are in cooldown.
  *
- * @param {string} provider - The provider name.
- * @param {Object} keyRegistry - The key registry instance.
- * @returns {Object} Client error envelope with 503 status.
+ * @param {string} provider
+ * @param {Object} keyRegistry
+ * @returns {{ error: Object }}
  */
 export function buildPoolUnavailableError(provider, keyRegistry) {
   const keys = keyRegistry.pools[provider]?.keys;
@@ -23,76 +24,74 @@ export function buildPoolUnavailableError(provider, keyRegistry) {
   if (keys?.length) {
     const now = Date.now();
     let minCooldownUntil = Infinity;
-
     for (const key of keys) {
       if (key.cooldownUntil > now && key.cooldownUntil < minCooldownUntil) {
         minCooldownUntil = key.cooldownUntil;
       }
     }
-
     if (minCooldownUntil !== Infinity) {
       retryAfterSeconds = Math.max(0, Math.ceil((minCooldownUntil - now) / 1000));
     }
   }
 
-  return buildClientErrorEnvelope(
-    {
+  return {
+    error: {
       code: 'poolUnavailable',
       message: `All keys for provider '${provider}' are in cooldown.`,
+      httpStatus: 503,
       provider,
       retryAfterSeconds,
     },
-    503,
-  );
+  };
 }
 
 /**
  * Builds an error envelope indicating the request was cancelled by the client.
  *
- * @param {string} provider - The provider name.
- * @returns {Object} Client error envelope with 499 status.
+ * @param {string} provider
+ * @returns {{ error: Object }}
  */
 export function buildCancelledError(provider) {
-  return buildClientErrorEnvelope(
-    {
+  return {
+    error: {
       code: 'requestCancelled',
       message: 'Request was cancelled by the client.',
+      httpStatus: 499,
       provider,
     },
-    499,
-  );
+  };
 }
 
 /**
  * Builds the final error response when all retry attempts have failed.
- * Falls back to pool unavailable error when no upstream error was captured.
+ * Falls back to pool unavailable when no upstream error was captured.
  *
- * @param {string} provider - The provider name.
- * @param {Object} keyRegistry - The key registry instance.
- * @param {Object} adapter - The provider adapter instance.
- * @param {any} lastError - The last captured error, or null.
- * @param {Object} req - The normalized request payload.
- * @returns {Object} Client error envelope.
+ * @param {string} provider
+ * @param {Object} keyRegistry
+ * @param {Object} adapter
+ * @param {any} lastError
+ * @param {Object} req
+ * @returns {{ error: Object }}
  */
 export function buildFinalError(provider, keyRegistry, adapter, lastError, req) {
   if (lastError) {
     const normalized = adapter.normalizeError(lastError, req);
-    return buildClientErrorEnvelope(
-      {
-        code: normalized.code,
-        type: normalized.type,
+    return {
+      error: {
+        code: normalized.errorCode || 'upstream_error',
+        type: normalized.errorType,
         message: normalized.message || lastError.message || String(lastError),
+        httpStatus: typeof normalized.statusCode === 'number' ? normalized.statusCode : 502,
         provider: normalized.provider || provider,
         retryAfterSeconds: normalized.retryAfterSeconds,
+        upstreamBody: normalized.upstreamBody,
       },
-      normalized.httpStatus,
-    );
+    };
   }
 
   logger.warning(`All keys for provider '${provider}' are in cooldown.`, {
     error_code: 'poolUnavailable',
-    category: undefined,
-    lifecycle_tier: 'none',
+    lifecycle_tier: resolveLifecycleTier(undefined),
     provider,
     client_http_status: 503,
     error_source: 'pool',

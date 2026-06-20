@@ -1,4 +1,3 @@
- 
 import {
   describe,
   it,
@@ -12,7 +11,6 @@ import { AnthropicController } from '../../src/controllers/anthropicController.j
 import { UnifiedOrchestrator } from '../../src/services/unifiedOrchestrator.js';
 import { KeyRegistry } from '../../src/registry/keyRegistry.js';
 import { ProviderFactory } from '../../src/providers/factory.js';
-import { ERROR_CATEGORIES } from '../../src/errors/policy.js';
 import { UpstreamError } from '../../src/errors/upstream.js';
 import { formatAnthropicSseError, formatOpenAiSseError } from '../../src/errors/envelope.js';
 import { normalizeTestError } from '../helpers/normalizeTestError.js';
@@ -63,7 +61,7 @@ describe('Streaming Controller Error Emission', () => {
     app.post('/anthropic/messages', (req, res) => anthropicController.handleCompletion(req, res));
   });
 
-  it('emits OpenAI-compatible v1 SSE error after stream start', async () => {
+  it('emits OpenAI-compatible SSE error after stream start', async () => {
     mockAdapter.streamBehavior = async function* () {
       yield {
         id: 'chunk-1',
@@ -73,7 +71,6 @@ describe('Streaming Controller Error Emission', () => {
         statusCode: 429,
         errorType: 'rate_limit_error',
         errorCode: 'rate_limit_exceeded',
-        category: ERROR_CATEGORIES.STREAMING,
         provider: 'mock-provider',
         retryAfterSeconds: 30,
       });
@@ -103,7 +100,7 @@ describe('Streaming Controller Error Emission', () => {
     expect(response.text).toContain('data: [DONE]');
   });
 
-  it('emits Anthropic error event with v1 envelope after stream start', async () => {
+  it('emits Anthropic error event after stream start', async () => {
     mockAdapter.streamBehavior = async function* () {
       yield {
         id: 'chunk-1',
@@ -113,7 +110,6 @@ describe('Streaming Controller Error Emission', () => {
         statusCode: 503,
         errorType: 'overloaded_error',
         errorCode: 'engine_overloaded',
-        category: ERROR_CATEGORIES.STREAMING,
         provider: 'mock-provider',
       });
     };
@@ -141,7 +137,7 @@ describe('Streaming Controller Error Emission', () => {
     }));
   });
 
-  it('formats SSE error helpers per v1 contract', () => {
+  it('formats SSE error helpers', () => {
     const envelope = {
       error: {
         code: 'rate_limit_exceeded',

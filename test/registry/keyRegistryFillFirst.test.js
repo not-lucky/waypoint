@@ -54,8 +54,7 @@ describe('Key Registry Fill-First Strategy Tests', () => {
 
     // Key_A enters cooldown
     registry.flagFailure('gemini', 'Key_A', {
-      category: 'rate_limit',
-      code: 'rate_limit_exceeded',
+      statusCode: 429,
     });
 
     // Next request should return Key_B (first active/non-cooling key, not Key_C)

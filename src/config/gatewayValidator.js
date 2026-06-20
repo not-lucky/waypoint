@@ -12,7 +12,6 @@ import { logErrorAndExitOrThrow } from './validationErrors.js';
  *
  * @param {Object} gateway - The gateway configuration block from config file.
  * @param {boolean} shouldExit - Whether the process should exit on validation failure.
- * @param {Object|null} customLogger - Logger instance for warning/error reporting.
  * @throws {Error} Throws validation errors if shouldExit is false.
  */
 export const validateGateway = (gateway, shouldExit) => {
@@ -44,31 +43,15 @@ export const validateGateway = (gateway, shouldExit) => {
       logErrorAndExitOrThrow("Invalid 'gateway.cooldown'. Must be an object.", shouldExit);
     }
 
-    const {
-      baseSeconds,
-      maxSeconds,
-      billingSeconds,
-      permissionSeconds,
-      serverSeconds,
-      slowDownMinimumSeconds,
-    } = gateway.cooldown;
+    const { baseSeconds, maxSeconds, serverSeconds } = gateway.cooldown;
     if (baseSeconds !== undefined && !isPositiveInteger(baseSeconds)) {
       logErrorAndExitOrThrow("Invalid 'gateway.cooldown.baseSeconds'. Must be a positive integer.", shouldExit);
     }
     if (maxSeconds !== undefined && !isPositiveInteger(maxSeconds)) {
       logErrorAndExitOrThrow("Invalid 'gateway.cooldown.maxSeconds'. Must be a positive integer.", shouldExit);
     }
-    if (billingSeconds !== undefined && !isPositiveInteger(billingSeconds)) {
-      logErrorAndExitOrThrow("Invalid 'gateway.cooldown.billingSeconds'. Must be a positive integer.", shouldExit);
-    }
-    if (permissionSeconds !== undefined && !isPositiveInteger(permissionSeconds)) {
-      logErrorAndExitOrThrow("Invalid 'gateway.cooldown.permissionSeconds'. Must be a positive integer.", shouldExit);
-    }
     if (serverSeconds !== undefined && !isPositiveInteger(serverSeconds)) {
       logErrorAndExitOrThrow("Invalid 'gateway.cooldown.serverSeconds'. Must be a positive integer.", shouldExit);
-    }
-    if (slowDownMinimumSeconds !== undefined && !isPositiveInteger(slowDownMinimumSeconds)) {
-      logErrorAndExitOrThrow("Invalid 'gateway.cooldown.slowDownMinimumSeconds'. Must be a positive integer.", shouldExit);
     }
   }
 

@@ -1,10 +1,43 @@
 import { ConfigLoader } from '../config/loader.js'
-import { configureLogging, getAppLogger } from '../logging/logger.js'
+import { configureLogging, flushLogs, getAppLogger } from '../logging/logger.js'
 import { registerLifecycle } from '../lifecycle/lifecycle.js'
 import { wireServices } from './wireServices.js'
 import { createApp } from './createApp.js'
 
-export async function bootstrap() {
+const FATAL_EXIT_CODE = 1
+
+const logFatal = async ( err ) => {
+  // LogTape may not be wired yet (e.g. config load failure), so fall back to stderr.
+  console.error( `[FATAL] Waypoint bootstrap failed: ${ err?.stack || err?.message || err }` )
+  try {
+    await flushLogs()
+  } catch {
+    // Suppress secondary errors during emergency flush.
+  }
+}
+
+const handleUncaught = ( source ) => async ( err ) => {
+  console.error( `[FATAL] Unhandled ${ source } during request lifecycle:`, err )
+  try {
+    await flushLogs()
+  } catch {
+    // Suppress secondary errors during emergency flush.
+  }
+  process.exit( FATAL_EXIT_CODE )
+}
+
+let safetyNetsInstalled = false
+
+const installSafetyNets = () => {
+  if ( safetyNetsInstalled ) return
+  safetyNetsInstalled = true
+  process.on( 'uncaughtException', handleUncaught( 'exception' ) )
+  process.on( 'unhandledRejection', handleUncaught( 'rejection' ) )
+}
+
+export async function bootstrap () {
+  installSafetyNets()
+
   try {
     const config = new ConfigLoader().loadConfig()
 
@@ -34,8 +67,8 @@ export async function bootstrap() {
       config,
       logger,
     }
-  } catch ( _err ) {
-    // Application-level exit decision here
-    process.exit( 1 )
+  } catch ( err ) {
+    await logFatal( err )
+    process.exit( FATAL_EXIT_CODE )
   }
 }

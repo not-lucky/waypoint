@@ -28,16 +28,17 @@ describe('BaseProvider Tests', () => {
   it('uses the default normalizeError implementation', () => {
     const provider = new BaseProvider({ providerName: 'gemini' });
 
+    // Passthrough envelope: the upstream's status is preserved; no classifier,
+    // no per-code overrides. Code/type are null when the upstream didn't supply them.
     expect(provider.normalizeError({ statusCode: 429 })).toEqual({
-      code: 'rate_limit_exceeded',
-      type: 'rate_limit_error',
       message: expect.any(String),
-      httpStatus: 429,
-      provider: 'gemini',
-      category: 'rate_limit',
-      upstreamBody: undefined,
-      upstreamStatus: 429,
+      statusCode: 429,
+      errorCode: undefined,
+      errorType: undefined,
       retryAfterSeconds: undefined,
+      provider: 'gemini',
+      upstreamBody: null,
+      transportCode: undefined,
     });
   });
 
@@ -59,27 +60,25 @@ describe('BaseProvider Tests', () => {
   });
 
   describe('normalizeProviderError', () => {
-    it('should map known upstream status codes', () => {
+    it('passes through the upstream status code', () => {
       const rateLimited = BaseProvider.normalizeProviderError({ statusCode: 429 }, 'openai');
-      expect(rateLimited.code).toBe('rate_limit_exceeded');
-      expect(rateLimited.httpStatus).toBe(429);
+      expect(rateLimited.statusCode).toBe(429);
 
-      const quota = BaseProvider.normalizeProviderError({ statusCode: 403 }, 'anthropic');
-      expect(quota.code).toBe('forbidden');
-      expect(quota.httpStatus).toBe(403);
+      const forbidden = BaseProvider.normalizeProviderError({ statusCode: 403 }, 'anthropic');
+      expect(forbidden.statusCode).toBe(403);
     });
 
-    it('should map unknown errors to connect_timeout with full canonical shape', () => {
+    it('should classify transport errors with the transport shape', () => {
       const res = BaseProvider.normalizeProviderError(new Error('boom'), 'gemini');
       expect(res).toEqual({
-        code: 'connect_timeout',
-        type: undefined,
         message: 'Upstream connection failed: boom',
-        httpStatus: 503,
-        provider: 'gemini',
-        category: 'transport',
+        statusCode: undefined,
+        errorCode: 'connect_timeout',
+        errorType: 'transport_error',
         retryAfterSeconds: undefined,
-        upstreamBody: undefined,
+        provider: 'gemini',
+        upstreamBody: null,
+        transportCode: 'connect_timeout',
       });
     });
   });

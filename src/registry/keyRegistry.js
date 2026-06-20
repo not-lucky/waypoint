@@ -25,36 +25,18 @@ export class KeyRegistry {
    *
    * @param {Object} [config={}] - Application configuration object.
    * @param {string|null} [strategy=null] - Overridden routing strategy.
+   * @param {Object|null} [metricsCollector=null] - Optional metrics collector.
    */
   constructor(config = {}, strategy = null, metricsCollector = null) {
-    /**
-     * @type {Object}
-     */
     this.config = config;
     this.metricsCollector = metricsCollector;
 
-    /**
-     * The active routing strategy.
-     * @type {string}
-     */
     this.strategy = strategy || config?.gateway?.routing?.strategy || DEFAULT_ROUTING_STRATEGY;
 
-    /**
-     * Merged cooldown policy used by failure handling.
-     * @type {Object}
-     */
     this.cooldown = { ...COOLDOWN_DEFAULTS, ...config?.gateway?.cooldown };
 
-    /**
-     * Active Node.js timers for releasing cooldowns to guarantee clean shutdowns.
-     * @type {Set<NodeJS.Timeout>}
-     */
     this.timers = new Set();
 
-    /**
-     * Map of provider name to its stateful key pool.
-     * @type {Object<string, Object>}
-     */
     this.pools = Object.fromEntries(
       Object.entries(config.providers || {}).map(([name, providerConfig]) => [
         name,
@@ -63,44 +45,30 @@ export class KeyRegistry {
     );
   }
 
-  /**
-   * Retrieves the next available key for a requested provider using the active strategy.
-   *
-   * @param {string} provider - The name of the provider (e.g. 'openai').
-   * @returns {string|null} The next available API key string, or null if none are available.
-   */
   getKey(provider) {
     const pool = this.pools[provider];
     return getKeyFromPool(pool, this.strategy);
   }
 
-  /**
-   * Finds the KeyObject wrapper for a specific raw key string and provider.
-   *
-   * @param {string} provider - The provider name.
-   * @param {string} keyStr - The raw API key string.
-   * @returns {KeyObject|null} The KeyObject wrapper, or null if not found.
-   */
   findKey(provider, keyStr) {
     const pool = this.pools[provider];
     return findKeyInPool(pool, keyStr);
   }
 
   /**
-   * Flags a key as failed and applies tiered lifecycle policy (T0-T5)
-   * from structured error meaning.
+   * Flags a key as failed and applies HTTP-status-based lifecycle policy.
    *
-   * @param {string} provider - The provider name.
-   * @param {string} keyStr - The raw key string that failed.
-   * @param {Object} descriptor - Structured failure descriptor.
-   * @param {string} descriptor.category - Error category slug.
-   * @param {string} descriptor.code - Machine-readable error code.
-   * @param {number} [descriptor.retryAfterSeconds] - Optional cooldown override from Retry-After.
+   * @param {string} provider - Provider name.
+   * @param {string} keyStr - Raw key string that failed.
+   * @param {Object} descriptor
+   * @param {number|undefined} descriptor.statusCode - Upstream HTTP status code.
+   * @param {number} [descriptor.retryAfterSeconds] - Parsed Retry-After in seconds.
+   * @returns {'retire' | 'cooldown' | 'none'} The action that was applied.
    */
   flagFailure(provider, keyStr, descriptor) {
     const key = this.findKey(provider, keyStr);
     const previousCooldownUntil = key?.cooldownUntil ?? null;
-    handleKeyFailure(key, descriptor, this.cooldown, this.timers);
+    const action = handleKeyFailure(key, descriptor, this.cooldown, this.timers);
 
     if (
       this.metricsCollector
@@ -110,28 +78,18 @@ export class KeyRegistry {
     ) {
       this.metricsCollector.incrementCounter('waypoint_cooldown_activations_total', {
         provider,
-        category: descriptor.category || 'unknown',
+        action,
       });
     }
+    return action;
   }
 
-  /**
-   * Resets the failure streak and cooldown state when a key successfully services a request.
-   *
-   * @param {string} provider - The provider name.
-   * @param {string} keyStr - The raw key string that succeeded.
-   */
   flagSuccess(provider, keyStr) {
     const key = this.findKey(provider, keyStr);
     handleKeySuccess(key);
   }
 
   /**
-   * Calculates health statistics for a single provider's key pool.
-   *
-   * @param {Object} pool - The key pool configuration object.
-   * @param {number} now - The current timestamp in milliseconds.
-   * @returns {{stats: Object, isDegraded: boolean}} The calculated stats and degradation status.
    * @private
    */
   static getProviderStats(pool, now) {
@@ -173,11 +131,7 @@ export class KeyRegistry {
   }
 
   /**
-   * Calculates health statistics across all key pools.
-   * If any key is currently exhausted or cooling down, the overall status is marked 'degraded'.
-   * Provides insight into current routing pointers and overall pool saturation.
-   *
-   * @returns {Object} Section 6E schema compatible health statistics.
+   * @returns {Object}
    */
   getHealthStats() {
     const providers = {};
@@ -208,9 +162,7 @@ export class KeyRegistry {
   }
 
   /**
-   * Aggregates key pool counts across all providers.
-   *
-   * @param {number} [now=Date.now()] - Timestamp used for cooldown evaluation.
+   * @param {number} [now=Date.now()]
    * @returns {{active: number, cooldown: number, exhausted: number, total: number}}
    */
   getAggregateKeyPoolStats(now = Date.now()) {
@@ -234,17 +186,9 @@ export class KeyRegistry {
       });
     });
 
-    return {
-      active,
-      cooldown,
-      exhausted,
-      total,
-    };
+    return { active, cooldown, exhausted, total };
   }
 
-  /**
-   * Stops all running cooldown timers to prevent process hangs during shutdown.
-   */
   cleanup() {
     this.timers.forEach(clearTimeout);
     this.timers.clear();

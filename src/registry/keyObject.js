@@ -39,7 +39,9 @@ export class KeyObject {
     this.consecutiveFailures = 0;
 
     /**
-     * Permanently set to true only for invalid_api_key (T0 terminal credential).
+     * Permanently set to true when the key is retired by the HTTP-status key
+     * lifecycle policy (HTTP 401 or 403 from the upstream). The key is never
+     * auto-reactivated after this is set.
      * @type {boolean}
      */
     this.exhausted = false;

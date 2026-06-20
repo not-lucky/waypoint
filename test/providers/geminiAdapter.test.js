@@ -116,59 +116,55 @@ describe('GeminiAdapter Tests', () => {
     });
   });
 
-  it('assert: normalizeError covers 429 and quota exhausted codes', () => {
+  it('assert: normalizeError passes through upstream status codes', () => {
     const adapter = new GeminiAdapter({});
 
-    // 429
+    // 429 - upstream status preserved, no classifier applied.
     expect(adapter.normalizeError({ statusCode: 429 })).toEqual({
-      code: 'rate_limit_exceeded',
-      type: 'rate_limit_error',
       message: expect.any(String),
-      httpStatus: 429,
-      provider: 'gemini',
-      category: 'rate_limit',
-      upstreamBody: undefined,
-      upstreamStatus: 429,
+      statusCode: 429,
+      errorCode: undefined,
+      errorType: undefined,
       retryAfterSeconds: undefined,
+      provider: 'gemini',
+      upstreamBody: null,
+      transportCode: undefined,
     });
 
     // 402
     expect(adapter.normalizeError({ response: { status: 402 } })).toEqual({
-      code: 'insufficient_quota',
-      type: 'billing_error',
       message: expect.any(String),
-      httpStatus: 402,
-      provider: 'gemini',
-      category: 'billing',
-      upstreamBody: undefined,
-      upstreamStatus: 402,
+      statusCode: 402,
+      errorCode: undefined,
+      errorType: undefined,
       retryAfterSeconds: undefined,
+      provider: 'gemini',
+      upstreamBody: null,
+      transportCode: undefined,
     });
 
     // 403
     expect(adapter.normalizeError({ response: { status: 403 } })).toEqual({
-      code: 'forbidden',
-      type: 'permission_denied_error',
       message: expect.any(String),
-      httpStatus: 403,
-      provider: 'gemini',
-      category: 'auth',
-      upstreamBody: undefined,
-      upstreamStatus: 403,
+      statusCode: 403,
+      errorCode: undefined,
+      errorType: undefined,
       retryAfterSeconds: undefined,
+      provider: 'gemini',
+      upstreamBody: null,
+      transportCode: undefined,
     });
 
-    // Other error
+    // 500 with explicit message
     expect(adapter.normalizeError({ message: 'Internal Server Error', statusCode: 500 })).toEqual({
-      code: 'internal_server_error',
-      type: 'api_error',
       message: 'Internal Server Error',
-      httpStatus: 502,
-      provider: 'gemini',
-      category: 'server',
-      upstreamBody: undefined,
-      upstreamStatus: 500,
+      statusCode: 500,
+      errorCode: undefined,
+      errorType: undefined,
       retryAfterSeconds: undefined,
+      provider: 'gemini',
+      upstreamBody: null,
+      transportCode: undefined,
     });
   });
 

@@ -1,274 +1,161 @@
 import { describe, it, expect } from 'vitest';
-import { parseRetryAfter, classifyUpstreamError } from '../../src/errors/httpRules.js';
+import { decideKeyAction, isRetryable, resolveCooldownSeconds, resolveLifecycleTier } from '../../src/errors/policy.js';
 import {
-  ERROR_CATEGORIES, isRetryable, shouldCooldownKey, resolveLifecycleTier,
-} from '../../src/errors/policy.js';
-import {
-  getClientHttpStatus, classifyTransportError,
+  classifyTransportError, parseRetryAfter,
   UpstreamError, normalizeUpstreamError, throwIfStreamErrorPayload, throwIfGeminiStreamError,
 } from '../../src/errors/upstream.js';
 import {
   buildClientErrorEnvelope, normalizeStreamFailure, formatOpenAiSseError, formatAnthropicSseError,
 } from '../../src/errors/envelope.js';
 
-describe('upstreamErrors.js Tests', () => {
-  describe('classifyUpstreamError', () => {
-    it('should classify 401 Auth errors', () => {
-      const res1 = classifyUpstreamError(401, { error: { message: 'Invalid API Key' } });
-      expect(res1.type).toBe('authentication_error');
-      expect(res1.code).toBe('invalid_api_key');
-      expect(res1.category).toBe(ERROR_CATEGORIES.AUTH);
-
-      const res2 = classifyUpstreamError(401, { error: { message: 'no authorization header' } });
-      expect(res2.type).toBe('authentication_error');
-      expect(res2.code).toBe('no_api_key');
-
-      const res3 = classifyUpstreamError(401, { error: { message: 'You must be a member of an organization to use the API' } });
-      expect(res3.code).toBe('org_membership_required');
-      expect(res3.category).toBe(ERROR_CATEGORIES.AUTH);
-
-      const res4 = classifyUpstreamError(401, { error: { message: 'IP not authorized' } });
-      expect(res4.code).toBe('ip_not_authorized');
-      expect(res4.category).toBe(ERROR_CATEGORIES.AUTH);
-    });
-
-    it('should classify 403 Forbidden errors', () => {
-      const res = classifyUpstreamError(403, { error: { message: 'Forbidden access to model' } });
-      expect(res.type).toBe('permission_denied_error');
-      expect(res.code).toBe('forbidden');
-      expect(res.category).toBe(ERROR_CATEGORIES.AUTH);
-
-      const region = classifyUpstreamError(403, { error: { message: 'Country, region, or territory not supported' } });
-      expect(region.code).toBe('region_not_supported');
-      expect(region.category).toBe(ERROR_CATEGORIES.AUTH);
-    });
-
-    const res1 = classifyUpstreamError(402, { error: { message: 'Out of credits' } });
-    expect(res1.type).toBe('billing_error');
-    expect(res1.code).toBe('insufficient_quota');
-    expect(res1.category).toBe(ERROR_CATEGORIES.BILLING);
-
-    const res2 = classifyUpstreamError(402, { error: { message: 'monthly spend hard limit reached' } });
-    expect(res2.type).toBe('billing_error');
-    expect(res2.code).toBe('billing_hard_limit_reached');
+describe('decideKeyAction', () => {
+  it('retires the key on 401', () => {
+    expect(decideKeyAction(401)).toBe('retire');
   });
 
-  it('should classify 429 Rate Limiting errors', () => {
-    const res1 = classifyUpstreamError(429, { error: { message: 'Rate limit' } });
-    expect(res1.type).toBe('rate_limit_error');
-    expect(res1.code).toBe('rate_limit_exceeded');
-    expect(res1.category).toBe(ERROR_CATEGORIES.RATE_LIMIT);
-
-    const res2 = classifyUpstreamError(429, { error: { message: 'TPM tokens per minute exceeded' } });
-    expect(res2.code).toBe('tokens_per_minute_exceeded');
-
-    const res3 = classifyUpstreamError(429, { error: { message: 'concurrent requests' } });
-    expect(res3.code).toBe('concurrent_requests_exceeded');
-
-    const res4 = classifyUpstreamError(429, { error: { message: 'daily token quota' } });
-    expect(res4.code).toBe('daily_tokens_exceeded');
-    expect(res4.type).toBe('billing_error');
-    expect(res4.category).toBe(ERROR_CATEGORIES.BILLING);
-
-    const res5 = classifyUpstreamError(429, { error: { message: 'You exceeded your current quota, please check your plan and billing details' } });
-    expect(res5.code).toBe('daily_tokens_exceeded');
-    expect(res5.type).toBe('billing_error');
-    expect(res5.category).toBe(ERROR_CATEGORIES.BILLING);
+  it('retires the key on 403 (permission denied; the key is the problem)', () => {
+    expect(decideKeyAction(403)).toBe('retire');
   });
 
-  it('should extract Retry-After header if present', () => {
-    const res = classifyUpstreamError(429, { error: { message: 'Rate limit' } }, { 'retry-after': '30' });
-    expect(res.retryAfterSeconds).toBe(30);
-
-    const overloaded = classifyUpstreamError(503, { error: { message: 'engine overloaded' } }, { 'retry-after': '60' });
-    expect(overloaded.retryAfterSeconds).toBe(60);
-
-    const slowDown = classifyUpstreamError(503, { error: { message: 'Slow down' } }, { 'retry-after': '120' });
-    expect(slowDown.code).toBe('rate_reduction_required');
-    expect(slowDown.retryAfterSeconds).toBe(120);
+  it('cools down the key on 408, 429, and 5xx', () => {
+    expect(decideKeyAction(408)).toBe('cooldown');
+    expect(decideKeyAction(429)).toBe('cooldown');
+    expect(decideKeyAction(500)).toBe('cooldown');
+    expect(decideKeyAction(502)).toBe('cooldown');
+    expect(decideKeyAction(503)).toBe('cooldown');
+    expect(decideKeyAction(504)).toBe('cooldown');
   });
 
-  it('should attach Retry-After to 402 billing errors', () => {
-    const res = classifyUpstreamError(
-      402,
-      { error: { message: 'Insufficient quota' } },
-      { 'retry-after': '3600' },
-    );
-    expect(res.code).toBe('insufficient_quota');
-    expect(res.retryAfterSeconds).toBe(3600);
+  it('does not change key state for other 4xx', () => {
+    expect(decideKeyAction(400)).toBe('none');
+    expect(decideKeyAction(404)).toBe('none');
+    expect(decideKeyAction(422)).toBe('none');
   });
 
-  it('should attach Retry-After to generic fallback errors', () => {
-    const res = classifyUpstreamError(
-      418,
-      { error: { type: 'api_error', code: 'upstream_error', message: 'Teapot' } },
-      { 'retry-after': '15' },
-    );
-    expect(res.retryAfterSeconds).toBe(15);
-  });
-
-  it('should classify 404 Not Found errors', () => {
-    const res1 = classifyUpstreamError(404, { error: { message: 'Model not found' } });
-    expect(res1.type).toBe('not_found_error');
-    expect(res1.code).toBe('model_not_found');
-
-    const res2 = classifyUpstreamError(404, { error: { message: 'Endpoint path not found' } });
-    expect(res2.code).toBe('endpoint_not_found');
-  });
-
-  it('should classify 451 legal block', () => {
-    const res = classifyUpstreamError(451, { error: { message: 'Blocked for legal reasons' } });
-    expect(res.type).toBe('content_policy_violation');
-    expect(res.code).toBe('content_unavailable_legal');
-  });
-
-  it('should classify 400 content policy violations', () => {
-    const res1 = classifyUpstreamError(400, { error: { message: 'Blocked by safety content filter' } });
-    expect(res1.type).toBe('content_policy_violation');
-    expect(res1.code).toBe('content_filter');
-
-    const res2 = classifyUpstreamError(400, { error: { message: 'triggered moderation' } });
-    expect(res2.type).toBe('content_policy_violation');
-    expect(res2.code).toBe('moderation_flagged');
-  });
-
-  it('should classify 400 request validation errors', () => {
-    const res1 = classifyUpstreamError(400, { error: { message: 'Context window exceeded' } });
-    expect(res1.code).toBe('context_length_exceeded');
-
-    const res2 = classifyUpstreamError(400, { error: { message: 'max_tokens is too large' } });
-    expect(res2.code).toBe('max_tokens_too_large');
-
-    const res3 = classifyUpstreamError(400, { error: { message: 'role must be user' } });
-    expect(res3.code).toBe('invalid_message_role');
-
-    const res4 = classifyUpstreamError(400, { error: { message: 'malformed tool function definition' } });
-    expect(res4.code).toBe('invalid_tool_definition');
-
-    const res5 = classifyUpstreamError(400, { error: { message: 'incompatible params stream' } });
-    expect(res5.code).toBe('incompatible_params');
-
-    const res6 = classifyUpstreamError(400, { error: { message: 'missing required field model' } });
-    expect(res6.code).toBe('missing_required_param');
-  });
-
-  it('should classify 503 errors', () => {
-    const res1 = classifyUpstreamError(503, { error: { message: 'engine overloaded' } });
-    expect(res1.type).toBe('overloaded_error');
-    expect(res1.code).toBe('engine_overloaded');
-    expect(res1.category).toBe(ERROR_CATEGORIES.MODEL_RESOURCE);
-
-    const res2 = classifyUpstreamError(503, { error: { message: 'maintenance downtime' } });
-    expect(res2.type).toBe('api_error');
-    expect(res2.code).toBe('service_unavailable');
-    expect(res2.category).toBe(ERROR_CATEGORIES.SERVER);
-
-    const res3 = classifyUpstreamError(503, { error: { message: 'Slow down' } });
-    expect(res3.code).toBe('rate_reduction_required');
-    expect(res3.category).toBe(ERROR_CATEGORIES.SERVER);
-  });
-
-  it('should classify 504 and 502 errors', () => {
-    const res1 = classifyUpstreamError(504, { error: { message: 'Timeout' } });
-    expect(res1.code).toBe('gateway_timeout');
-
-    const res2 = classifyUpstreamError(502, { error: { message: 'Bad Gateway' } });
-    expect(res2.code).toBe('bad_gateway');
-  });
-
-  it('should classify 413 and 422 validation errors', () => {
-    const res413 = classifyUpstreamError(413, { error: { message: 'Payload too large' } });
-    expect(res413.code).toBe('request_too_large');
-    expect(res413.category).toBe(ERROR_CATEGORIES.VALIDATION);
-
-    const res422 = classifyUpstreamError(422, { error: { message: 'Unprocessable' } });
-    expect(res422.code).toBe('unprocessable_entity');
-    expect(res422.category).toBe(ERROR_CATEGORIES.VALIDATION);
-  });
-
-  it('should classify 500 server errors', () => {
-    const res = classifyUpstreamError(500, { error: { message: 'Internal error' } });
-    expect(res.code).toBe('internal_server_error');
-    expect(res.category).toBe(ERROR_CATEGORIES.SERVER);
-  });
-
-  it('should classify unknown 4xx as validation (T5), not server', () => {
-    const res = classifyUpstreamError(
-      418,
-      { error: { type: 'api_error', code: 'upstream_error', message: 'Teapot' } },
-      { 'retry-after': '15' },
-    );
-    expect(res.category).toBe(ERROR_CATEGORIES.VALIDATION);
-    expect(res.code).toBe('upstream_error');
-    expect(res.retryAfterSeconds).toBe(15);
-    expect(isRetryable(res.category, res.code)).toBe(false);
-    expect(shouldCooldownKey(res.category, res.code)).toBe(false);
-    expect(resolveLifecycleTier(res.category, res.code)).toBe('T5');
-  });
-
-  it('should prefer org_membership_required over generic missing keyword on 401', () => {
-    const res = classifyUpstreamError(401, {
-      error: {
-        message: 'You must be a member of an organization; missing org id',
-      },
-    });
-    expect(res.code).toBe('org_membership_required');
+  it('does not change key state for transport errors (no status)', () => {
+    expect(decideKeyAction(undefined)).toBe('none');
   });
 });
 
 describe('isRetryable', () => {
-  it('should return true for rate limits and server errors', () => {
-    expect(isRetryable(ERROR_CATEGORIES.RATE_LIMIT, 'rate_limit_exceeded')).toBe(true);
-    expect(isRetryable(ERROR_CATEGORIES.MODEL_RESOURCE, 'engine_overloaded')).toBe(true);
-    expect(isRetryable(ERROR_CATEGORIES.SERVER, 'internal_server_error')).toBe(true);
-    expect(isRetryable(ERROR_CATEGORIES.TRANSPORT, 'connect_timeout')).toBe(true);
+  it('retries 408, 429, and 5xx', () => {
+    expect(isRetryable(408)).toBe(true);
+    expect(isRetryable(429)).toBe(true);
+    expect(isRetryable(500)).toBe(true);
+    expect(isRetryable(502)).toBe(true);
+    expect(isRetryable(503)).toBe(true);
+    expect(isRetryable(504)).toBe(true);
   });
 
-  it('should return false for validation/policy errors', () => {
-    expect(isRetryable(ERROR_CATEGORIES.VALIDATION, 'context_length_exceeded')).toBe(false);
-    expect(isRetryable(ERROR_CATEGORIES.CONTENT_POLICY, 'content_filter')).toBe(false);
+  it('retries transport errors (no status)', () => {
+    expect(isRetryable(undefined)).toBe(true);
   });
 
-  it('should return false when category or code is missing', () => {
-    expect(isRetryable(undefined, 'rate_limit_exceeded')).toBe(false);
-    expect(isRetryable(ERROR_CATEGORIES.RATE_LIMIT, undefined)).toBe(false);
-    expect(isRetryable(undefined, undefined)).toBe(false);
-  });
-
-  it('should return false for no_api_key gateway faults', () => {
-    expect(isRetryable(ERROR_CATEGORIES.AUTH, 'no_api_key')).toBe(false);
+  it('retries 401/403 (different key may succeed) but not other 4xx', () => {
+    expect(isRetryable(401)).toBe(true);
+    expect(isRetryable(403)).toBe(true);
+    expect(isRetryable(400)).toBe(false);
+    expect(isRetryable(404)).toBe(false);
+    expect(isRetryable(422)).toBe(false);
   });
 });
 
-describe('shouldCooldownKey', () => {
-  it('should return true for auth, billing, rate limit, and server errors', () => {
-    expect(shouldCooldownKey(ERROR_CATEGORIES.AUTH, 'invalid_api_key')).toBe(true);
-    expect(shouldCooldownKey(ERROR_CATEGORIES.BILLING, 'insufficient_quota')).toBe(true);
-    expect(shouldCooldownKey(ERROR_CATEGORIES.RATE_LIMIT, 'rate_limit_exceeded')).toBe(true);
-    expect(shouldCooldownKey(ERROR_CATEGORIES.SERVER, 'internal_server_error')).toBe(true);
-    expect(shouldCooldownKey(ERROR_CATEGORIES.MODEL_RESOURCE, 'engine_overloaded')).toBe(true);
+describe('resolveCooldownSeconds', () => {
+  it('prefers Retry-After when present and positive', () => {
+    expect(resolveCooldownSeconds({
+      statusCode: 429,
+      retryAfterSeconds: 90,
+      defaultSeconds: 30,
+      baseSeconds: 30,
+      maxSeconds: 3600,
+    })).toBe(90);
   });
 
-  it('should distinguish auth and billing categories', () => {
-    expect(ERROR_CATEGORIES.AUTH).not.toBe(ERROR_CATEGORIES.BILLING);
-    expect(shouldCooldownKey(ERROR_CATEGORIES.AUTH, 'region_not_supported')).toBe(true);
-    expect(shouldCooldownKey(ERROR_CATEGORIES.BILLING, 'billing_hard_limit_reached')).toBe(true);
-    expect(shouldCooldownKey(ERROR_CATEGORIES.SERVER, 'rate_reduction_required')).toBe(true);
+  it('uses exponential backoff for 429 when Retry-After is absent', () => {
+    expect(resolveCooldownSeconds({
+      statusCode: 429,
+      retryAfterSeconds: undefined,
+      defaultSeconds: 30,
+      consecutiveFailures: 1,
+      baseSeconds: 30,
+      maxSeconds: 3600,
+    })).toBe(30);
+    expect(resolveCooldownSeconds({
+      statusCode: 429,
+      retryAfterSeconds: undefined,
+      defaultSeconds: 30,
+      consecutiveFailures: 3,
+      baseSeconds: 30,
+      maxSeconds: 3600,
+    })).toBe(120);
   });
 
-  it('should return false for validation or content policy errors', () => {
-    expect(shouldCooldownKey(ERROR_CATEGORIES.VALIDATION, 'context_length_exceeded')).toBe(false);
-    expect(shouldCooldownKey(ERROR_CATEGORIES.CONTENT_POLICY, 'content_filter')).toBe(false);
+  it('caps exponential backoff at maxSeconds', () => {
+    expect(resolveCooldownSeconds({
+      statusCode: 429,
+      retryAfterSeconds: undefined,
+      defaultSeconds: 30,
+      consecutiveFailures: 20,
+      baseSeconds: 30,
+      maxSeconds: 3600,
+    })).toBe(3600);
   });
 
-  it('should return false when category or code is missing', () => {
-    expect(shouldCooldownKey(undefined, 'rate_limit_exceeded')).toBe(false);
-    expect(shouldCooldownKey(ERROR_CATEGORIES.RATE_LIMIT, undefined)).toBe(false);
-    expect(shouldCooldownKey(undefined, undefined)).toBe(false);
+  it('falls back to defaultSeconds for 5xx when Retry-After is absent', () => {
+    expect(resolveCooldownSeconds({
+      statusCode: 503,
+      defaultSeconds: 60,
+    })).toBe(60);
   });
 
-  it('should return false for no_api_key gateway faults', () => {
-    expect(shouldCooldownKey(ERROR_CATEGORIES.AUTH, 'no_api_key')).toBe(false);
+  it('returns 0 when no default and no Retry-After', () => {
+    expect(resolveCooldownSeconds({ statusCode: 500, defaultSeconds: 0 })).toBe(0);
+  });
+});
+
+describe('resolveLifecycleTier', () => {
+  it('returns retired for 401', () => {
+    expect(resolveLifecycleTier(401)).toBe('retired');
+  });
+
+  it('returns cooldown for 408, 429, and 5xx', () => {
+    expect(resolveLifecycleTier(408)).toBe('cooldown');
+    expect(resolveLifecycleTier(429)).toBe('cooldown');
+    expect(resolveLifecycleTier(503)).toBe('cooldown');
+  });
+
+  it('returns no_action for other 4xx', () => {
+    expect(resolveLifecycleTier(400)).toBe('no_action');
+    expect(resolveLifecycleTier(404)).toBe('no_action');
+  });
+
+  it('returns retired for 403 to match decideKeyAction', () => {
+    expect(resolveLifecycleTier(403)).toBe('retired');
+  });
+
+  it('returns transport for undefined status', () => {
+    expect(resolveLifecycleTier(undefined)).toBe('transport');
+  });
+});
+
+describe('parseRetryAfter', () => {
+  it('parses numeric delay-seconds', () => {
+    expect(parseRetryAfter('30')).toBe(30);
+    expect(parseRetryAfter('0')).toBe(0);
+  });
+
+  it('parses HTTP-date values', () => {
+    const future = new Date(Date.now() + 120000).toUTCString();
+    const seconds = parseRetryAfter(future);
+    expect(seconds).toBeGreaterThanOrEqual(119);
+    expect(seconds).toBeLessThanOrEqual(121);
+  });
+
+  it('returns undefined for unparseable values', () => {
+    expect(parseRetryAfter('not-a-date')).toBeUndefined();
+    expect(parseRetryAfter('')).toBeUndefined();
+    expect(parseRetryAfter(null)).toBeUndefined();
+    expect(parseRetryAfter(undefined)).toBeUndefined();
   });
 });
 
@@ -277,13 +164,14 @@ describe('classifyTransportError', () => {
     const res = classifyTransportError(new Error('getaddrinfo ENOTFOUND api.example.com'));
     expect(res.code).toBe('connect_timeout');
     expect(res.httpStatus).toBe(503);
-    expect(res.category).toBe(ERROR_CATEGORIES.TRANSPORT);
   });
 
-  it('should classify TLS and timeout failures', () => {
+  it('should classify TLS failures', () => {
     const tls = classifyTransportError(new Error('SSL certificate problem'));
     expect(tls.code).toBe('tls_error');
+  });
 
+  it('should classify timeout failures', () => {
     const timeout = classifyTransportError(Object.assign(new Error('read timeout'), { name: 'TimeoutError' }));
     expect(timeout.code).toBe('read_timeout');
     expect(timeout.httpStatus).toBe(504);
@@ -291,216 +179,205 @@ describe('classifyTransportError', () => {
 });
 
 describe('normalizeUpstreamError', () => {
-  it('should delegate HTTP errors through the classifier', () => {
-    const res = normalizeUpstreamError({ statusCode: 429 }, 'openai');
-    expect(res.code).toBe('rate_limit_exceeded');
+  it('passes through upstream message and code from HTTP error body', () => {
+    const res = normalizeUpstreamError({ statusCode: 503, error: { message: 'high demand', code: 'unavailable' } }, 'openai');
+    expect(res.message).toBe('high demand');
+    expect(res.errorCode).toBe('unavailable');
+    expect(res.statusCode).toBe(503);
     expect(res.provider).toBe('openai');
-    expect(res.category).toBe(ERROR_CATEGORIES.RATE_LIMIT);
   });
 
-  it('should delegate transport errors through classifyTransportError', () => {
+  it('extracts status from response.status when not on the error', () => {
+    const res = normalizeUpstreamError({ message: 'fail', response: { status: 500 } }, 'gemini');
+    expect(res.statusCode).toBe(500);
+    expect(res.message).toBe('fail');
+    expect(res.provider).toBe('gemini');
+  });
+
+  it('falls back to transport classification when no status is present', () => {
     const res = normalizeUpstreamError(new Error('fetch failed'), 'gemini');
-    expect(res).toEqual({
-      code: 'connect_timeout',
-      type: undefined,
-      message: 'Upstream connection failed: fetch failed',
-      httpStatus: 503,
-      provider: 'gemini',
-      category: ERROR_CATEGORIES.TRANSPORT,
-      retryAfterSeconds: undefined,
-      upstreamBody: undefined,
-    });
+    expect(res.statusCode).toBeUndefined();
+    expect(res.transportCode).toBe('connect_timeout');
+    expect(res.message).toContain('fetch failed');
+  });
+
+  it('parses Retry-After from headers', () => {
+    const res = normalizeUpstreamError({
+      statusCode: 429,
+      message: 'Rate limited',
+      response: { status: 429, headers: { 'retry-after': '45' } },
+    }, 'openai');
+    expect(res.retryAfterSeconds).toBe(45);
+  });
+
+  it('returns an UpstreamError as-is with provider fallthrough', () => {
+    const original = new UpstreamError('boom', { statusCode: 503, errorCode: 'unavailable', provider: 'gemini', upstreamBody: { foo: 1 } });
+    const res = normalizeUpstreamError(original, 'openai');
+    expect(res.message).toBe('boom');
+    expect(res.statusCode).toBe(503);
+    expect(res.errorCode).toBe('unavailable');
+    expect(res.provider).toBe('gemini');
+    expect(res.upstreamBody).toEqual({ foo: 1 });
+  });
+
+  it('replaces unknown provider with the supplied providerName', () => {
+    const original = new UpstreamError('boom', { statusCode: 503, provider: 'unknown' });
+    const res = normalizeUpstreamError(original, 'gemini');
+    expect(res.provider).toBe('gemini');
   });
 });
 
 describe('buildClientErrorEnvelope', () => {
-  it('should build the v1 error envelope', () => {
-    const body = buildClientErrorEnvelope(
-      {
-        code: 'rate_limit_exceeded', message: 'Rate limit', type: 'rate_limit_error', provider: 'openai', retryAfterSeconds: 30,
-      },
-      429,
-    );
-    expect(body.error.code).toBe('rate_limit_exceeded');
-    expect(body.error.httpStatus).toBe(429);
-    expect(body.error.retryAfterSeconds).toBe(30);
-  });
-});
-
-describe('parseRetryAfter', () => {
-  it('should parse numeric delay-seconds', () => {
-    expect(parseRetryAfter('30')).toBe(30);
-    expect(parseRetryAfter('0')).toBe(0);
-  });
-
-  it('should parse HTTP-date values', () => {
-    const future = new Date(Date.now() + 120000).toUTCString();
-    const seconds = parseRetryAfter(future);
-    expect(seconds).toBeGreaterThanOrEqual(119);
-    expect(seconds).toBeLessThanOrEqual(121);
-  });
-
-  it('should return undefined for unparseable values', () => {
-    expect(parseRetryAfter('not-a-date')).toBeUndefined();
-    expect(parseRetryAfter('')).toBeUndefined();
-  });
-});
-
-describe('stream error helpers', () => {
-  it('should normalize stream failures into v1 envelopes', () => {
-    const err = new UpstreamError('Rate limit exceeded', {
-      statusCode: 429,
-      errorType: 'rate_limit_error',
-      errorCode: 'rate_limit_exceeded',
-      provider: 'openai',
-      category: ERROR_CATEGORIES.STREAMING,
+  it('builds a passthrough envelope with the upstream status', () => {
+    const body = buildClientErrorEnvelope({
+      statusCode: 503,
+      errorCode: 'service_unavailable',
+      message: 'High demand',
+      errorType: 'api_error',
+      provider: 'gemini',
       retryAfterSeconds: 30,
     });
-    const envelope = normalizeStreamFailure(err, 'openai');
-    expect(envelope.error.code).toBe('rate_limit_exceeded');
-    expect(envelope.error.httpStatus).toBe(429);
-    expect(envelope.error.retryAfterSeconds).toBe(30);
+    expect(body.error).toEqual({
+      code: 'service_unavailable',
+      message: 'High demand',
+      httpStatus: 503,
+      type: 'api_error',
+      provider: 'gemini',
+      retryAfterSeconds: 30,
+    });
   });
 
-  it('should format OpenAI SSE error frames with v1 envelope', () => {
+  it('defaults to 502 when no statusCode is provided', () => {
+    const body = buildClientErrorEnvelope({ errorCode: 'x', message: 'oops' });
+    expect(body.error.httpStatus).toBe(502);
+  });
+
+  it('preserves the upstream body when supplied', () => {
+    const body = buildClientErrorEnvelope({
+      statusCode: 503,
+      errorCode: 'service_unavailable',
+      message: 'm',
+      upstreamBody: { error: { message: 'm' } },
+    });
+    expect(body.error.upstreamBody).toEqual({ error: { message: 'm' } });
+  });
+});
+
+describe('normalizeStreamFailure', () => {
+  it('builds a passthrough envelope from a normalized error', () => {
+    const envelope = normalizeStreamFailure({
+      message: 'Stream died',
+      statusCode: 503,
+      errorCode: 'service_unavailable',
+      errorType: 'api_error',
+      provider: 'openai',
+      retryAfterSeconds: 15,
+      upstreamBody: { error: { message: 'Stream died' } },
+    });
+    expect(envelope.error).toEqual({
+      code: 'service_unavailable',
+      message: 'Stream died',
+      httpStatus: 503,
+      type: 'api_error',
+      provider: 'openai',
+      retryAfterSeconds: 15,
+      upstreamBody: { error: { message: 'Stream died' } },
+    });
+  });
+});
+
+describe('SSE formatters', () => {
+  it('formats an OpenAI SSE error frame with the envelope and [DONE]', () => {
     const sse = formatOpenAiSseError({
       error: {
-        code: 'stream_error',
-        message: 'Stream failed',
-        httpStatus: 502,
+        code: 'service_unavailable',
+        message: 'High demand',
+        httpStatus: 503,
       },
     });
-    expect(sse).toContain('data: {"error":');
+    expect(sse).toContain('"code":"service_unavailable"');
     expect(sse).toContain('data: [DONE]');
   });
 
-  it('should format Anthropic SSE error frames with v1 envelope', () => {
+  it('omits [DONE] when includeDone is false', () => {
+    const sse = formatOpenAiSseError({ error: { code: 'x', message: 'y', httpStatus: 500 } }, false);
+    expect(sse).not.toContain('data: [DONE]');
+  });
+
+  it('formats an Anthropic SSE error event', () => {
     const sse = formatAnthropicSseError({
       error: {
-        code: 'rate_limit_exceeded',
-        message: 'Rate limit exceeded.',
-        httpStatus: 429,
-        type: 'rate_limit_error',
+        code: 'service_unavailable',
+        message: 'High demand',
+        httpStatus: 503,
+        type: 'api_error',
         provider: 'anthropic',
       },
     });
     expect(sse).toContain('event: error');
-    expect(sse).toContain('"code":"rate_limit_exceeded"');
+    expect(sse).toContain('"type":"error"');
+    expect(sse).toContain('"code":"service_unavailable"');
+  });
+});
+
+describe('throwIfStreamErrorPayload', () => {
+  it('throws UpstreamError on inline OpenAI-shaped error payload', () => {
+    expect(() => throwIfStreamErrorPayload({
+      error: { message: 'High demand', type: 'api_error', code: 'service_unavailable' },
+    }, 'openai')).toThrow(UpstreamError);
   });
 
-  it('should throw on inline OpenAI-compatible stream error payloads', () => {
-    expect(() => throwIfStreamErrorPayload({
-      error: {
-        message: 'Rate limit exceeded',
-        type: 'rate_limit_error',
-        code: 'rate_limit_exceeded',
-      },
-    }, 'openai')).toThrow(UpstreamError);
-
+  it('attaches Retry-After when present in headers', () => {
     try {
       throwIfStreamErrorPayload({
-        error: {
-          message: 'Engine overloaded',
-          type: 'overloaded_error',
-          code: 'engine_overloaded',
-        },
+        error: { message: 'High demand', type: 'api_error', code: 'service_unavailable' },
       }, 'openai', { 'retry-after': '90' });
     } catch (err) {
-      expect(err.errorCode).toBe('engine_overloaded');
       expect(err.retryAfterSeconds).toBe(90);
-      expect(err.category).toBe(ERROR_CATEGORIES.STREAMING);
     }
   });
 
-  it('should throw on Gemini native stream error payloads', () => {
+  it('does nothing for non-error payloads', () => {
+    expect(() => throwIfStreamErrorPayload({ choices: [] }, 'openai')).not.toThrow();
+  });
+
+  it('throws on Gemini native stream error payload', () => {
     expect(() => throwIfGeminiStreamError({
-      error: { message: 'Invalid API key', code: 'invalid_api_key' },
+      error: { code: 'unavailable', message: 'High demand' },
     }, 'gemini')).toThrow(UpstreamError);
   });
 });
 
-describe('normalizeUpstreamError auth messaging', () => {
-  it('should rewrite invalid_api_key and no_api_key messages for clients', () => {
-    const invalidKey = normalizeUpstreamError({ statusCode: 401, message: 'bad key' }, 'openai');
-    expect(invalidKey.message).toBe('Authentication failed: Invalid upstream API key.');
-
-    const noKey = normalizeUpstreamError(
-      { statusCode: 401, message: 'no authorization header' },
-      'openai',
-    );
-    expect(noKey.message).toBe(
-      'Authentication failed: No Authorization header sent to the upstream provider.',
-    );
+describe('UpstreamError', () => {
+  it('preserves upstream fields verbatim', () => {
+    const err = new UpstreamError('High demand', {
+      statusCode: 503,
+      errorType: 'api_error',
+      errorCode: 'service_unavailable',
+      provider: 'gemini',
+      upstreamBody: { error: { message: 'High demand' } },
+    });
+    expect(err.message).toBe('High demand');
+    expect(err.statusCode).toBe(503);
+    expect(err.errorType).toBe('api_error');
+    expect(err.errorCode).toBe('service_unavailable');
+    expect(err.upstreamBody).toEqual({ error: { message: 'High demand' } });
   });
 
-  it('should extract Retry-After from response headers during normalization', () => {
-    const normalized = normalizeUpstreamError({
-      statusCode: 429,
-      message: 'Rate limit exceeded',
-      response: { status: 429, headers: { 'retry-after': '45' } },
-    }, 'openai');
-    expect(normalized.retryAfterSeconds).toBe(45);
-    expect(normalized.code).toBe('rate_limit_exceeded');
-  });
-});
-
-describe('getClientHttpStatus', () => {
-  it('should map auth errors to 401, but forbidden to 403', () => {
-    expect(getClientHttpStatus(403, ERROR_CATEGORIES.AUTH, 'forbidden')).toBe(403);
-    expect(getClientHttpStatus(403, ERROR_CATEGORIES.AUTH, 'region_not_supported')).toBe(403);
-    expect(getClientHttpStatus(401, ERROR_CATEGORIES.AUTH, 'invalid_api_key')).toBe(401);
-    expect(getClientHttpStatus(401, ERROR_CATEGORIES.AUTH, 'org_membership_required')).toBe(401);
-  });
-
-  it('should map internal server error to 502', () => {
-    expect(getClientHttpStatus(500, ERROR_CATEGORIES.SERVER, 'internal_server_error')).toBe(502);
-  });
-
-  it('should forward other status codes', () => {
-    expect(getClientHttpStatus(400, ERROR_CATEGORIES.VALIDATION, 'context_length_exceeded')).toBe(400);
-    expect(getClientHttpStatus(429, ERROR_CATEGORIES.RATE_LIMIT, 'rate_limit_exceeded')).toBe(429);
-  });
-
-  it('should map explicit billing codes to 402', () => {
-    expect(getClientHttpStatus(402, ERROR_CATEGORIES.BILLING, 'insufficient_quota')).toBe(402);
-    expect(getClientHttpStatus(429, ERROR_CATEGORIES.BILLING, 'daily_tokens_exceeded')).toBe(429);
-  });
-
-  it('should use category fallback for auth when code is not explicitly mapped', () => {
-    expect(getClientHttpStatus(402, ERROR_CATEGORIES.AUTH, 'unknown_auth_code')).toBe(402);
-    expect(getClientHttpStatus(403, ERROR_CATEGORIES.AUTH, 'unknown_auth_code')).toBe(403);
-  });
-});
-
-describe('resolveLifecycleTier', () => {
-  it('should map codes to lifecycle tiers matching flagFailure policy', () => {
-    expect(resolveLifecycleTier(ERROR_CATEGORIES.AUTH, 'invalid_api_key')).toBe('T0');
-    expect(resolveLifecycleTier(ERROR_CATEGORIES.AUTH, 'no_api_key')).toBe('none');
-    expect(resolveLifecycleTier(ERROR_CATEGORIES.BILLING, 'insufficient_quota')).toBe('T1');
-    expect(resolveLifecycleTier(ERROR_CATEGORIES.AUTH, 'region_not_supported')).toBe('T2');
-    expect(resolveLifecycleTier(ERROR_CATEGORIES.RATE_LIMIT, 'rate_limit_exceeded')).toBe('T3');
-    expect(resolveLifecycleTier(ERROR_CATEGORIES.SERVER, 'rate_reduction_required')).toBe('T4b');
-    expect(resolveLifecycleTier(ERROR_CATEGORIES.SERVER, 'internal_server_error')).toBe('T4');
-    expect(resolveLifecycleTier(ERROR_CATEGORIES.VALIDATION, 'context_length_exceeded')).toBe('T5');
-  });
-});
-
-describe('UpstreamError.toJSON', () => {
-  it('should return redacted fields without upstream body', () => {
-    const err = new UpstreamError('fail', {
-      statusCode: 429,
-      errorCode: 'rate_limit_exceeded',
-      category: ERROR_CATEGORIES.RATE_LIMIT,
-      provider: 'openai',
-      retryAfterSeconds: 30,
-      upstreamBody: { secret: 'data' },
+  it('toJSON redacts the upstream body', () => {
+    const err = new UpstreamError('High demand', {
+      statusCode: 503,
+      errorType: 'api_error',
+      errorCode: 'service_unavailable',
+      provider: 'gemini',
+      upstreamBody: { secret: 'x' },
     });
     expect(err.toJSON()).toEqual({
-      errorCode: 'rate_limit_exceeded',
-      category: ERROR_CATEGORIES.RATE_LIMIT,
-      statusCode: 429,
-      provider: 'openai',
-      retryAfterSeconds: 30,
+      statusCode: 503,
+      errorCode: 'service_unavailable',
+      errorType: 'api_error',
+      provider: 'gemini',
+      retryAfterSeconds: undefined,
     });
     expect(err.toJSON()).not.toHaveProperty('upstreamBody');
   });

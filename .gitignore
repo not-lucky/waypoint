@@ -22,6 +22,5 @@ dist/
 build/
 .next/
 out/
-logs/
 /config/
-coverage/
+logs/

@@ -125,24 +125,17 @@ describe('Configuration Validation Tests', () => {
     badCooldown.gateway.cooldown = { baseSeconds: 0, maxSeconds: 3600 };
     expect(() => validateConfig(badCooldown)).toThrow('process.exit called');
 
-    const badBillingCooldown = getBaseValidConfig();
-    badBillingCooldown.gateway.cooldown = { billingSeconds: -1 };
-    expect(() => validateConfig(badBillingCooldown)).toThrow('process.exit called');
-
     const badStreamTimeout = getBaseValidConfig();
     badStreamTimeout.gateway.streamTimeoutMs = 0;
     expect(() => validateConfig(badStreamTimeout)).toThrow('process.exit called');
   });
 
-  it('accepts tiered cooldown configuration fields', () => {
+  it('accepts simplified cooldown configuration fields', () => {
     const config = getBaseValidConfig();
     config.gateway.cooldown = {
       baseSeconds: 30,
       maxSeconds: 3600,
-      billingSeconds: 3600,
-      permissionSeconds: 1800,
       serverSeconds: 60,
-      slowDownMinimumSeconds: 900,
     };
     expect(() => validateConfig(config)).not.toThrow();
     expect(exitSpy).not.toHaveBeenCalled();

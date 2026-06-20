@@ -1,26 +1,25 @@
 import { normalizeUpstreamError, UpstreamError } from '../../src/errors/upstream.js';
-import { ERROR_CATEGORIES } from '../../src/errors/policy.js';
 
 /**
  * Normalizes test/mock adapter errors through the production error authority.
  *
  * @param {any} error - Thrown error from a test double.
  * @param {string} [provider='test'] - Provider name for the normalized error.
- * @returns {Object} Normalized error with category, code, type, and httpStatus.
+ * @returns {Object} Normalized error.
  */
 export function normalizeTestError(error, provider = 'test') {
   return normalizeUpstreamError(error, provider);
 }
 
 /**
- * Builds an HTTP-shaped error that exercises the production classifier path.
+ * Builds an HTTP-shaped error that exercises the production parse path.
  * Prefer this over bare `err.status = N` shortcuts in test doubles.
  *
- * @param {string} message - Error message (used by classifier keyword matching).
+ * @param {string} message - Error message.
  * @param {number} statusCode - Upstream HTTP status code.
  * @param {Object} [options] - Optional structured upstream fields.
- * @param {string} [options.code] - Upstream error code hint.
- * @param {string} [options.type] - Upstream error type hint.
+ * @param {string} [options.code] - Upstream error code.
+ * @param {string} [options.type] - Upstream error type.
  * @param {number} [options.retryAfterSeconds] - Retry-After delay in seconds.
  * @returns {Error}
  */
@@ -58,4 +57,4 @@ export function makeUpstreamError(message, options) {
   return new UpstreamError(message, options);
 }
 
-export { ERROR_CATEGORIES, UpstreamError };
+export { UpstreamError };

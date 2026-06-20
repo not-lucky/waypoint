@@ -111,14 +111,8 @@ describe( 'Key rotation under load with MSW', () => {
     const { app, close, services } = await createTestApp( { config: createRotationConfig() } )
 
     try {
-      services.keyRegistry.flagFailure( 'requesty', 'key-a', {
-        category: 'rate_limit',
-        code: 'rate_limit_exceeded',
-      } )
-      services.keyRegistry.flagFailure( 'requesty', 'key-b', {
-        category: 'rate_limit',
-        code: 'rate_limit_exceeded',
-      } )
+      services.keyRegistry.flagFailure( 'requesty', 'key-a', { statusCode: 429 } )
+      services.keyRegistry.flagFailure( 'requesty', 'key-b', { statusCode: 429 } )
 
       const response = await request( app )
         .post( '/openai/chat/completions' )

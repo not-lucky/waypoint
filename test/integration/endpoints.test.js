@@ -138,6 +138,20 @@ describe('Provider Endpoints Integration Tests', () => {
       // Verify we get 400 Bad Request / validation_error (from zod validation)
       expect(res.body.error.code).toBe('validationError');
     });
+
+    it('should reflect the response HTTP status in the body httpStatus for unhandled errors', async () => {
+      // Malformed JSON triggers the Express body parser, which throws a
+      // SyntaxError (status 400) that the terminal errorHandler converts.
+      const res = await request(app)
+        .post('/openai/chat/completions')
+        .set('Content-Type', 'application/json')
+        .set('Authorization', 'Bearer mock-webui-token')
+        .send('{ not-json')
+        .expect(400);
+
+      expect(res.body.error).toBeDefined();
+      expect(res.body.error.httpStatus).toBe(400);
+    });
   });
 
   describe('GET /openai/models & /openai/v1/models', () => {

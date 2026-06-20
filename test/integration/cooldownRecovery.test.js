@@ -24,7 +24,7 @@ function createCooldownConfig() {
       cooldown: {
         baseSeconds: 30,
         maxSeconds: 120,
-        billingSeconds: 90,
+        serverSeconds: 90,
       },
       routing: { strategy: 'round-robin' },
     },
@@ -129,10 +129,10 @@ describe('Cooldown activation and recovery with MSW', () => {
     }
   });
 
-  it('uses the billing cooldown duration for 402 errors', async () => {
+  it('uses serverSeconds cooldown for 5xx errors', async () => {
     server.use(http.post(`${BASE_URL}/chat/completions`, async () => HttpResponse.json(
-      { error: { code: 'insufficient_quota', type: 'billing_error', message: 'Quota exceeded' } },
-      { status: 402 },
+      { error: { code: 'service_unavailable', type: 'api_error', message: 'Service Unavailable' } },
+      { status: 503 },
     )));
 
     const { app, close, services } = await createTestApp({ config: createCooldownConfig() });
@@ -143,9 +143,9 @@ describe('Cooldown activation and recovery with MSW', () => {
         .set('Authorization', 'Bearer test-client-token')
         .send({
           model: 'requesty/custom-model',
-          messages: [{ role: 'user', content: 'trigger billing cooldown' }],
+          messages: [{ role: 'user', content: 'trigger 5xx cooldown' }],
         })
-        .expect(402);
+        .expect(503);
 
       const key = services.keyRegistry.pools.requesty.keys[0];
       expect(key.cooldownUntil - Date.now()).toBe(90000);

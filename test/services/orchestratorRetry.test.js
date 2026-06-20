@@ -27,23 +27,16 @@ class MockAdapter {
     return next;
   }
 
-   
   normalizeError(error) {
     return normalizeTestError(error, 'mock-provider');
   }
 }
 
-describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
+describe('UnifiedOrchestrator Retry and Key Exhaustion Tests (HTTP-status-based)', () => {
   it('assert: MockAdapter throws twice then succeeds -> callCount===3, final result is the success response', async () => {
     const config = {
-      gateway: {
-        globalRetryLimit: 3,
-      },
-      providers: {
-        'mock-provider': {
-          keys: ['key-1', 'key-2', 'key-3'],
-        },
-      },
+      gateway: { globalRetryLimit: 3 },
+      providers: { 'mock-provider': { keys: ['key-1', 'key-2', 'key-3'] } },
     };
 
     const keyRegistry = new KeyRegistry(config);
@@ -51,19 +44,9 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     const mockAdapter = new MockAdapter();
     providerFactory.register('mock-provider', mockAdapter);
 
-    const err1 = makeHttpError('Rate limit exceeded', 429);
-    const err2 = makeHttpError('Internal Server Error', 500);
-
-    const mockResponse = {
-      id: 'waypoint-retry-ok',
-      object: 'chat.completion',
-      choices: [],
-      usage: {},
-    };
-
-    mockAdapter.enqueue(err1);
-    mockAdapter.enqueue(err2);
-    mockAdapter.enqueue(mockResponse);
+    mockAdapter.enqueue(makeHttpError('Rate limit exceeded', 429));
+    mockAdapter.enqueue(makeHttpError('Internal Server Error', 500));
+    mockAdapter.enqueue({ id: 'waypoint-retry-ok', object: 'chat.completion', choices: [], usage: {} });
 
     const flagFailureSpy = vi.spyOn(keyRegistry, 'flagFailure');
     const flagSuccessSpy = vi.spyOn(keyRegistry, 'flagSuccess');
@@ -72,35 +55,25 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     const req = { provider: 'mock-provider', actualModelId: 'test-model' };
     const res = await orchestrator.executeCompletion(req, {});
 
-    // Assert success response and call count
-    expect(res).toBe(mockResponse);
+    expect(res).toEqual({ id: 'waypoint-retry-ok', object: 'chat.completion', choices: [], usage: {} });
     expect(mockAdapter.callCount).toBe(3);
 
-    // Assert that the registry was updated correctly
     expect(flagFailureSpy).toHaveBeenCalledTimes(2);
     expect(flagFailureSpy).toHaveBeenNthCalledWith(1, 'mock-provider', 'key-1', {
-      category: 'rate_limit',
-      code: 'rate_limit_exceeded',
+      statusCode: 429,
       retryAfterSeconds: undefined,
     });
     expect(flagFailureSpy).toHaveBeenNthCalledWith(2, 'mock-provider', 'key-2', {
-      category: 'server',
-      code: 'internal_server_error',
+      statusCode: 500,
       retryAfterSeconds: undefined,
     });
     expect(flagSuccessSpy).toHaveBeenCalledWith('mock-provider', 'key-3');
   });
 
-  it('assert: MockAdapter throws 3 times -> 503 NormalizedError returned to caller', async () => {
+  it('assert: MockAdapter throws 3 times -> upstream error is returned to caller', async () => {
     const config = {
-      gateway: {
-        globalRetryLimit: 3,
-      },
-      providers: {
-        'mock-provider': {
-          keys: ['key-1', 'key-2', 'key-3'],
-        },
-      },
+      gateway: { globalRetryLimit: 3 },
+      providers: { 'mock-provider': { keys: ['key-1', 'key-2', 'key-3'] } },
     };
 
     const keyRegistry = new KeyRegistry(config);
@@ -124,39 +97,35 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     const req = { provider: 'mock-provider', actualModelId: 'test-model' };
     const res = await orchestrator.executeCompletion(req, {});
 
-    // Assert last upstream error is surfaced to the caller
-    expect(res).toEqual({
+    // Passthrough envelope: the last upstream error's message and status are returned
+    // verbatim. No classifier is applied, so the code/type are not remapped.
+    expect(res).toMatchObject({
       error: {
-        code: 'insufficient_quota',
-        type: 'billing_error',
+        code: 'upstream_error',
         message: 'Error 3',
-        provider: 'mock-provider',
         httpStatus: 402,
+        provider: 'mock-provider',
       },
     });
 
     expect(mockAdapter.callCount).toBe(3);
 
-    // Assert each failure triggers flagFailure spy with correct args
     expect(flagFailureSpy).toHaveBeenCalledTimes(3);
     expect(flagFailureSpy).toHaveBeenNthCalledWith(1, 'mock-provider', 'key-1', {
-      category: 'rate_limit',
-      code: 'rate_limit_exceeded',
+      statusCode: 429,
       retryAfterSeconds: undefined,
     });
     expect(flagFailureSpy).toHaveBeenNthCalledWith(2, 'mock-provider', 'key-2', {
-      category: 'server',
-      code: 'internal_server_error',
+      statusCode: 500,
       retryAfterSeconds: undefined,
     });
     expect(flagFailureSpy).toHaveBeenNthCalledWith(3, 'mock-provider', 'key-3', {
-      category: 'billing',
-      code: 'insufficient_quota',
+      statusCode: 402,
       retryAfterSeconds: undefined,
     });
   });
 
-  it('assert: quota-style HTTP 429 is classified as billing and flagged with daily_tokens_exceeded', async () => {
+  it('assert: HTTP 429 always triggers cooldown (no quota/billing disambiguation)', async () => {
     const config = {
       gateway: { globalRetryLimit: 2 },
       providers: { 'mock-provider': { keys: ['key-1', 'key-2'] } },
@@ -178,14 +147,13 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     const req = { provider: 'mock-provider', actualModelId: 'test-model' };
     await orchestrator.executeCompletion(req, {});
 
+    // Both 429s trigger the same cooldown path (no quota/billing disambiguation).
     expect(flagFailureSpy).toHaveBeenNthCalledWith(1, 'mock-provider', 'key-1', {
-      category: 'billing',
-      code: 'daily_tokens_exceeded',
+      statusCode: 429,
       retryAfterSeconds: undefined,
     });
     expect(flagFailureSpy).toHaveBeenNthCalledWith(2, 'mock-provider', 'key-2', {
-      category: 'rate_limit',
-      code: 'rate_limit_exceeded',
+      statusCode: 429,
       retryAfterSeconds: undefined,
     });
   });
@@ -226,33 +194,25 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     const res = await orchestrator.executeCompletion(req, {});
 
     expect(mockAdapter.callCount).toBe(1);
-    expect(res.error.code).toBe('internal_server_error');
+    // The upstream's message is preserved; code is 'upstream_error' because the
+    // test's error has no `error.code` field set.
     expect(res.error.message).toBe('Failure');
-    expect(res.error.httpStatus).toBe(502);
+    expect(res.error.httpStatus).toBe(500);
   });
 
   it('assert: cooldown calculation ignores permanently exhausted keys and selects earliest active cooldown', async () => {
     const config = {
       gateway: { globalRetryLimit: 2 },
-      providers: {
-        'mock-provider': {
-          keys: ['key-1', 'key-2', 'key-3'],
-        },
-      },
+      providers: { 'mock-provider': { keys: ['key-1', 'key-2', 'key-3'] } },
     };
     const keyRegistry = new KeyRegistry(config);
     const providerFactory = new ProviderFactory(config);
     const mockAdapter = new MockAdapter();
     providerFactory.register('mock-provider', mockAdapter);
 
-    // key-1 is permanently exhausted
     keyRegistry.pools['mock-provider'].keys[0].exhausted = true;
     keyRegistry.pools['mock-provider'].keys[0].active = false;
-
-    // key-2 has a cooldown in the future
     keyRegistry.pools['mock-provider'].keys[1].cooldownUntil = Date.now() + 60000;
-
-    // key-3 has a closer cooldown in the future
     keyRegistry.pools['mock-provider'].keys[2].cooldownUntil = Date.now() + 10000;
 
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
@@ -261,7 +221,6 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
 
     expect(res.error.code).toBe('poolUnavailable');
     expect(res.error.provider).toBe('mock-provider');
-    // It should pick 10 seconds (key-3) over 60 seconds (key-2) and ignore key-1
     expect(res.error.retryAfterSeconds).toBeLessThanOrEqual(10);
     expect(res.error.retryAfterSeconds).toBeGreaterThan(0);
   });
@@ -269,22 +228,15 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
   it('assert: cooldown calculation yields 0 if all keys are permanently exhausted or cooldown is in the past', async () => {
     const config = {
       gateway: { globalRetryLimit: 2 },
-      providers: {
-        'mock-provider': {
-          keys: ['key-1', 'key-2'],
-        },
-      },
+      providers: { 'mock-provider': { keys: ['key-1', 'key-2'] } },
     };
     const keyRegistry = new KeyRegistry(config);
     const providerFactory = new ProviderFactory(config);
     const mockAdapter = new MockAdapter();
     providerFactory.register('mock-provider', mockAdapter);
 
-    // key-1 is permanently exhausted
     keyRegistry.pools['mock-provider'].keys[0].exhausted = true;
     keyRegistry.pools['mock-provider'].keys[0].active = false;
-
-    // key-2 active is false and its cooldown is in the past
     keyRegistry.pools['mock-provider'].keys[1].active = false;
     keyRegistry.pools['mock-provider'].keys[1].cooldownUntil = Date.now() - 5000;
 
@@ -310,7 +262,7 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     errStatus.status = 401;
 
     const errStatusCode = new Error('StatusCode Error');
-    errStatusCode.statusCode = 403;
+    errStatusCode.statusCode = 500;
 
     const errResponseStatus = new Error('ResponseStatus Error');
     errResponseStatus.response = { status: 429 };
@@ -327,26 +279,24 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     const req = { provider: 'mock-provider', actualModelId: 'test-model' };
     await orchestrator.executeCompletion(req, {});
 
-    // Plain errors without HTTP status are transport failures (no key cooldown)
+    // The first three errors have HTTP status (401, 500, 429) -> key cooldown.
+    // The plain error has no status -> transport error, no key cooldown.
     expect(flagFailureSpy).toHaveBeenCalledTimes(3);
     expect(flagFailureSpy).toHaveBeenNthCalledWith(1, 'mock-provider', 'key-1', {
-      category: 'auth',
-      code: 'invalid_api_key',
+      statusCode: 401,
       retryAfterSeconds: undefined,
     });
     expect(flagFailureSpy).toHaveBeenNthCalledWith(2, 'mock-provider', 'key-2', {
-      category: 'auth',
-      code: 'forbidden',
+      statusCode: 500,
       retryAfterSeconds: undefined,
     });
     expect(flagFailureSpy).toHaveBeenNthCalledWith(3, 'mock-provider', 'key-3', {
-      category: 'rate_limit',
-      code: 'rate_limit_exceeded',
+      statusCode: 429,
       retryAfterSeconds: undefined,
     });
   });
 
-  it('assert: fallback model exhaustion yields poolUnavailable for the fallback provider', async () => {
+  it('assert: fallback model exhaustion returns the fallback provider upstream error', async () => {
     const config = {
       gateway: { globalRetryLimit: 2 },
       providers: {
@@ -362,11 +312,8 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
     providerFactory.register('primary-provider', primaryAdapter);
     providerFactory.register('fallback-provider', fallbackAdapter);
 
-    // Setup errors for primary (2 retries fail)
     primaryAdapter.enqueue(makeHttpError('P1 Failed', 500));
     primaryAdapter.enqueue(makeHttpError('P2 Failed', 500));
-
-    // Setup errors for fallback (2 retries fail)
     fallbackAdapter.enqueue(makeHttpError('F1 Failed', 500));
     fallbackAdapter.enqueue(makeHttpError('F2 Failed', 500));
 
@@ -380,12 +327,8 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests', () => {
 
     expect(primaryAdapter.callCount).toBe(2);
     expect(fallbackAdapter.callCount).toBe(2);
-    expect(res.error).toEqual({
-      code: 'internal_server_error',
-      type: 'api_error',
-      message: 'F2 Failed',
-      provider: 'mock-provider',
-      httpStatus: 502,
-    });
+    // Passthrough: the last upstream error's exact message and status are forwarded.
+    expect(res.error.message).toBe('F2 Failed');
+    expect(res.error.httpStatus).toBe(500);
   });
 });

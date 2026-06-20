@@ -11,7 +11,7 @@ import { makeHttpError } from '../helpers/normalizeTestError.js';
 const baseGateway = {
   port: 0,
   globalRetryLimit: 1,
-  cooldown: { baseSeconds: 30, maxSeconds: 3600, billingSeconds: 3600 },
+  cooldown: { baseSeconds: 30, maxSeconds: 3600, serverSeconds: 60 },
 };
 
 const testClient = {
@@ -53,14 +53,8 @@ describe('Error API v1 Integration Tests', () => {
     );
     closeHandles.push(close);
 
-    services.keyRegistry.flagFailure('gemini', 'key-alpha', {
-      category: 'rate_limit',
-      code: 'rate_limit_exceeded',
-    });
-    services.keyRegistry.flagFailure('gemini', 'key-beta', {
-      category: 'rate_limit',
-      code: 'rate_limit_exceeded',
-    });
+    services.keyRegistry.flagFailure('gemini', 'key-alpha', { statusCode: 429 });
+    services.keyRegistry.flagFailure('gemini', 'key-beta', { statusCode: 429 });
 
     const res = await request(app)
       .post('/openai/chat/completions')
@@ -82,9 +76,12 @@ describe('Error API v1 Integration Tests', () => {
     expect(mockAdapter.callCount).toBe(0);
   });
 
-  it('returns upstream v1 envelope without leaking raw upstream body at root', async () => {
+  it('forwards the upstream v1 envelope without overriding the message', async () => {
     const mockAdapter = new MockAdapter('gemini');
-    mockAdapter.setError(makeHttpError('Internal Server Error', 500));
+    mockAdapter.setError(makeHttpError('High demand: try again later', 503, {
+      type: 'api_error',
+      code: 'service_unavailable',
+    }));
 
     const { app, close } = await buildMockApp(
       {
@@ -103,19 +100,18 @@ describe('Error API v1 Integration Tests', () => {
         model: 'gemini/gemini-pro',
         messages: [{ role: 'user', content: 'upstream error' }],
       })
-      .expect(502);
+      .expect(503);
 
     assertV1Envelope(res.body);
-    expect(res.body.error).toEqual(expect.objectContaining({
-      code: 'internal_server_error',
-      type: 'api_error',
-      httpStatus: 502,
-      provider: 'gemini',
-    }));
+    // The upstream's exact message and code must reach the client.
+    expect(res.body.error.message).toBe('High demand: try again later');
+    expect(res.body.error.code).toBe('service_unavailable');
+    expect(res.body.error.type).toBe('api_error');
+    expect(res.body.error.provider).toBe('gemini');
     expect(mockAdapter.callCount).toBeGreaterThan(0);
   });
 
-  it('forwards classified client status and Retry-After for rate limits', async () => {
+  it('forwards classified Retry-After for rate limits', async () => {
     const mockAdapter = new MockAdapter('gemini');
     mockAdapter.setError(makeHttpError('Rate limit exceeded', 429, {
       type: 'rate_limit_error',
@@ -143,18 +139,19 @@ describe('Error API v1 Integration Tests', () => {
       .expect(429);
 
     assertV1Envelope(res.body);
-    expect(res.body.error).toEqual(expect.objectContaining({
-      code: 'rate_limit_exceeded',
-      type: 'rate_limit_error',
-      httpStatus: 429,
-      provider: 'gemini',
-    }));
+    expect(res.body.error.code).toBe('rate_limit_exceeded');
+    expect(res.body.error.type).toBe('rate_limit_error');
+    expect(res.body.error.httpStatus).toBe(429);
+    expect(res.body.error.provider).toBe('gemini');
     expect(res.headers['retry-after']).toBe('45');
   });
 
-  it('maps billing quota errors to 402 client status', async () => {
+  it('forwards 4xx errors with the upstream message and code (no override)', async () => {
     const mockAdapter = new MockAdapter('gemini');
-    mockAdapter.setError(makeHttpError('Out of credits', 402));
+    mockAdapter.setError(makeHttpError('Out of credits', 402, {
+      type: 'billing_error',
+      code: 'insufficient_quota',
+    }));
 
     const { app, close } = await buildMockApp(
       {
@@ -167,7 +164,7 @@ describe('Error API v1 Integration Tests', () => {
     closeHandles.push(close);
 
     const res = await request(app)
-      .post('/anthropic/messages')
+      .post('/openai/chat/completions')
       .set('Authorization', 'Bearer error-api-token')
       .send({
         model: 'gemini/gemini-pro',
@@ -176,9 +173,10 @@ describe('Error API v1 Integration Tests', () => {
       .expect(402);
 
     assertV1Envelope(res.body);
+    expect(res.body.error.message).toBe('Out of credits');
     expect(res.body.error.code).toBe('insufficient_quota');
-    expect(res.body.error.httpStatus).toBe(402);
     expect(res.body.error.type).toBe('billing_error');
+    expect(res.body.error.provider).toBe('gemini');
   });
 
   it('returns gateway validation errors with details and no provider field', async () => {

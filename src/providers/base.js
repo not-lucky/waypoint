@@ -134,7 +134,9 @@ export class BaseProvider {
       : errorJson
 
     const message = errorObj?.message || fallbackMessage
-    const retryAfterSeconds = parseRetryAfter(headersObj['retry-after'] || headersObj['Retry-After'])
+    // `Headers.entries()` lowercases keys per the Fetch spec, so only the
+    // lowercase key can ever resolve; the `Retry-After` fallback is dead code.
+    const retryAfterSeconds = parseRetryAfter(headersObj['retry-after'])
 
     const err = new UpstreamError(message, {
       statusCode: response.status,

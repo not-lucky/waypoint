@@ -11,6 +11,8 @@
  * are never reactivated.
  */
 
+import { resolveCooldownSeconds } from '../errors/policy.js';
+
 /**
  * Sets a cooldown timer on a key with automatic cleanup.
  *
@@ -43,6 +45,8 @@ export function applyCooldown(key, seconds, timers) {
 
 /**
  * Computes exponential backoff duration for rate limit (429) failures.
+ * Delegates to the canonical policy implementation so the formula and
+ * Retry-After preference live in one place.
  *
  * @param {number} consecutiveFailures - Current consecutive failure count (already incremented).
  * @param {number|undefined} retryAfterSeconds - Parsed Retry-After.
@@ -50,12 +54,14 @@ export function applyCooldown(key, seconds, timers) {
  * @returns {number} Backoff duration in seconds.
  */
 export function computeRateLimitBackoff(consecutiveFailures, retryAfterSeconds, cooldownConfig) {
-  if (retryAfterSeconds !== undefined && retryAfterSeconds > 0) {
-    return retryAfterSeconds;
-  }
-  const { baseSeconds, maxSeconds } = cooldownConfig;
-  if (!baseSeconds) return 0;
-  return Math.min(baseSeconds * (2 ** (consecutiveFailures - 1)), maxSeconds);
+  return resolveCooldownSeconds({
+    statusCode: 429,
+    retryAfterSeconds,
+    defaultSeconds: 0,
+    consecutiveFailures,
+    baseSeconds: cooldownConfig.baseSeconds,
+    maxSeconds: cooldownConfig.maxSeconds,
+  });
 }
 
 /**

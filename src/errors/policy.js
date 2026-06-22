@@ -11,6 +11,33 @@
  * - No HTTP status (transport / network failure): retry with no cooldown.
  */
 
+/** Status codes that should retire the key (the credential itself is wrong). */
+const RETIRE_STATUSES = new Set([401, 403]);
+
+/** Status codes that should apply a cooldown (rate-limit / timeout / server). */
+const COOLDOWN_STATUSES = new Set([402, 408, 429]);
+
+/** Inclusive lower bound for the 5xx server-error range. */
+const SERVER_ERROR_MIN = 500;
+/** Exclusive upper bound for the 5xx server-error range. */
+const SERVER_ERROR_MAX = 600;
+
+/**
+ * Classifies an upstream status code into a lifecycle action bucket.
+ * `undefined` (transport failure) maps to `'transport'` — retryable but with
+ * no key-state change. Other unrecognised codes fall through to `'none'`.
+ *
+ * @param {number|undefined} statusCode
+ * @returns {'retire' | 'cooldown' | 'transport' | 'none'}
+ */
+function classifyStatus(statusCode) {
+  if (statusCode === undefined) return 'transport';
+  if (RETIRE_STATUSES.has(statusCode)) return 'retire';
+  if (COOLDOWN_STATUSES.has(statusCode)) return 'cooldown';
+  if (statusCode >= SERVER_ERROR_MIN && statusCode < SERVER_ERROR_MAX) return 'cooldown';
+  return 'none';
+}
+
 /**
  * Resolves the key action (retire / cooldown / none) for a given upstream error.
  *
@@ -18,10 +45,9 @@
  * @returns {'retire' | 'cooldown' | 'none'}
  */
 export function decideKeyAction(statusCode) {
-  if (statusCode === 401 || statusCode === 403) return 'retire';
-  if (statusCode === 402 || statusCode === 408 || statusCode === 429) return 'cooldown';
-  if (typeof statusCode === 'number' && statusCode >= 500 && statusCode < 600) {
-    return 'cooldown';
+  const classification = classifyStatus(statusCode);
+  if (classification === 'retire' || classification === 'cooldown') {
+    return classification;
   }
   return 'none';
 }
@@ -33,14 +59,9 @@ export function decideKeyAction(statusCode) {
  * @returns {boolean} True if the request should be retried (different key or backoff).
  */
 export function isRetryable(statusCode) {
-  if (statusCode === undefined) return true; // transport / aborts
-  if (statusCode === 402 || statusCode === 408 || statusCode === 429) return true;
-  if (statusCode >= 500 && statusCode < 600) return true;
-  if (statusCode === 401 || statusCode === 403) {
-    // Auth/permission errors: the *key* is wrong, but a different key may work.
-    return true;
-  }
-  return false;
+  // Transport failures retry; status-driven classification drives the rest.
+  if (statusCode === undefined) return true;
+  return decideKeyAction(statusCode) !== 'none';
 }
 
 /**

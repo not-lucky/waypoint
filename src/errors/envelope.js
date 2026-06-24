@@ -1,68 +1,51 @@
 /**
- * @fileoverview Passthrough client error envelope and SSE formatters.
+ * @fileoverview Protocol-specific client error envelope and SSE formatters.
  *
- * The envelope is a thin wrapper over the upstream's own error fields. The client's
- * `code`, `type`, and `message` mirror what the upstream sent; the optional `upstreamCode`
- * field carries the raw upstream string when the ingress protocol has no direct
- * equivalent (per the design decision to "Don't translate code, just pass upstreamCode
- * through as a generic extra field").
+ * `buildClientErrorEnvelope(args, targetFormat)` projects the upstream's `code`,
+ * `type`, and `message` into the ingress protocol's native envelope shape (OpenAI or
+ * Anthropic). The upstream code, type, and message are passed through verbatim.
  *
- * The SSE formatters produce a translated envelope at the controller boundary
+ * The SSE formatters serialize an already-shaped envelope at the controller boundary
  * (OpenAI ingress -> OpenAI-shape SSE, Anthropic ingress -> Anthropic-shape SSE).
  */
 
+import { FORMATS } from '../transforms/index.js';
+
 /**
- * Builds the v1 client envelope from a flat error descriptor.
- *
- * Accepts either a structured args object OR a flat descriptor with the
- * fields produced by `buildFinalError` / `buildPoolUnavailableError` / `buildCancelledError`:
- *   { code, message, httpStatus, type, provider, retryAfterSeconds, upstreamBody }
+ * Builds the protocol-specific client envelope from a flat error descriptor.
  *
  * @param {Object|undefined} argsOrDescriptor
- * @returns {{ error: Object }}
+ * @param {string} [targetFormat=FORMATS.OPENAI]
+ * @returns {Object}
  */
-export function buildClientErrorEnvelope(argsOrDescriptor = {}) {
+export function buildClientErrorEnvelope(argsOrDescriptor = {}, targetFormat = FORMATS.OPENAI) {
   const d = argsOrDescriptor || {};
-  const statusCode = d.statusCode ?? d.httpStatus;
-  const finalStatus = typeof statusCode === 'number' && statusCode >= 100 && statusCode < 600
-    ? statusCode
-    : 502;
+  const message = d.message || 'Request failed';
+  const errorCode = d.errorCode || d.code || 'upstream_error';
 
-  const error = {
-    code: d.errorCode || d.code || 'upstream_error',
-    message: d.message || 'Request failed',
-    httpStatus: finalStatus,
+  if (targetFormat === FORMATS.ANTHROPIC) {
+    return {
+      type: 'error',
+      error: {
+        type: d.errorType || 'api_error',
+        message,
+      },
+    };
+  }
+
+  return {
+    error: {
+      message,
+      type: d.errorType || 'api_error',
+      param: d.param || null,
+      code: errorCode,
+      ...(d.details ? { details: d.details } : {}),
+    },
   };
-
-  const type = d.errorType || d.type;
-  if (type) error.type = type;
-  if (d.provider) error.provider = d.provider;
-  if (d.retryAfterSeconds !== undefined) error.retryAfterSeconds = d.retryAfterSeconds;
-  if (d.upstreamBody) error.upstreamBody = d.upstreamBody;
-
-  return { error };
 }
 
 /**
- * Normalizes a stream failure into the v1 client envelope.
- *
- * @param {any} normalized
- * @returns {{ error: Object }}
- */
-export function normalizeStreamFailure(normalized) {
-  return buildClientErrorEnvelope({
-    statusCode: normalized.statusCode,
-    message: normalized.message,
-    errorCode: normalized.errorCode,
-    errorType: normalized.errorType,
-    provider: normalized.provider,
-    retryAfterSeconds: normalized.retryAfterSeconds,
-    upstreamBody: normalized.upstreamBody,
-  });
-}
-
-/**
- * Formats a v1 error envelope as OpenAI-compatible SSE frames.
+ * Formats an error envelope as OpenAI-compatible SSE frames.
  *
  * @param {{ error: Object }} envelope
  * @param {boolean} [includeDone=true]
@@ -75,11 +58,14 @@ export function formatOpenAiSseError(envelope, includeDone = true) {
 }
 
 /**
- * Formats a v1 error envelope as Anthropic-compatible SSE error event.
+ * Formats an Anthropic-compatible SSE error event from an envelope that is already in
+ * Anthropic shape (i.e. produced by `buildClientErrorEnvelope(..., 'anthropic')`,
+ * yielding `{ type: 'error', error: { type, message } }`). The envelope is serialized
+ * verbatim — there is no re-wrap step.
  *
- * @param {{ error: Object }} envelope
+ * @param {{ type: 'error', error: Object }} envelope
  * @returns {string}
  */
 export function formatAnthropicSseError(envelope) {
-  return `event: error\ndata: ${JSON.stringify({ type: 'error', error: envelope.error })}\n\n`;
+  return `event: error\ndata: ${JSON.stringify(envelope)}\n\n`;
 }

@@ -9,12 +9,15 @@ import { resolveModel } from '../domain/modelRouter.js';
 import { transformRequest } from '../domain/requestTransformer.js';
 import { FORMATS, translateError } from '../transforms/index.js';
 import { buildClientErrorEnvelope } from '../errors/envelope.js';
+import { statusToErrorType } from '../errors/httpErrorTypes.js';
 import { normalizeUpstreamError, UpstreamError } from '../errors/upstream.js';
 import { buildUpstreamErrorLogFields } from '../logging/upstreamErrorLogMeta.js';
 
 export class BaseController {
   constructor(orchestrator, protocolName) {
     this.orchestrator = orchestrator;
+    this.protocolName = protocolName;
+    this.targetFormat = protocolName;
     this.logger = getAppLogger(protocolName);
   }
 
@@ -30,11 +33,14 @@ export class BaseController {
    * @returns {Object} Express response.
    */
   async handleError(res, reqLog, error, statusCode = null) {
-    const finalStatus = statusCode || error?.httpStatus || 500;
+    const finalStatus = statusCode
+      || error?.httpStatus
+      || (typeof error?.statusCode === 'number' ? error.statusCode : null)
+      || 500;
     const logMeta = buildUpstreamErrorLogFields({
       message: error?.message,
-      errorCode: error?.code,
-      errorType: error?.type,
+      errorCode: error?.errorCode ?? error?.code,
+      errorType: error?.errorType ?? error?.type,
       provider: error?.provider,
       retryAfterSeconds: error?.retryAfterSeconds,
       statusCode: finalStatus,
@@ -45,17 +51,13 @@ export class BaseController {
       res.setHeader('Retry-After', String(error.retryAfterSeconds));
     }
 
-    // Pass-through envelope — controller sets a single shape and translateError
-    // is responsible for the protocol-specific projection at the SSE boundary.
+    const targetFormat = this.targetFormat;
+    const errorType = error?.errorType ?? error?.type ?? statusToErrorType(finalStatus);
     const errorBody = buildClientErrorEnvelope({
-      statusCode: finalStatus,
       message: error?.message,
-      errorCode: error?.code,
-      errorType: error?.type,
-      provider: error?.provider,
-      retryAfterSeconds: error?.retryAfterSeconds,
-      upstreamBody: error?.upstreamBody,
-    });
+      errorCode: error?.errorCode ?? error?.code,
+      errorType,
+    }, targetFormat);
 
     if (reqLog) {
       reqLog.logClientResponse(finalStatus, errorBody);
@@ -93,18 +95,16 @@ export class BaseController {
       : normalizeUpstreamError(err, providerFallback);
 
     const translated = translateError(upstreamFormat, ingressFormat, normalized);
+    const targetFormat = ingressFormat;
+    const errorType = translated.type || statusToErrorType(normalized.statusCode);
     const envelope = buildClientErrorEnvelope({
-      statusCode: translated.statusCode,
       message: translated.message,
       errorCode: translated.code,
-      errorType: translated.type,
-      provider: translated.provider,
-      retryAfterSeconds: translated.retryAfterSeconds,
-      upstreamBody: translated.upstreamBody,
-    });
+      errorType,
+    }, targetFormat);
 
-    if (envelope.error.retryAfterSeconds !== undefined && !res.headersSent) {
-      res.setHeader('Retry-After', String(envelope.error.retryAfterSeconds));
+    if (translated.retryAfterSeconds !== undefined && !res.headersSent) {
+      res.setHeader('Retry-After', String(translated.retryAfterSeconds));
     }
 
     const sseData = formatSseError(envelope);
@@ -147,6 +147,8 @@ export class BaseController {
 
     const reqLog = createRequestLog(req, this.orchestrator.config);
 
+    let resolvedProvider = null;
+
     try {
       if (req.isDryRun && !this.orchestrator.config?.logging?.logRequests) {
         const error = new Error('Dry run requires request logging to be enabled');
@@ -160,6 +162,7 @@ export class BaseController {
 
       const baseReq = translateReq ? translateReq(body) : body;
       const resolved = resolveModel(body.model, providersConfig);
+      resolvedProvider = resolved?.provider || null;
       const unifiedReq = transformRequest(baseReq, resolved);
       unifiedReq.resolvedModel = resolved;
 
@@ -204,12 +207,8 @@ export class BaseController {
       if (err.code && err.httpStatus) {
         return this.handleError(res, reqLog, err);
       }
-      if (err instanceof UpstreamError) {
-        const normalized = normalizeUpstreamError(err, ingressFormat === FORMATS.ANTHROPIC ? 'anthropic' : 'openai');
-        return this.handleError(res, reqLog, normalized);
-      }
-      if (err.statusCode !== undefined) {
-        const normalized = normalizeUpstreamError(err, ingressFormat === FORMATS.ANTHROPIC ? 'anthropic' : 'openai');
+      if (err instanceof UpstreamError || err.statusCode !== undefined) {
+        const normalized = normalizeUpstreamError(err, resolvedProvider || ingressFormat);
         return this.handleError(res, reqLog, normalized);
       }
       return this.handleError(res, reqLog, {

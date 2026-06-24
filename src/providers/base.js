@@ -10,6 +10,7 @@
 import { sanitizeUrl, serializeHeaders, redactHeaders } from '../logging/requestLoggerUtils.js'
 import { NotImplementedError } from '../utils/notImplementedError.js'
 import { parseRetryAfter, UpstreamError, normalizeUpstreamError  } from '../errors/upstream.js'
+import { mapGeminiStatusToType } from '../errors/geminiErrorTypes.js'
 
 /**
  * @typedef {Object} UnifiedMessage
@@ -125,6 +126,10 @@ export class BaseProvider {
       errorJson = { message: errorText }
     }
 
+    if (Array.isArray(errorJson) && errorJson.length > 0) {
+      errorJson = errorJson[0];
+    }
+
     const headersObj = response.headers
       ? Object.fromEntries(response.headers.entries())
       : {}
@@ -140,7 +145,7 @@ export class BaseProvider {
 
     const err = new UpstreamError(message, {
       statusCode: response.status,
-      errorType: errorObj?.type,
+      errorType: mapGeminiStatusToType(errorObj?.status) || errorObj?.type,
       errorCode: errorObj?.code,
       upstreamBody: errorJson,
       provider: 'unknown', // Filled by normalization or adapter.

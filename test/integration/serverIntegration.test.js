@@ -92,7 +92,14 @@ describe('Server Route Integration Tests', () => {
       })
       .expect(503);
 
-    expect(res.body).toEqual(mockErrorResponse);
+    expect(res.body).toEqual({
+      error: {
+        message: "All keys for provider 'openai' are in cooldown.",
+        type: 'api_error',
+        param: null,
+        code: 'poolUnavailable',
+      },
+    });
   });
 
   it('POST /openai/v1/chat/completions (alias) - works identically', async () => {

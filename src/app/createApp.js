@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import { buildClientErrorEnvelope } from '../errors/envelope.js';
+import { statusToErrorType } from '../errors/httpErrorTypes.js';
+import { resolveIngressFormat } from '../middleware/ingressFormat.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { dryRunMiddleware } from '../middleware/dryRun.js';
 import { createMetricsMiddleware } from '../middleware/metricsMiddleware.js';
@@ -56,8 +58,8 @@ function errorHandler(logger) {
     res.status(status).json(buildClientErrorEnvelope({
       code,
       message: err.message,
-      httpStatus: status,
-    }));
+      errorType: statusToErrorType(status),
+    }, resolveIngressFormat(req)));
   };
 }
 

@@ -134,7 +134,10 @@ describe('Dry Run Endpoints Integration Tests', () => {
         .expect(400);
 
       expect(res.body.error.code).toBe('validationError');
-      expect(res.body.error.details.some((d) => d.field === 'messages')).toBe(true);
+      expect(res.body.error.message).toContain('messages:');
+      expect(res.body.error.details).toEqual(expect.arrayContaining([
+        expect.objectContaining({ field: 'messages' }),
+      ]));
     } finally {
       await teardown();
     }

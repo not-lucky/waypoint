@@ -170,7 +170,7 @@ describe('Protocol Controllers', () => {
       expect(jsonMatch).toBeTruthy();
       const parsed = JSON.parse(jsonMatch[1]);
       expect(parsed.error.code).toBeDefined();
-      expect(parsed.error.httpStatus).toBeDefined();
+      expect(parsed.error.type).toBeDefined();
     });
   });
 

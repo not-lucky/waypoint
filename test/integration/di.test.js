@@ -428,7 +428,7 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
     // The custom error has no `error.code`, so the envelope falls back to 'upstream_error'.
     expect(res.body.error.code).toBe('upstream_error');
     expect(res.body.error.message).toBe('Custom mock provider internal error');
-    expect(res.body.error.httpStatus).toBe(502);
+    expect(res.body.error.param).toBeNull();
 
     await close();
   });

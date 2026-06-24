@@ -3,9 +3,10 @@ import { decideKeyAction, isRetryable, resolveCooldownSeconds, resolveLifecycleT
 import {
   classifyTransportError, parseRetryAfter,
   UpstreamError, normalizeUpstreamError, throwIfStreamErrorPayload, throwIfGeminiStreamError,
+  createStreamUpstreamError,
 } from '../../src/errors/upstream.js';
 import {
-  buildClientErrorEnvelope, normalizeStreamFailure, formatOpenAiSseError, formatAnthropicSseError,
+  buildClientErrorEnvelope, formatOpenAiSseError, formatAnthropicSseError,
 } from '../../src/errors/envelope.js';
 
 describe('decideKeyAction', () => {
@@ -210,6 +211,32 @@ describe('normalizeUpstreamError', () => {
     expect(res.retryAfterSeconds).toBe(45);
   });
 
+  it('uses the upstream `status` field as errorType when `type` is absent (Gemini shape)', () => {
+    const res = normalizeUpstreamError({
+      statusCode: 404,
+      upstreamBody: { error: { code: 404, message: 'models/wrong_model is not found', status: 'NOT_FOUND' } },
+    }, 'gemini');
+    expect(res.errorType).toBe('not_found_error');
+    expect(res.errorCode).toBe(404);
+    expect(res.message).toBe('models/wrong_model is not found');
+  });
+
+  it('prefers `status` over `type` when both are present (Gemini-style status is more specific)', () => {
+    const res = normalizeUpstreamError({
+      statusCode: 400,
+      upstreamBody: { error: { type: 'invalid_request_error', status: 'INVALID_ARGUMENT', message: 'bad input' } },
+    }, 'openai');
+    expect(res.errorType).toBe('invalid_request_error');
+  });
+
+  it('passes through unknown Gemini status strings verbatim', () => {
+    const res = normalizeUpstreamError({
+      statusCode: 418,
+      upstreamBody: { error: { code: 1, message: 'teapot', status: 'I_AM_A_TEAPOT' } },
+    }, 'gemini');
+    expect(res.errorType).toBe('I_AM_A_TEAPOT');
+  });
+
   it('returns an UpstreamError as-is with provider fallthrough', () => {
     const original = new UpstreamError('boom', { statusCode: 503, errorCode: 'unavailable', provider: 'gemini', upstreamBody: { foo: 1 } });
     const res = normalizeUpstreamError(original, 'openai');
@@ -228,61 +255,38 @@ describe('normalizeUpstreamError', () => {
 });
 
 describe('buildClientErrorEnvelope', () => {
-  it('builds a passthrough envelope with the upstream status', () => {
+  it('builds a passthrough envelope in OpenAI format by default', () => {
     const body = buildClientErrorEnvelope({
-      statusCode: 503,
       errorCode: 'service_unavailable',
       message: 'High demand',
       errorType: 'api_error',
-      provider: 'gemini',
-      retryAfterSeconds: 30,
     });
     expect(body.error).toEqual({
       code: 'service_unavailable',
       message: 'High demand',
-      httpStatus: 503,
+      param: null,
       type: 'api_error',
-      provider: 'gemini',
-      retryAfterSeconds: 30,
     });
   });
 
-  it('defaults to 502 when no statusCode is provided', () => {
-    const body = buildClientErrorEnvelope({ errorCode: 'x', message: 'oops' });
-    expect(body.error.httpStatus).toBe(502);
-  });
-
-  it('preserves the upstream body when supplied', () => {
+  it('builds an Anthropic-formatted envelope when targetFormat is anthropic', () => {
     const body = buildClientErrorEnvelope({
-      statusCode: 503,
       errorCode: 'service_unavailable',
-      message: 'm',
-      upstreamBody: { error: { message: 'm' } },
-    });
-    expect(body.error.upstreamBody).toEqual({ error: { message: 'm' } });
-  });
-});
-
-describe('normalizeStreamFailure', () => {
-  it('builds a passthrough envelope from a normalized error', () => {
-    const envelope = normalizeStreamFailure({
-      message: 'Stream died',
-      statusCode: 503,
-      errorCode: 'service_unavailable',
+      message: 'High demand',
       errorType: 'api_error',
-      provider: 'openai',
-      retryAfterSeconds: 15,
-      upstreamBody: { error: { message: 'Stream died' } },
+    }, 'anthropic');
+    expect(body).toEqual({
+      type: 'error',
+      error: {
+        type: 'api_error',
+        message: 'High demand',
+      },
     });
-    expect(envelope.error).toEqual({
-      code: 'service_unavailable',
-      message: 'Stream died',
-      httpStatus: 503,
-      type: 'api_error',
-      provider: 'openai',
-      retryAfterSeconds: 15,
-      upstreamBody: { error: { message: 'Stream died' } },
-    });
+  });
+
+  it('defaults Anthropic error type to api_error when errorType is not provided', () => {
+    const body = buildClientErrorEnvelope({ message: 'oops' }, 'anthropic');
+    expect(body.error.type).toBe('api_error');
   });
 });
 
@@ -292,7 +296,8 @@ describe('SSE formatters', () => {
       error: {
         code: 'service_unavailable',
         message: 'High demand',
-        httpStatus: 503,
+        param: null,
+        type: 'api_error',
       },
     });
     expect(sse).toContain('"code":"service_unavailable"');
@@ -300,23 +305,21 @@ describe('SSE formatters', () => {
   });
 
   it('omits [DONE] when includeDone is false', () => {
-    const sse = formatOpenAiSseError({ error: { code: 'x', message: 'y', httpStatus: 500 } }, false);
+    const sse = formatOpenAiSseError({ error: { code: 'x', message: 'y', param: null, type: 'api_error' } }, false);
     expect(sse).not.toContain('data: [DONE]');
   });
 
   it('formats an Anthropic SSE error event', () => {
     const sse = formatAnthropicSseError({
+      type: 'error',
       error: {
-        code: 'service_unavailable',
-        message: 'High demand',
-        httpStatus: 503,
         type: 'api_error',
-        provider: 'anthropic',
+        message: 'High demand',
       },
     });
     expect(sse).toContain('event: error');
     expect(sse).toContain('"type":"error"');
-    expect(sse).toContain('"code":"service_unavailable"');
+    expect(sse).toContain('"type":"api_error"');
   });
 });
 
@@ -345,6 +348,19 @@ describe('throwIfStreamErrorPayload', () => {
     expect(() => throwIfGeminiStreamError({
       error: { code: 'unavailable', message: 'High demand' },
     }, 'gemini')).toThrow(UpstreamError);
+  });
+
+  it('uses the upstream `status` field as errorType when `type` is absent (Gemini stream shape)', () => {
+    const err = createStreamUpstreamError(
+      { error: { code: 404, message: 'models/wrong_model is not found', status: 'NOT_FOUND' } },
+      404,
+      'gemini',
+    );
+    expect(err.errorType).toBe('not_found_error');
+    expect(err.errorCode).toBe(404);
+    expect(err.message).toBe('models/wrong_model is not found');
+    expect(err.statusCode).toBe(404);
+    expect(err.provider).toBe('gemini');
   });
 });
 

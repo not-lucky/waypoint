@@ -82,4 +82,38 @@ describe('BaseProvider Tests', () => {
       });
     });
   });
+
+  describe('parseUpstreamError', () => {
+    it('uses the upstream `status` field as errorType when `type` is absent (Gemini shape)', async () => {
+      const response = new Response(
+        JSON.stringify({ error: { code: 404, message: 'models/wrong_model is not found', status: 'NOT_FOUND' } }),
+        { status: 404, headers: { 'content-type': 'application/json' } },
+      );
+      const err = await BaseProvider.parseUpstreamError(response);
+      expect(err.statusCode).toBe(404);
+      expect(err.errorType).toBe('not_found_error');
+      expect(err.errorCode).toBe(404);
+      expect(err.message).toBe('models/wrong_model is not found');
+    });
+
+    it('passes through unknown Gemini status strings verbatim', async () => {
+      const response = new Response(
+        JSON.stringify({ error: { code: 1, message: 'teapot', status: 'I_AM_A_TEAPOT' } }),
+        { status: 418, headers: { 'content-type': 'application/json' } },
+      );
+      const err = await BaseProvider.parseUpstreamError(response);
+      expect(err.errorType).toBe('I_AM_A_TEAPOT');
+    });
+
+    it('extracts the first element when the error body is a JSON array', async () => {
+      const response = new Response(
+        JSON.stringify([{ error: { message: 'first error', code: 'err_1' } }]),
+        { status: 400, headers: { 'content-type': 'application/json' } },
+      );
+      const err = await BaseProvider.parseUpstreamError(response);
+      expect(err.message).toBe('first error');
+      expect(err.errorCode).toBe('err_1');
+      expect(err.statusCode).toBe(400);
+    });
+  });
 });

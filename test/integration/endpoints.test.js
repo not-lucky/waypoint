@@ -150,7 +150,7 @@ describe('Provider Endpoints Integration Tests', () => {
         .expect(400);
 
       expect(res.body.error).toBeDefined();
-      expect(res.body.error.httpStatus).toBe(400);
+      expect(res.body.error.param).toBeNull();
     });
   });
 

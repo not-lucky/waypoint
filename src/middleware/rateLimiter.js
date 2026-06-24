@@ -7,6 +7,9 @@
 
 import { getAppLogger } from '../logging/logger.js';
 import { teardownRegistry } from '../lifecycle/teardownRegistry.js';
+import { buildClientErrorEnvelope } from '../errors/envelope.js';
+import { statusToErrorType } from '../errors/httpErrorTypes.js';
+import { resolveIngressFormat } from './ingressFormat.js';
 
 /**
  * Symbol property key for tracking the head index in the sliding window.
@@ -259,13 +262,11 @@ export const rateLimiter = (req, res, next) => {
   // Returns HTTP 429 Too Many Requests per standard API conventions.
   if (activeCount >= max) {
     logger.debug('Rate limit exceeded: blocking request', { clientName, max, currentCount: activeCount });
-    return res.status(429).json({
-      error: {
-        code: 'rateLimitExceeded',
-        message: 'Rate limit exceeded.',
-        httpStatus: 429,
-      },
-    });
+    return res.status(429).json(buildClientErrorEnvelope({
+      code: 'rateLimitExceeded',
+      message: 'Rate limit exceeded.',
+      errorType: statusToErrorType(429),
+    }, resolveIngressFormat(req)));
   }
 
   // Record the current request's timestamp.

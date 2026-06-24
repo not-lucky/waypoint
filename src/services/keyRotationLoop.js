@@ -103,7 +103,10 @@ export const executeWithRetry = async ({
       keyRegistry.flagSuccess(provider, apiKey);
 
       if (requestLog) {
-        requestLog.logProviderResponse(response, Date.now() - providerStartTime);
+        requestLog.logProviderResponse(
+          response,
+          Date.now() - providerStartTime,
+        );
       }
 
       logger.debug('Completion execution succeeded', {

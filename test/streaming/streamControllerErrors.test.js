@@ -1,4 +1,5 @@
 import {
+  vi,
   describe,
   it,
   expect,
@@ -12,7 +13,9 @@ import { UnifiedOrchestrator } from '../../src/services/unifiedOrchestrator.js';
 import { KeyRegistry } from '../../src/registry/keyRegistry.js';
 import { ProviderFactory } from '../../src/providers/factory.js';
 import { UpstreamError } from '../../src/errors/upstream.js';
-import { formatAnthropicSseError, formatOpenAiSseError } from '../../src/errors/envelope.js';
+import {
+  buildClientErrorEnvelope, formatAnthropicSseError, formatOpenAiSseError,
+} from '../../src/errors/envelope.js';
 import { normalizeTestError } from '../helpers/normalizeTestError.js';
 
 class StreamMockAdapter {
@@ -30,6 +33,11 @@ class StreamMockAdapter {
     }
   }
 }
+
+const mockJsonRes = () => ({
+  status: vi.fn().mockReturnThis(),
+  json: vi.fn(),
+});
 
 describe('Streaming Controller Error Emission', () => {
   let app;
@@ -90,13 +98,12 @@ describe('Streaming Controller Error Emission', () => {
     const errorLine = response.text.split('\n\n').find((line) => line.includes('"error"'));
     expect(errorLine).toBeDefined();
     const envelope = JSON.parse(errorLine.replace('data: ', ''));
-    expect(envelope.error).toEqual(expect.objectContaining({
+    expect(envelope.error).toEqual({
       code: 'rate_limit_exceeded',
-      httpStatus: 429,
+      message: 'Rate limit exceeded',
+      param: null,
       type: 'rate_limit_error',
-      provider: 'mock-provider',
-      retryAfterSeconds: 30,
-    }));
+    });
     expect(response.text).toContain('data: [DONE]');
   });
 
@@ -129,32 +136,49 @@ describe('Streaming Controller Error Emission', () => {
     const dataLine = errorEvent.split('\n').find((line) => line.startsWith('data: '));
     const parsed = JSON.parse(dataLine.replace('data: ', ''));
     expect(parsed.type).toBe('error');
-    expect(parsed.error).toEqual(expect.objectContaining({
-      code: 'engine_overloaded',
-      httpStatus: 503,
+    expect(parsed.error).toEqual({
       type: 'overloaded_error',
-      provider: 'mock-provider',
-    }));
+      message: 'Engine overloaded',
+    });
   });
 
   it('formats SSE error helpers', () => {
-    const envelope = {
-      error: {
-        code: 'rate_limit_exceeded',
-        message: 'Rate limit exceeded.',
-        httpStatus: 429,
-        type: 'rate_limit_error',
-        provider: 'openai',
-        retryAfterSeconds: 30,
-      },
-    };
-
-    const openAiSse = formatOpenAiSseError(envelope);
+    const openAiEnvelope = buildClientErrorEnvelope({
+      errorCode: 'rate_limit_exceeded',
+      message: 'Rate limit exceeded.',
+      errorType: 'rate_limit_error',
+    });
+    const openAiSse = formatOpenAiSseError(openAiEnvelope);
     expect(openAiSse).toContain('"code":"rate_limit_exceeded"');
     expect(openAiSse).toContain('data: [DONE]');
 
-    const anthropicSse = formatAnthropicSseError(envelope);
+    const anthropicEnvelope = buildClientErrorEnvelope({
+      errorCode: 'rate_limit_exceeded',
+      message: 'Rate limit exceeded.',
+      errorType: 'rate_limit_error',
+    }, 'anthropic');
+    const anthropicSse = formatAnthropicSseError(anthropicEnvelope);
     expect(anthropicSse).toContain('event: error');
     expect(anthropicSse).toContain('"type":"error"');
+  });
+
+  it('surfaces Gemini-style errorType/code verbatim from a raw UpstreamError in the non-streaming path', async () => {
+    vi.spyOn(orchestrator, 'executeCompletion').mockRejectedValueOnce(new UpstreamError('models/wrong is not found', {
+      statusCode: 404,
+      errorCode: 404,
+      errorType: 'not_found_error',
+      provider: 'gemini',
+    }));
+
+    const controller = new OpenAIController(orchestrator);
+    const res = mockJsonRes();
+    await controller.handleCompletion({ body: { model: 'mock-provider/test-model' }, headers: {} }, res);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      error: expect.objectContaining({
+        code: 404,
+        type: 'not_found_error',
+      }),
+    }));
   });
 });

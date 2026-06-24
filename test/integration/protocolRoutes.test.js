@@ -113,11 +113,23 @@ describe('Protocol Route Mounting Integration Tests', () => {
 
       await Promise.all(routes.map(async (route) => {
         const res = await authed(app).post(route).send({}).expect(400);
-        expect(res.body.error).toEqual(expect.objectContaining({
-          code: 'validationError',
-          message: 'Payload validation failed',
-          details: expect.any(Array),
-        }));
+        if (route.includes('/anthropic')) {
+          expect(res.body).toEqual({
+            type: 'error',
+            error: {
+              type: 'invalid_request_error',
+              message: expect.stringContaining('Payload validation failed'),
+            },
+          });
+        } else {
+          expect(res.body.error).toEqual({
+            code: 'validationError',
+            message: expect.stringContaining('Payload validation failed'),
+            param: null,
+            type: 'invalid_request_error',
+            details: expect.any(Array),
+          });
+        }
       }));
     });
 
@@ -125,15 +137,34 @@ describe('Protocol Route Mounting Integration Tests', () => {
       const getRoutes = ['/openai/models', '/anthropic/models', '/health'];
       await Promise.all(getRoutes.map(async (route) => {
         const res = await request(app).get(route).expect(401);
-        expect(res.body.error.code).toBe('unauthorized');
-        expect(res.body.error.httpStatus).toBe(401);
+        if (route.includes('/anthropic')) {
+          expect(res.body).toEqual({
+            type: 'error',
+            error: {
+              type: 'authentication_error',
+              message: 'Unauthorized: Missing Authorization header.',
+            },
+          });
+        } else {
+          expect(res.body.error).toEqual({
+            code: 'unauthorized',
+            message: 'Unauthorized: Missing Authorization header.',
+            param: null,
+            type: 'authentication_error',
+          });
+        }
       }));
 
       const postRes = await request(app)
         .post('/openai/chat/completions')
         .send({ model: 'openai/gpt-4o', messages: [{ role: 'user', content: 'x' }] })
         .expect(401);
-      expect(postRes.body.error.code).toBe('unauthorized');
+      expect(postRes.body.error).toEqual({
+        code: 'unauthorized',
+        message: 'Unauthorized: Missing Authorization header.',
+        param: null,
+        type: 'authentication_error',
+      });
     });
 
     it('maps orchestrator errors to correct HTTP status on both protocols', async () => {
@@ -152,13 +183,26 @@ describe('Protocol Route Mounting Integration Tests', () => {
         .post('/openai/chat/completions')
         .send(completionPayload)
         .expect(503);
-      expect(openaiRes.body).toEqual(errorBody);
+      expect(openaiRes.body).toEqual({
+        error: {
+          code: 'poolUnavailable',
+          message: "All keys for provider 'openai' are in cooldown.",
+          param: null,
+          type: 'api_error',
+        },
+      });
 
       const anthropicRes = await authed(app)
         .post('/anthropic/messages')
         .send(anthropicPayload)
         .expect(503);
-      expect(anthropicRes.body).toEqual(errorBody);
+      expect(anthropicRes.body).toEqual({
+        type: 'error',
+        error: {
+          type: 'api_error',
+          message: "All keys for provider 'openai' are in cooldown.",
+        },
+      });
     });
   });
 });

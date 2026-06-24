@@ -6,6 +6,9 @@
  */
 
 import { getAppLogger } from '../logging/logger.js';
+import { buildClientErrorEnvelope } from '../errors/envelope.js';
+import { statusToErrorType } from '../errors/httpErrorTypes.js';
+import { resolveIngressFormat } from './ingressFormat.js';
 
 /**
  * @type {Object}
@@ -90,7 +93,11 @@ export const authMiddleware = (config) => (req, res, next) => {
   const { token, error } = extractAuthToken(req.headers);
   if (error) {
     logger.debug('Auth failed: invalid or missing credentials');
-    res.status(error.httpStatus).json({ error });
+    res.status(error.httpStatus).json(buildClientErrorEnvelope({
+      code: error.code,
+      message: error.message,
+      errorType: statusToErrorType(error.httpStatus),
+    }, resolveIngressFormat(req)));
     return;
   }
 
@@ -111,13 +118,11 @@ export const authMiddleware = (config) => (req, res, next) => {
   const client = tokenMap.get(token);
   if (!client) {
     logger.debug('Auth failed: invalid client token');
-    res.status(401).json({
-      error: {
-        code: 'unauthorized',
-        message: 'Unauthorized: Invalid client token.',
-        httpStatus: 401,
-      },
-    });
+    res.status(401).json(buildClientErrorEnvelope({
+      code: 'unauthorized',
+      message: 'Unauthorized: Invalid client token.',
+      errorType: statusToErrorType(401),
+    }, resolveIngressFormat(req)));
     return;
   }
 

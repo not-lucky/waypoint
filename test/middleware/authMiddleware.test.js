@@ -44,7 +44,8 @@ describe('authMiddleware', () => {
       error: {
         code: 'unauthorized',
         message: 'Unauthorized: Missing Authorization header.',
-        httpStatus: 401,
+        param: null,
+        type: 'authentication_error',
       },
     });
     expect(next).not.toHaveBeenCalled();

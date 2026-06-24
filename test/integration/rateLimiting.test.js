@@ -93,7 +93,8 @@ describe('Rate Limiting Integration Tests', () => {
       error: {
         code: 'rateLimitExceeded',
         message: 'Rate limit exceeded.',
-        httpStatus: 429,
+        param: null,
+        type: 'rate_limit_error',
       },
     });
   });

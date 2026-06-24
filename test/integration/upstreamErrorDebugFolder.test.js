@@ -106,6 +106,9 @@ describe('03_provider_response.json on upstream errors', () => {
         type: 'api_error',
         message: 'High demand: try again later',
         provider: 'gemini',
+        upstreamBody: expect.objectContaining({
+          error: expect.objectContaining({ code: 'service_unavailable' }),
+        }),
       }));
       expect(providerResponse.durationMs).toEqual(expect.any(Number));
     } finally {

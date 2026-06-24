@@ -148,11 +148,11 @@ describe('translateError cross-protocol error projection', () => {
     });
 
     expect(Object.keys(envelope)).toEqual(['error']);
-    expect(envelope.error).toEqual(expect.objectContaining({
+    expect(envelope.error).toEqual({
       code: 'NOT_FOUND',
       message: 'Model not found: gemini-9',
-      httpStatus: 404,
-      provider: 'gemini',
-    }));
+      param: null,
+      type: 'api_error',
+    });
   });
 });

@@ -127,7 +127,6 @@ describe('Fallback routing with real provider adapters and MSW', () => {
 
       // The upstream's exact message and code are forwarded verbatim.
       expect(response.body.error.code).toBe('internal_server_error');
-      expect(response.body.error.provider).toBe('openai');
       expect(response.body.error.message).toBe('Fallback failed');
     } finally {
       await close();

@@ -12,6 +12,8 @@
 
 // ─── Transport classification (preserved for logging/metrics only) ──────────
 
+import { mapGeminiStatusToType } from './geminiErrorTypes.js';
+
 /**
  * Classifies network/transport failures that have no HTTP status from the provider.
  *
@@ -202,7 +204,7 @@ export function normalizeUpstreamError(error, providerName) {
     message,
     statusCode: status,
     errorCode: errorObj?.code,
-    errorType: errorObj?.type,
+    errorType: mapGeminiStatusToType(errorObj?.status) || errorObj?.type,
     retryAfterSeconds,
     provider: providerName,
     upstreamBody: upstreamBody ?? null,
@@ -246,7 +248,7 @@ export function createStreamUpstreamError(upstreamBody, statusCode, provider, he
   );
   return new UpstreamError(err?.message || 'Stream error', {
     statusCode,
-    errorType: err?.type,
+    errorType: mapGeminiStatusToType(err?.status) || err?.type,
     errorCode: err?.code,
     upstreamBody,
     provider,

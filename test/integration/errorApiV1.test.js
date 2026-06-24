@@ -29,7 +29,8 @@ function assertV1Envelope(body) {
   expect(body).toHaveProperty('error');
   expect(body.error).toHaveProperty('code');
   expect(body.error).toHaveProperty('message');
-  expect(body.error).toHaveProperty('httpStatus');
+  expect(body.error).toHaveProperty('type');
+  expect(body.error).toHaveProperty('param');
   expect(Object.keys(body)).toEqual(['error']);
 }
 
@@ -66,12 +67,12 @@ describe('Error API v1 Integration Tests', () => {
       .expect(503);
 
     assertV1Envelope(res.body);
-    expect(res.body.error).toEqual(expect.objectContaining({
+    expect(res.body.error).toEqual({
       code: 'poolUnavailable',
-      httpStatus: 503,
-      provider: 'gemini',
-      retryAfterSeconds: expect.any(Number),
-    }));
+      message: "All keys for provider 'gemini' are in cooldown.",
+      param: null,
+      type: 'api_error',
+    });
     expect(res.headers['retry-after']).toBeDefined();
     expect(mockAdapter.callCount).toBe(0);
   });
@@ -107,7 +108,6 @@ describe('Error API v1 Integration Tests', () => {
     expect(res.body.error.message).toBe('High demand: try again later');
     expect(res.body.error.code).toBe('service_unavailable');
     expect(res.body.error.type).toBe('api_error');
-    expect(res.body.error.provider).toBe('gemini');
     expect(mockAdapter.callCount).toBeGreaterThan(0);
   });
 
@@ -141,8 +141,6 @@ describe('Error API v1 Integration Tests', () => {
     assertV1Envelope(res.body);
     expect(res.body.error.code).toBe('rate_limit_exceeded');
     expect(res.body.error.type).toBe('rate_limit_error');
-    expect(res.body.error.httpStatus).toBe(429);
-    expect(res.body.error.provider).toBe('gemini');
     expect(res.headers['retry-after']).toBe('45');
   });
 
@@ -176,7 +174,6 @@ describe('Error API v1 Integration Tests', () => {
     expect(res.body.error.message).toBe('Out of credits');
     expect(res.body.error.code).toBe('insufficient_quota');
     expect(res.body.error.type).toBe('billing_error');
-    expect(res.body.error.provider).toBe('gemini');
   });
 
   it('returns gateway validation errors with details and no provider field', async () => {
@@ -199,8 +196,8 @@ describe('Error API v1 Integration Tests', () => {
 
     assertV1Envelope(res.body);
     expect(res.body.error.code).toBe('validationError');
+    expect(res.body.error.message).toContain('Payload validation failed');
     expect(res.body.error.details).toEqual(expect.any(Array));
-    expect(res.body.error.provider).toBeUndefined();
     expect(mockAdapter.callCount).toBe(0);
   });
 });

@@ -1,5 +1,8 @@
 import { z } from 'zod';
 import { getAppLogger } from '../logging/logger.js';
+import { buildClientErrorEnvelope } from '../errors/envelope.js';
+import { resolveIngressFormat } from './ingressFormat.js';
+import { statusToErrorType } from '../errors/httpErrorTypes.js';
 
 const logger = getAppLogger('validation');
 
@@ -210,26 +213,28 @@ export const anthropicMessagesSchema = z.object({
  * Responds with a validation error when Zod schema validation fails.
  *
  * @param {Object} res - Express response object.
+ * @param {Object} req - Express request object.
  * @param {Object} result - Zod safeParse result containing error information.
  * @returns {Object} Express response with 400 status and error details.
  */
-const respondValidationError = (res, result) => {
-  const issues = result.error.issues || [];
+const respondValidationError = (res, req, result) => {
+  const issues = result.error.issues;
   const details = issues.map((err) => ({
     field: err.path.join('.'),
     message: err.message,
   }));
+  const message = details.length
+    ? `Payload validation failed: ${details.map((d) => `${d.field}: ${d.message}`).join(', ')}`
+    : 'Payload validation failed';
 
   logger.debug('Validation failed', { details });
 
-  return res.status(400).json({
-    error: {
-      code: 'validationError',
-      message: 'Payload validation failed',
-      httpStatus: 400,
-      details,
-    },
-  });
+  return res.status(400).json(buildClientErrorEnvelope({
+    code: 'validationError',
+    message,
+    errorType: statusToErrorType(400),
+    details,
+  }, resolveIngressFormat(req)));
 };
 
 /**
@@ -240,7 +245,7 @@ export const validateCompletionBody = (req, res, next) => {
 
   const result = completionSchema.safeParse(req.body);
   if (!result.success) {
-    return respondValidationError(res, result);
+    return respondValidationError(res, req, result);
   }
 
   logger.debug('Validation passed successfully');
@@ -255,7 +260,7 @@ export const validateAnthropicMessagesBody = (req, res, next) => {
 
   const result = anthropicMessagesSchema.safeParse(req.body);
   if (!result.success) {
-    return respondValidationError(res, result);
+    return respondValidationError(res, req, result);
   }
 
   logger.debug('Anthropic validation passed successfully');

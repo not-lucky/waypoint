@@ -250,6 +250,58 @@ providers:
       expect( config.providers.cohere.keys ).toContain( 'cohere-key' )
     } )
 
+    it( 'should load Cloudflare keys as apiKey/accountId credential objects', () => {
+      process.env.CLOUDFLARE_API_KEY_1 = 'cf-key-1'
+      process.env.CLOUDFLARE_ACCOUNT_ID_1 = 'cf-account-1'
+
+      writeTempConfig( `
+gateway:
+  port: 20128
+  routing:
+    strategy: "round-robin"
+providers:
+  cloudflare:
+    keys:
+      - apiKey: "\${CLOUDFLARE_API_KEY_1}"
+        accountId: "\${CLOUDFLARE_ACCOUNT_ID_1}"
+    models:
+      - id: "@cf/meta/llama-3.1-8b-instruct"
+` )
+
+      const config = configLoader.loadConfig( tempConfigPath )
+
+      expect( config.providers.cloudflare.keys ).toEqual( [ {
+        apiKey: 'cf-key-1',
+        accountId: 'cf-account-1',
+      } ] )
+    } )
+
+    it( 'should skip Cloudflare key entries when apiKey or accountId env vars are missing', () => {
+      const consoleWarnSpy = vi.spyOn( console, 'warn' ).mockImplementation( () => { } )
+      delete process.env.CLOUDFLARE_API_KEY_1
+      delete process.env.CLOUDFLARE_ACCOUNT_ID_1
+
+      writeTempConfig( `
+gateway:
+  port: 20128
+  routing:
+    strategy: "round-robin"
+providers:
+  cloudflare:
+    keys:
+      - apiKey: "\${CLOUDFLARE_API_KEY_1}"
+        accountId: "\${CLOUDFLARE_ACCOUNT_ID_1}"
+    models:
+      - id: "@cf/meta/llama-3.1-8b-instruct"
+` )
+
+      expect( () => {
+        configLoader.loadConfig( tempConfigPath )
+      } ).toThrow( "Provider 'cloudflare' has zero active keys remaining in the pool." )
+      expect( consoleWarnSpy ).toHaveBeenCalled()
+      consoleWarnSpy.mockRestore()
+    } )
+
     it( 'should filter out literal empty string, null, or undefined keys in providers with a warning (BUG-2)', () => {
       const consoleWarnSpy = vi.spyOn( console, 'warn' ).mockImplementation( () => { } )
 

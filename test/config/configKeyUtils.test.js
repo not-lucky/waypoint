@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from 'vitest'
-import { filterValidKeys } from '../../src/config/configKeyUtils.js'
+import {
+  filterValidKeys,
+  getProviderKeyCandidate,
+  isCloudflareKeyEntry,
+} from '../../src/config/configKeyUtils.js'
 
 describe( 'filterValidKeys', () => {
   it( 'filters null, undefined, and empty string keys while logging warnings', () => {
@@ -35,5 +39,30 @@ describe( 'filterValidKeys', () => {
       { index: 2, item: 'key-2' },
     ] )
     expect( logger.warning ).toHaveBeenCalledOnce()
+  } )
+
+  it( 'extracts apiKey from Cloudflare credential entries', () => {
+    expect( getProviderKeyCandidate( {
+      apiKey: 'cf-key',
+      accountId: 'acct-123',
+    } ) ).toBe( 'cf-key' )
+  } )
+
+  it( 'detects Cloudflare credential entries', () => {
+    expect( isCloudflareKeyEntry( {
+      apiKey: 'cf-key',
+      accountId: 'acct-123',
+    } ) ).toBe( true )
+    expect( isCloudflareKeyEntry( 'plain-key' ) ).toBe( false )
+  } )
+
+  it( 'rejects Cloudflare-shaped objects with empty or non-string fields', () => {
+    expect( isCloudflareKeyEntry( { apiKey: '', accountId: 'acct' } ) ).toBe( false )
+    expect( isCloudflareKeyEntry( { apiKey: 'k', accountId: '' } ) ).toBe( false )
+    expect( isCloudflareKeyEntry( { apiKey: 'k' } ) ).toBe( false )
+    expect( isCloudflareKeyEntry( { apiKey: 42, accountId: 'acct' } ) ).toBe( false )
+    expect( isCloudflareKeyEntry( { apiKey: 'k', accountId: null } ) ).toBe( false )
+    expect( isCloudflareKeyEntry( null ) ).toBe( false )
+    expect( isCloudflareKeyEntry( undefined ) ).toBe( false )
   } )
 } )

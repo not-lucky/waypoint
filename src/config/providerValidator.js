@@ -7,7 +7,7 @@
  */
 
 import { isPositiveInteger, isNonEmptyString, validateFallbackModel } from './validationHelpers.js'
-import { filterValidKeys } from './configKeyUtils.js'
+import { filterValidKeys, getProviderKeyCandidate, isCloudflareKeyEntry } from './configKeyUtils.js'
 import { getAppLogger } from '../logging/logger.js'
 import { logErrorAndExitOrThrow } from './validationErrors.js'
 
@@ -50,6 +50,45 @@ const VALID_MODEL_KEYS = [
   'reasoningSupported',
   'reasoningEffort',
 ]
+
+function validateCloudflareKeyEntry( entry, providerName, index, shouldExit ) {
+  if ( !isCloudflareKeyEntry( entry ) ) {
+    logErrorAndExitOrThrow(
+      `Provider '${ providerName }' key at index ${ index } must be an object with non-empty 'apiKey' and 'accountId' fields.`,
+      shouldExit,
+    )
+  }
+
+  if ( !isNonEmptyString( entry.apiKey ) ) {
+    logErrorAndExitOrThrow(
+      `Provider '${ providerName }' key at index ${ index } is missing a non-empty 'apiKey'.`,
+      shouldExit,
+    )
+  }
+
+  if ( !isNonEmptyString( entry.accountId ) ) {
+    logErrorAndExitOrThrow(
+      `Provider '${ providerName }' key at index ${ index } is missing a non-empty 'accountId'.`,
+      shouldExit,
+    )
+  }
+}
+
+function validateProviderKeys( providerName, providerConf, shouldExit ) {
+  providerConf.keys.forEach( ( entry, index ) => {
+    if ( providerName === 'cloudflare' ) {
+      validateCloudflareKeyEntry( entry, providerName, index, shouldExit )
+      return
+    }
+
+    if ( !isNonEmptyString( entry ) ) {
+      logErrorAndExitOrThrow(
+        `Provider '${ providerName }' key at index ${ index } must be a non-empty string.`,
+        shouldExit,
+      )
+    }
+  } )
+}
 
 /**
  * Class representing a validator for API providers.
@@ -95,6 +134,11 @@ export class ProviderValidator {
           logger.warning( msg )
           delete providerConf.type
         }
+        if ( providerName === 'cloudflare' && providerConf.baseUrl !== undefined ) {
+          const msg = `WARNING: Reserved provider 'cloudflare' does not accept a 'baseUrl' field. The account-scoped upstream URL is derived per-key from 'accountId'. It will be ignored.`
+          logger.warning( msg )
+          delete providerConf.baseUrl
+        }
       } else if ( providerConf.type === undefined ) {
         providerConf.type = 'openai-compatible'
       } else if ( !VALID_PROVIDER_TYPES.includes( providerConf.type ) ) {
@@ -113,7 +157,12 @@ export class ProviderValidator {
 
       if ( Array.isArray( providerConf.keys ) ) {
         const originalLength = providerConf.keys.length
-        const validKeys = filterValidKeys( providerConf.keys, providerName, logger )
+        const validKeys = filterValidKeys(
+          providerConf.keys,
+          providerName,
+          logger,
+          getProviderKeyCandidate,
+        )
         if ( validKeys.length !== originalLength ) {
           providerConf.keys = validKeys
         }
@@ -126,6 +175,8 @@ export class ProviderValidator {
         )
         return
       }
+
+      validateProviderKeys( providerName, providerConf, shouldExit )
 
       if ( !providerConf.models || !Array.isArray( providerConf.models )
         || providerConf.models.length === 0 ) {

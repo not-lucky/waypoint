@@ -114,6 +114,17 @@ ProviderFactory.registerStrategy({
   }),
 });
 
+// Cloudflare Strategy
+ProviderFactory.registerStrategy({
+  match: (name) => name === 'cloudflare',
+  create: (name, provider, timeouts) => new OpenAICompatibleAdapter({
+    baseUrl: null,
+    providerName: name,
+    timeoutMs: timeouts.httpTimeoutMs,
+    streamTimeoutMs: timeouts.streamTimeoutMs,
+  }),
+});
+
 // Default OpenAI & Custom Strategy
 ProviderFactory.registerStrategy({
   match: () => true,

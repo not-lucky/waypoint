@@ -94,6 +94,46 @@ describe('Key Registry Health & Edge Cases', () => {
       expect(registry.getKey('missing')).toBeNull();
       expect(registry.flagFailure('missing', 'key', { statusCode: 500 })).toBe('none');
     });
+
+    it('returns Cloudflare credential objects and can look them up by reference', () => {
+      const credentials = {
+        apiKey: 'cf-key-1',
+        accountId: 'acct-1',
+      };
+      const registry = new KeyRegistry({
+        providers: {
+          cloudflare: { keys: [credentials] },
+        },
+      });
+
+      const selected = registry.getKey('cloudflare');
+      expect(selected).toBe(credentials);
+      expect(registry.findKey('cloudflare', selected)?.accountId).toBe('acct-1');
+    });
+
+    it('preserves every Cloudflare key in a multi-account pool that shares an apiKey', () => {
+      const sharedApiKey = 'shared-cf-key';
+      const keys = Array.from({ length: 12 }, (_, index) => ({
+        apiKey: sharedApiKey,
+        accountId: `account-${index}`,
+      }));
+      const registry = new KeyRegistry({
+        providers: { cloudflare: { keys } },
+      });
+
+      // Object-keyed pools skip the Map to avoid deduping entries that share
+      // an apiKey but differ in accountId.
+      expect(registry.pools.cloudflare.keyMap).toBeNull();
+
+      const poolKeys = registry.pools.cloudflare.keys;
+      expect(poolKeys).toHaveLength(12);
+      const accountIds = poolKeys.map((key) => key.accountId);
+      expect(new Set(accountIds).size).toBe(12);
+
+      poolKeys.forEach((key) => {
+        expect(registry.findKey('cloudflare', key.entry)).toBe(key);
+      });
+    });
   });
 
   describe('Batch 1 optimizations', () => {

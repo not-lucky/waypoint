@@ -26,13 +26,20 @@ const MAP_LOOKUP_THRESHOLD = 10;
  * For pools at or above MAP_LOOKUP_THRESHOLD, creates a Map for O(1) key lookup
  * by string instead of O(n) array search.
  *
- * @param {Array<string>} [keys=[]] - Raw API key strings.
+ * @param {Array<string|Object>} [keys=[]] - Raw provider credential entries.
  * @returns {Object} Pool object containing KeyObject array, optional Map,
  *                   and round-robin index pointer.
  */
 export function createKeyPool(keys = []) {
   const keyObjects = keys.map((key) => new KeyObject(key));
-  const keyMap = keyObjects.length >= MAP_LOOKUP_THRESHOLD
+  // Object-keyed pools (e.g. Cloudflare credentials) cannot use a Map keyed by
+  // `keyStr` because two entries sharing an `apiKey` but differing in
+  // `accountId` would collide. Skip the Map and rely on array search instead.
+  // Known ceiling: any future provider whose credential is a unique object
+  // shape also forgoes the Map and pays O(n) per lookup. Acceptable while
+  // pools stay small (single digits to low tens); revisit if pool sizes grow.
+  const allKeysAreStrings = keys.every((key) => typeof key === 'string');
+  const keyMap = keyObjects.length >= MAP_LOOKUP_THRESHOLD && allKeysAreStrings
     ? new Map(keyObjects.map((key) => [key.keyStr, key]))
     : null;
 
@@ -51,14 +58,14 @@ export function createKeyPool(keys = []) {
  * @param {Object} pool - The key pool object.
  * @param {string} strategy - The routing strategy ('round-robin' or 'fill-first').
  * @param {number} [now=Date.now()] - Current timestamp for availability checks.
- * @returns {string|null} The next available API key string, or null if none are available.
+ * @returns {string|Object|null} The next available provider credential, or null if none are available.
  */
 export function getKeyFromPool(pool, strategy, now = Date.now()) {
   const keys = pool?.keys;
   if (!keys?.length) return null;
 
   if (strategy === 'fill-first') {
-    return keys.find((key) => key.isAvailable(now))?.keyStr ?? null;
+    return keys.find((key) => key.isAvailable(now))?.entry ?? null;
   }
 
   // Round-robin implementation
@@ -69,7 +76,7 @@ export function getKeyFromPool(pool, strategy, now = Date.now()) {
      
     pool.roundRobinIndex = (idx + 1) % n;
 
-    if (key.isAvailable(now)) return key.keyStr;
+    if (key.isAvailable(now)) return key.entry;
   }
 
   return null;
@@ -79,15 +86,23 @@ export function getKeyFromPool(pool, strategy, now = Date.now()) {
  * Finds the KeyObject wrapper for a specific raw key string in a pool.
  *
  * @param {Object} pool - The key pool object.
- * @param {string} keyStr - The raw API key string.
+ * @param {string|Object} keyRef - The raw API key string or provider credential object.
  * @returns {KeyObject|null} The KeyObject wrapper, or null if not found.
  */
-export function findKeyInPool(pool, keyStr) {
+export function findKeyInPool(pool, keyRef) {
   if (!pool) return null;
 
-  if (pool.keyMap) {
-    return pool.keyMap.get(keyStr) ?? null;
+  if (keyRef && typeof keyRef === 'object') {
+    // Reference-equality lookup for object-keyed pools (e.g. Cloudflare).
+    // Callers MUST pass the same credential reference that `getKey` returned;
+    // cloning the entry between getKey and flagFailure/flagSuccess would
+    // silently break cooldown and retirement tracking for that pool.
+    return pool.keys?.find((key) => key.entry === keyRef) ?? null;
   }
 
-  return pool.keys?.find((key) => key.keyStr === keyStr) ?? null;
+  if (pool.keyMap) {
+    return pool.keyMap.get(keyRef) ?? null;
+  }
+
+  return pool.keys?.find((key) => key.keyStr === keyRef) ?? null;
 }

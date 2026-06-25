@@ -37,7 +37,7 @@ export default [
       'no-continue': 'off',
       'preserve-caught-error': 'off',
       'n/no-unsupported-features/node-builtins': [ 'error', {
-        version: '>=26.1.0',
+        version: '>=24.0.0',
       } ],
     },
   },

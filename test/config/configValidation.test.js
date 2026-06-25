@@ -98,6 +98,54 @@ describe('Configuration Validation Tests', () => {
     expect(() => validateConfig(invalidType)).toThrow('process.exit called');
   });
 
+  it('accepts Cloudflare reserved provider with per-key accountId credentials', () => {
+    const config = getBaseValidConfig();
+    config.providers.cloudflare = {
+      keys: [{
+        apiKey: 'cf-api-key',
+        accountId: 'cf-account-id',
+      }],
+      models: [{ id: '@cf/meta/llama-3.1-8b-instruct' }],
+    };
+
+    expect(() => validateConfig(config)).not.toThrow();
+  });
+
+  it('rejects Cloudflare keys that omit accountId', () => {
+    const config = getBaseValidConfig();
+    config.providers.cloudflare = {
+      keys: [{
+        apiKey: 'cf-api-key',
+      }],
+      models: [{ id: '@cf/meta/llama-3.1-8b-instruct' }],
+    };
+
+    expect(() => validateConfig(config)).toThrow('process.exit called');
+  });
+
+  it('warns and removes baseUrl when configured for the Cloudflare reserved provider', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const config = getBaseValidConfig();
+    config.providers.cloudflare = {
+      baseUrl: 'https://custom-cloudflare.example.com/v1',
+      keys: [{
+        apiKey: 'cf-api-key',
+        accountId: 'cf-account-id',
+      }],
+      models: [{ id: '@cf/meta/llama-3.1-8b-instruct' }],
+    };
+
+    expect(() => validateConfig(config)).not.toThrow();
+    expect(config.providers.cloudflare.baseUrl).toBeUndefined();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('cloudflare'),
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('baseUrl'),
+    );
+  });
+
   it('validates fallbackModel references and self-reference rules', () => {
     const validFallback = getBaseValidConfig();
     validFallback.providers.gemini.models[0].fallbackModel = 'openai/gpt-4o';

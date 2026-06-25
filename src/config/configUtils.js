@@ -1,4 +1,4 @@
-export const RESERVED_PROVIDERS = new Set(['gemini', 'anthropic', 'openai']);
+export const RESERVED_PROVIDERS = new Set(['gemini', 'anthropic', 'openai', 'cloudflare']);
 
 const VAR_REGEX = /\$\{([A-Za-z0-9_]+)\}/g;
 

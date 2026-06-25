@@ -109,9 +109,10 @@ clients:
       max: 30
 
 # Providers definition (required, at least one provider must be defined)
-# Reserved provider names: gemini, anthropic, openai
+# Reserved provider names: gemini, anthropic, openai, cloudflare
 # These are built-in providers with known upstream endpoints and do NOT require a baseUrl.
 # Reserved providers must NOT carry a 'type' field — it is ignored with a warning if present.
+# Cloudflare keys use objects so each key can carry its matching accountId.
 #
 # Custom providers MUST specify a baseUrl.
 # Custom providers support an optional 'type' field:
@@ -163,6 +164,16 @@ providers:
       - id: "gpt-4o"
         aliases: ["gpt4"]
         reasoningSupported: false
+
+  # Cloudflare Workers AI OpenAI-compatible example
+  # cloudflare:
+  #   keys:
+  #     - apiKey: "${CLOUDFLARE_API_KEY_1}"
+  #       accountId: "${CLOUDFLARE_ACCOUNT_ID_1}"
+  #   models:
+  #     - id: "@cf/meta/llama-3.1-8b-instruct"
+  #       aliases: ["cf-llama"]
+  #       reasoningSupported: false
 
   # Custom OpenAI-compatible provider example
   custom-openai:

@@ -11,14 +11,24 @@ export class KeyObject {
   /**
    * Creates an instance of KeyObject.
    *
-   * @param {string} keyStr - The raw API key string.
+   * @param {string|Object} entry - The raw provider credential entry.
    */
-  constructor(keyStr) {
+  constructor(entry) {
+    this.entry = entry;
+
     /**
      * The actual raw secret value used for authentication.
      * @type {string}
      */
-    this.keyStr = keyStr;
+    this.keyStr = typeof entry === 'string' ? entry : (entry?.apiKey ?? '');
+
+    /**
+     * Optional per-key account identifier used by providers like Cloudflare.
+     * @type {string|null}
+     */
+    this.accountId = typeof entry === 'object' && entry !== null
+      ? (entry.accountId ?? null)
+      : null;
 
     /**
      * Toggled to false when a key fails repeatedly or gets rate limited.

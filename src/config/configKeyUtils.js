@@ -22,3 +22,21 @@ export function filterValidKeys( keys, providerName, logger, getCandidate = ( ke
     return true
   } )
 }
+
+export function isCloudflareKeyEntry( entry ) {
+  if ( !entry || typeof entry !== 'object' || Array.isArray( entry ) ) {
+    return false
+  }
+
+  const { apiKey, accountId } = entry
+  return typeof apiKey === 'string' && apiKey !== ''
+    && typeof accountId === 'string' && accountId !== ''
+}
+
+export function getProviderKeyCandidate( entry ) {
+  if ( isCloudflareKeyEntry( entry ) ) {
+    return entry.apiKey
+  }
+
+  return entry
+}

@@ -27,10 +27,32 @@ export class OpenAICompatibleAdapter extends BaseProvider {
     });
   }
 
-  async generateCompletion(req, apiKey, signal, requestLog = null) {
-    const payload = buildOpenAIChatPayload(req, false);
+  resolveCredentialApiKey(apiCredential) {
+    return typeof apiCredential === 'string'
+      ? apiCredential
+      : apiCredential?.apiKey;
+  }
 
-    const url = `${this.baseUrl}/chat/completions`;
+  resolveBaseUrl(apiCredential) {
+    if (this.providerName !== 'cloudflare') {
+      return this.baseUrl;
+    }
+
+    const accountId = apiCredential?.accountId;
+    if (!accountId) {
+      throw new Error(
+        'Cloudflare credentials require a non-empty \'accountId\'. '
+        + 'Check that the provider keys array includes both \'apiKey\' and \'accountId\'.',
+      );
+    }
+    return `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1`;
+  }
+
+  async generateCompletion(req, apiCredential, signal, requestLog = null) {
+    const payload = buildOpenAIChatPayload(req, false);
+    const apiKey = this.resolveCredentialApiKey(apiCredential);
+    const url = `${this.resolveBaseUrl(apiCredential)}/chat/completions`;
+
     const headers = {
       'content-type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
@@ -53,10 +75,11 @@ export class OpenAICompatibleAdapter extends BaseProvider {
     }
   }
 
-  async* generateStream(req, apiKey, signal, requestLog = null) {
+  async* generateStream(req, apiCredential, signal, requestLog = null) {
     const payload = buildOpenAIChatPayload(req, true);
+    const apiKey = this.resolveCredentialApiKey(apiCredential);
+    const url = `${this.resolveBaseUrl(apiCredential)}/chat/completions`;
 
-    const url = `${this.baseUrl}/chat/completions`;
     const headers = {
       'content-type': 'application/json',
       Authorization: `Bearer ${apiKey}`,

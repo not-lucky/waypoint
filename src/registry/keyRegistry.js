@@ -59,14 +59,14 @@ export class KeyRegistry {
    * Flags a key as failed and applies HTTP-status-based lifecycle policy.
    *
    * @param {string} provider - Provider name.
-   * @param {string} keyStr - Raw key string that failed.
+   * @param {string|Object} keyRef - Raw key string or provider credential that failed.
    * @param {Object} descriptor
    * @param {number|undefined} descriptor.statusCode - Upstream HTTP status code.
    * @param {number} [descriptor.retryAfterSeconds] - Parsed Retry-After in seconds.
    * @returns {'retire' | 'cooldown' | 'none'} The action that was applied.
    */
-  flagFailure(provider, keyStr, descriptor) {
-    const key = this.findKey(provider, keyStr);
+  flagFailure(provider, keyRef, descriptor) {
+    const key = this.findKey(provider, keyRef);
     const previousCooldownUntil = key?.cooldownUntil ?? null;
     const action = handleKeyFailure(key, descriptor, this.cooldown, this.timers);
 
@@ -84,8 +84,8 @@ export class KeyRegistry {
     return action;
   }
 
-  flagSuccess(provider, keyStr) {
-    const key = this.findKey(provider, keyStr);
+  flagSuccess(provider, keyRef) {
+    const key = this.findKey(provider, keyRef);
     handleKeySuccess(key);
   }
 

@@ -7,10 +7,48 @@ import {
   getMissingEnvVar,
   coerceToInt,
 } from './configUtils.js'
-import { filterValidKeys } from './configKeyUtils.js'
+import {
+  filterValidKeys,
+  getProviderKeyCandidate,
+  isCloudflareKeyEntry,
+} from './configKeyUtils.js'
 import { validateConfig } from './validator.js'
 
 const logger = getAppLogger( 'config' )
+
+function interpolateProviderKeyEntry( entry, path, index, providerName ) {
+  if ( typeof entry === 'string' ) {
+    const missingVar = getMissingEnvVar( entry )
+    if ( missingVar ) {
+      const msg = `WARNING: Missing or empty environment variable ${ missingVar } for key at path ${ path.join( '.' ) }[${ index }]. Skipping key.`
+      logger.warning( msg )
+      return null
+    }
+
+    return replaceEnvVars( entry )
+  }
+
+  if ( providerName === 'cloudflare' && isCloudflareKeyEntry( entry ) ) {
+    const interpolated = structuredClone( entry )
+    for ( const field of [ 'apiKey', 'accountId' ] ) {
+      const value = interpolated[field]
+      const missingVar = getMissingEnvVar( value )
+      if ( missingVar ) {
+        const msg = `WARNING: Missing or empty environment variable ${ missingVar } for key at path ${ path.join( '.' ) }[${ index }].${ field }. Skipping key.`
+        logger.warning( msg )
+        return null
+      }
+
+      interpolated[field] = replaceEnvVars( value )
+    }
+
+    return interpolated
+  }
+
+  const msg = `WARNING: Unsupported key entry shape for provider '${ providerName }' at path ${ path.join( '.' ) }[${ index }]. Expected a string${ providerName === 'cloudflare' ? ' or { apiKey, accountId } object' : '' }. Skipping key.`
+  logger.warning( msg )
+  return null
+}
 
 /**
  * Processes model numeric properties.
@@ -204,22 +242,12 @@ export class ConfigLoader {
           val.map( ( item, index ) => ( { item, index } ) ),
           providerName,
           logger,
-          ( { item } ) => item,
+          ( { item } ) => getProviderKeyCandidate( item ),
         )
 
         return entries.flatMap( ( { item, index } ) => {
-          if ( typeof item !== 'string' ) {
-            return [ String( item ) ]
-          }
-
-          const missingVar = getMissingEnvVar( item )
-          if ( missingVar ) {
-            const msg = `WARNING: Missing or empty environment variable ${ missingVar } for key at path ${ path.join( '.' ) }[${ index }]. Skipping key.`
-            logger.warning( msg )
-            return []
-          }
-
-          return [ replaceEnvVars( item ) ]
+          const interpolated = interpolateProviderKeyEntry( item, path, index, providerName )
+          return interpolated === null ? [] : [ interpolated ]
         } )
       }
       return val.map( ( item, index ) => this.interpolate( item, [ ...path, index ] ) )

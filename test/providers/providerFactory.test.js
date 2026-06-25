@@ -69,6 +69,24 @@ describe('ProviderFactory Tests', () => {
     expect(adapter.providerName).toBe('custom-anthropic');
   });
 
+  it("assert: 'cloudflare' -> OpenAICompatibleAdapter with provider-specific URL resolution", () => {
+    const config = {
+      providers: {
+        cloudflare: {
+          keys: [{
+            apiKey: 'cf-key',
+            accountId: 'cf-account',
+          }],
+        },
+      },
+    };
+    const factory = new ProviderFactory(config);
+    const adapter = factory.get('cloudflare');
+    expect(adapter).toBeInstanceOf(OpenAICompatibleAdapter);
+    expect(adapter.baseUrl).toBeNull();
+    expect(adapter.providerName).toBe('cloudflare');
+  });
+
   it('wires httpTimeoutMs and streamTimeoutMs from gateway config into adapters', () => {
     const config = {
       gateway: {

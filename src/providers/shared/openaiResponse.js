@@ -71,28 +71,85 @@ const normalizeStreamDelta = (delta) => {
   return normalized;
 };
 
+/**
+ * Recovers "trailing" reasoning from a content string when a `</think>` end
+ * tag is present without a matching `<think>` start tag in the same string.
+ *
+ * This is the non-streaming counterpart to the "premature `</think>`"
+ * recovery in the streaming pipeline: when native `reasoning_content` is
+ * present (so the buffer was bypassed in the streaming path), the upstream
+ * may still emit a `</think>` somewhere in `content`. When that happens:
+ *
+ * - If a `<think>` start tag appears before the end tag, the tags are
+ *   already balanced and the content is returned unchanged.
+ * - Otherwise, the text before the end tag is appended to the existing
+ *   reasoning and the trailing text is kept as content.
+ *
+ * @param {string} content - The raw assistant content from the upstream.
+ * @param {string} reasoningContent - The native reasoning already extracted
+ *   from the response (may be `null`).
+ * @param {{startTag: string, endTag: string}} taggedReasoning - Tag pair.
+ * @returns {{content: string, reasoningContent: string|null}}
+ */
+const extractTrailingTaggedReasoning = (content, reasoningContent, taggedReasoning) => {
+  const { startTag, endTag } = taggedReasoning;
+  if (typeof content !== 'string' || !endTag || !content.includes(endTag)) {
+    return { content, reasoningContent };
+  }
+
+  const endIndex = content.indexOf(endTag);
+  const startIndex = startTag ? content.indexOf(startTag) : -1;
+  if (startIndex !== -1 && startIndex < endIndex) {
+    return { content, reasoningContent };
+  }
+
+  return {
+    content: content.slice(endIndex + endTag.length),
+    reasoningContent: reasoningContent + content.slice(0, endIndex),
+  };
+};
+
+/**
+ * Resolves the final `{content, reasoningContent}` pair for a single choice,
+ * applying tag-based extraction only when `taggedReasoning` is configured.
+ *
+ * - No tag config → pass through the upstream values unchanged.
+ * - No native reasoning and tag config is present → run the full
+ *   `extractTaggedText` pass to split the first `<think>…</think>` block
+ *   into `reasoningContent`.
+ * - Native reasoning already present → run only the trailing-tag recovery
+ *   (see `extractTrailingTaggedReasoning`) to avoid double-stripping tags
+ *   the upstream intentionally included in `content`.
+ *
+ * @param {string} content - The raw assistant content.
+ * @param {string|null} reasoningContent - Native reasoning, or `null` when
+ *   the upstream did not provide one.
+ * @param {{startTag: string, endTag: string}|null} taggedReasoning - Tag
+ *   pair, or `null` when tag-based extraction is disabled.
+ * @returns {{content: string, reasoningContent: string|null}}
+ */
+const resolveTaggedCompletionContent = (content, reasoningContent, taggedReasoning) => {
+  if (!taggedReasoning) {
+    return { content, reasoningContent };
+  }
+
+  if (reasoningContent === null) {
+    return extractTaggedText(content, reasoningContent, taggedReasoning);
+  }
+
+  return extractTrailingTaggedReasoning(content, reasoningContent, taggedReasoning);
+};
+
 const mapCompletionChoice = (c, taggedReasoning = null) => {
   const rawMessage = c.message || {};
   let content = rawMessage.content ?? '';
   if (content === null) content = '';
   let reasoningContent = extractReasoningText(rawMessage);
-  // Only strip `<think>` tags from content when no native reasoning_content is available.
-  // When native reasoning exists, content is left untouched to preserve any embedded tags.
-  if (taggedReasoning) {
-    if (reasoningContent === null) {
-      ({ content, reasoningContent } = extractTaggedText(content, reasoningContent, taggedReasoning));
-    } else if (typeof content === 'string' && content.includes(taggedReasoning.endTag)) {
-      const endTag = taggedReasoning.endTag;
-      const startTag = taggedReasoning.startTag;
-      const idxEnd = content.indexOf(endTag);
-      const idxStart = content.indexOf(startTag);
-      if (idxStart === -1 || idxEnd < idxStart) {
-        const extraReasoning = content.slice(0, idxEnd);
-        reasoningContent = reasoningContent + extraReasoning;
-        content = content.slice(idxEnd + endTag.length);
-      }
-    }
-  }
+  ({ content, reasoningContent } = resolveTaggedCompletionContent(
+    content,
+    reasoningContent,
+    taggedReasoning,
+  ));
 
   const message = {
     role: rawMessage.role || 'assistant',

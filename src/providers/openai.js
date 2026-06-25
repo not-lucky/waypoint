@@ -11,24 +11,289 @@ import {
 } from './shared/openaiResponse.js';
 import { throwIfStreamErrorPayload } from '../errors/upstream.js';
 
+// Tag pair used to delimit reasoning embedded inline in the assistant `content`.
+// `startTag` is emitted when the model transitions from "text" to "thinking";
+// `endTag` marks the return to "text" and is consumed by the stream buffer.
 const THINK_BLOCK_TAGS = Object.freeze({
   startTag: '<think>',
   endTag: '</think>',
 });
 
-// Returns tag config when the provider/model is configured to extract reasoning from
-// inline `<think>` blocks in content. Returns null to disable tag-based extraction.
+/**
+ * Resolves the tag-pair to use for tag-based reasoning extraction based on the
+ * unified request, or `null` when the feature is disabled for this provider/model.
+ *
+ * Tag-based extraction is enabled by `req.extractReasoningFromThinkBlocks`,
+ * which can be set at the provider or model level (model overrides provider).
+ *
+ * @param {Object|null|undefined} req - The unified request payload.
+ * @returns {{startTag: string, endTag: string}|null} Frozen tag config or `null`.
+ */
 const resolveTaggedReasoning = (req) => (
   req?.extractReasoningFromThinkBlocks
     ? THINK_BLOCK_TAGS
     : null
 );
 
-// Splits a mapped stream chunk into multiple chunks when tag-based reasoning extraction
-// is active. Priority: native reasoning_content wins over `<think>`-tag extraction.
-// When native reasoning is detected for a choice index, the ThinkingBuffer is bypassed
-// and content passes through verbatim (tags are not stripped).
-const expandTaggedReasoningChunk = (mappedChunk, buffers, taggedReasoning, explicitReasoningIndices, contentStartTagSeen) => {
+/**
+ * Per-choice state for the tagged reasoning stream pipeline. Encapsulates the
+ * mutable per-choice data that must survive across SSE chunks:
+ *
+ * - `buffer`   - The stateful `ThinkingBuffer` that tracks the start/end tag
+ *                state machine and handles partial-tag split boundaries.
+ * - `hasExplicitReasoning` - Latched `true` once a native `reasoning_content`
+ *                delta has been observed for this choice. While latched, the
+ *                buffer is bypassed and subsequent `content` deltas pass
+ *                through verbatim (tags are not stripped) so we never lose
+ *                information that came after native reasoning.
+ * - `sawStartTagInContent` - Whether a `<think>` start tag has been seen in
+ *                the content stream for this choice. Used to detect
+ *                "premature" `</think>` deltas that should be treated as
+ *                reasoning when no matching start tag is present in the
+ *                current chunk.
+ *
+ * @param {{startTag: string, endTag: string}} taggedReasoning - Tag pair to
+ *   initialize the per-choice `ThinkingBuffer` with.
+ * @returns {{
+ *   buffer: import('../streaming/thinkingBuffer.js').ThinkingBuffer,
+ *   hasExplicitReasoning: boolean,
+ *   sawStartTagInContent: boolean,
+ * }}
+ */
+const createChoiceState = (taggedReasoning) => ({
+  buffer: new ThinkingBuffer(taggedReasoning),
+  hasExplicitReasoning: false,
+  sawStartTagInContent: false,
+});
+
+/**
+ * Lazily creates and caches the per-choice state used to track tag-based
+ * reasoning extraction state across SSE chunks.
+ *
+ * @param {Map<number, ReturnType<typeof createChoiceState>>} choiceStates -
+ *   Map from `choice.index` to its per-choice state.
+ * @param {number} index - The choice index to look up.
+ * @param {{startTag: string, endTag: string}} taggedReasoning - Tag pair used
+ *   to initialize new state entries.
+ * @returns {ReturnType<typeof createChoiceState>}
+ */
+const getChoiceState = (choiceStates, index, taggedReasoning) => {
+  let choiceState = choiceStates.get(index);
+  if (!choiceState) {
+    choiceState = createChoiceState(taggedReasoning);
+    choiceStates.set(index, choiceState);
+  }
+  return choiceState;
+};
+
+/**
+ * Converts an array of `ThinkingBuffer` deltas (typed `'text' | 'thinking'`)
+ * into the corresponding OpenAI-shaped delta objects (`content` or
+ * `reasoning_content`) and appends them to `emittedDeltas`.
+ *
+ * @param {Array<Object>} emittedDeltas -
+ *   In/out accumulator that the caller will turn into SSE chunks.
+ * @param {Array<{content: string, type: 'text'|'thinking'}>} bufferDeltas -
+ *   Deltas produced by the `ThinkingBuffer.process()` call.
+ */
+const pushBufferDeltas = (emittedDeltas, bufferDeltas) => {
+  for (const delta of bufferDeltas) {
+    emittedDeltas.push(delta.type === 'thinking'
+      ? { reasoning_content: delta.content }
+      : { content: delta.content });
+  }
+};
+
+/**
+ * Appends a single content delta, skipping empty strings so we don't emit
+ * no-op SSE events.
+ *
+ * @param {Array<Object>} emittedDeltas - In/out accumulator.
+ * @param {string} content - The content text to emit.
+ */
+const emitContentDelta = (emittedDeltas, content) => {
+  if (content) {
+    emittedDeltas.push({ content });
+  }
+};
+
+/**
+ * Latches `sawStartTagInContent` on the per-choice state if the start tag is
+ * present in the given content. The flag is used to disambiguate the
+ * "premature `</think>`" case (no matching start tag in this chunk) from
+ * the normal "complete `<think>…</think>`" case.
+ *
+ * @param {ReturnType<typeof createChoiceState>} choiceState - Per-choice state.
+ * @param {string} content - The content delta being processed.
+ * @param {string} startTag - The opening reasoning tag (e.g. `<think>`).
+ */
+const trackStartTag = (choiceState, content, startTag) => {
+  if (startTag && content.includes(startTag)) {
+    choiceState.sawStartTagInContent = true;
+  }
+};
+
+/**
+ * Returns a shallow copy of `delta` with the two fields that this pipeline
+ * owns (`content` and `reasoning_content`) removed. The remaining keys are
+ * the "shared" delta fields (e.g. `role`, `tool_calls`) that are emitted
+ * once per choice and merged with the first emitted delta.
+ *
+ * @param {Object} delta - The raw OpenAI delta payload.
+ * @returns {Object} Delta with `content` and `reasoning_content` removed.
+ */
+const stripDeltaFields = (delta) => {
+  const sharedDelta = { ...delta };
+  delete sharedDelta.content;
+  delete sharedDelta.reasoning_content;
+  return sharedDelta;
+};
+
+/**
+ * Handles a content delta for a choice that is currently in "explicit
+ * reasoning" mode (i.e. native `reasoning_content` was already observed for
+ * this choice). The buffer is bypassed so any text that follows is passed
+ * through verbatim, and a special "premature `</think>`" recovery is
+ * applied when a closing tag appears without a matching opening tag in the
+ * same chunk.
+ *
+ * The three branches are:
+ *
+ * 1. No end tag in the chunk → bypass any buffered content, then emit the
+ *    current chunk as plain text (start tag is recorded if seen).
+ * 2. End tag present AND a matching start tag was either already seen
+ *    earlier in the stream or appears in this chunk before the end tag →
+ *    bypass buffer, emit chunk verbatim (the tags are preserved).
+ * 3. End tag present WITHOUT a matching start tag in this chunk AND no
+ *    prior start tag seen → treat the text between start and end as
+ *    additional reasoning, then clear the explicit-reasoning latch.
+ *
+ * @param {Array<Object>} emittedDeltas - In/out accumulator.
+ * @param {ReturnType<typeof createChoiceState>} choiceState - Per-choice state.
+ * @param {string} content - The current content delta.
+ * @param {{startTag: string, endTag: string}} taggedReasoning - Tag pair.
+ */
+const drainExplicitReasoningContent = (emittedDeltas, choiceState, content, taggedReasoning) => {
+  const { startTag, endTag } = taggedReasoning;
+
+  if (!endTag || !content.includes(endTag)) {
+    trackStartTag(choiceState, content, startTag);
+    pushBufferDeltas(emittedDeltas, choiceState.buffer.bypass());
+    emitContentDelta(emittedDeltas, content);
+    return;
+  }
+
+  const endIndex = content.indexOf(endTag);
+  const startIndex = startTag ? content.indexOf(startTag) : -1;
+  const hasMatchingStartTag = choiceState.sawStartTagInContent
+    || (startIndex !== -1 && startIndex < endIndex);
+
+  if (hasMatchingStartTag) {
+    trackStartTag(choiceState, content, startTag);
+    pushBufferDeltas(emittedDeltas, choiceState.buffer.bypass());
+    emitContentDelta(emittedDeltas, content);
+    return;
+  }
+
+  // Premature `</think>` recovery: emit the text before the end tag as
+  // additional reasoning, then keep the trailing text as content.
+  const extraReasoning = content.slice(0, endIndex);
+  const remainingContent = content.slice(endIndex + endTag.length);
+
+  pushBufferDeltas(emittedDeltas, choiceState.buffer.bypass());
+  if (extraReasoning) {
+    emittedDeltas.push({ reasoning_content: extraReasoning });
+  }
+  emitContentDelta(emittedDeltas, remainingContent);
+
+  choiceState.hasExplicitReasoning = false;
+  trackStartTag(choiceState, remainingContent, startTag);
+};
+
+/**
+ * Flushes any pending buffered deltas for a choice at finish time. Skips
+ * buffers that are already bypassed (they were drained in the chunk that
+ * triggered the bypass).
+ *
+ * @param {Array<Object>} emittedDeltas - In/out accumulator.
+ * @param {ReturnType<typeof createChoiceState>} choiceState - Per-choice state.
+ */
+const flushChoiceBuffer = (emittedDeltas, choiceState) => {
+  if (!choiceState.buffer.bypassed) {
+    pushBufferDeltas(emittedDeltas, choiceState.buffer.process('', true));
+  }
+};
+
+/**
+ * Merges the per-choice "shared" delta fields (e.g. `role`, `tool_calls`)
+ * with the first emitted delta so the resulting SSE chunk shape remains
+ * valid: the first chunk carries the shared fields, subsequent chunks in
+ * the same choice carry only the delta fields produced by this pipeline.
+ *
+ * @param {Array<Object>} emittedDeltas - In/out accumulator of delta objects.
+ * @param {Object} sharedDelta - The shared fields to splice in.
+ * @returns {Array<Object>} The same `emittedDeltas` reference.
+ */
+const mergeSharedDelta = (emittedDeltas, sharedDelta) => {
+  if (emittedDeltas.length === 0) {
+    emittedDeltas.push(Object.keys(sharedDelta).length > 0 ? sharedDelta : {});
+    return emittedDeltas;
+  }
+
+  if (Object.keys(sharedDelta).length > 0) {
+    emittedDeltas[0] = { ...sharedDelta, ...emittedDeltas[0] };
+  }
+
+  return emittedDeltas;
+};
+
+/**
+ * Projects an array of emitted delta objects onto a list of OpenAI-shaped
+ * SSE chunks, one chunk per emitted delta. The last chunk in the list
+ * carries the original `finish_reason` and `logprobs`; intermediate chunks
+ * are emitted with `null` so consumers see distinct per-delta events.
+ *
+ * @param {Object} mappedChunk - The original mapped chunk (id, model, etc.).
+ * @param {Object} choice - The original choice this expansion is for.
+ * @param {Array<Object>} emittedDeltas - Deltas to project onto chunks.
+ * @returns {Array<Object>} List of expanded chunks.
+ */
+const buildExpandedChoiceChunks = (mappedChunk, choice, emittedDeltas) => emittedDeltas.map((delta, index) => {
+  const isLast = index === emittedDeltas.length - 1;
+  return {
+    ...mappedChunk,
+    choices: [{
+      index: choice.index ?? 0,
+      delta,
+      finish_reason: isLast ? (choice.finish_reason ?? null) : null,
+      logprobs: isLast ? (choice.logprobs ?? null) : null,
+    }],
+  };
+});
+
+/**
+ * Splits a single mapped stream chunk into one or more chunks when
+ * tag-based reasoning extraction is active.
+ *
+ * Semantics:
+ * - **Priority**: native `reasoning_content` wins over `<think>`-tag
+ *   extraction. When native reasoning is detected for a choice index, the
+ *   `ThinkingBuffer` is bypassed and content passes through verbatim for
+ *   that choice (tags are not stripped).
+ * - **First block only**: subsequent `<think>` tags after the first closing
+ *   tag are left untouched in the content stream (enforced by
+ *   `ThinkingBuffer`).
+ * - **Per-choice isolation**: each choice index is tracked in its own state
+ *   object inside `choiceStates`.
+ *
+ * @param {Object} mappedChunk - The chunk produced by `mapOpenAIStreamChunk`.
+ * @param {Map<number, ReturnType<typeof createChoiceState>>} choiceStates -
+ *   Per-choice state, mutated in place.
+ * @param {{startTag: string, endTag: string}|null} taggedReasoning - Tag
+ *   config or `null` when extraction is disabled.
+ * @returns {Array<Object>} One or more chunks to yield to the client.
+ */
+const expandTaggedReasoningChunk = (mappedChunk, choiceStates, taggedReasoning) => {
   if (!taggedReasoning || !Array.isArray(mappedChunk.choices) || mappedChunk.choices.length === 0) {
     return [mappedChunk];
   }
@@ -37,117 +302,59 @@ const expandTaggedReasoningChunk = (mappedChunk, buffers, taggedReasoning, expli
 
   for (const choice of mappedChunk.choices) {
     const index = choice.index ?? 0;
-    let buffer = buffers.get(index);
-    if (!buffer) {
-      buffer = new ThinkingBuffer(taggedReasoning);
-      buffers.set(index, buffer);
-    }
-
+    const choiceState = getChoiceState(choiceStates, index, taggedReasoning);
     const delta = choice.delta || {};
     const emittedDeltas = [];
-    const sharedDelta = { ...delta };
-    delete sharedDelta.content;
-    delete sharedDelta.reasoning_content;
+    const sharedDelta = stripDeltaFields(delta);
 
     const explicitReasoning = extractReasoningText(delta);
     if (explicitReasoning !== null) {
-      explicitReasoningIndices.add(index);
+      choiceState.hasExplicitReasoning = true;
       emittedDeltas.push({ reasoning_content: explicitReasoning });
     }
 
     if (typeof delta.content === 'string' && delta.content.length > 0) {
-      if (explicitReasoningIndices.has(index)) {
-        const endTag = taggedReasoning?.endTag;
-        const startTag = taggedReasoning?.startTag;
-        let handled = false;
-        if (endTag && delta.content.includes(endTag)) {
-          const idxEnd = delta.content.indexOf(endTag);
-          const idxStart = startTag ? delta.content.indexOf(startTag) : -1;
-          const hasPriorStartTag = contentStartTagSeen.has(index) || (idxStart !== -1 && idxStart < idxEnd);
-          if (!hasPriorStartTag) {
-            const extraReasoning = delta.content.slice(0, idxEnd);
-            const remainingContent = delta.content.slice(idxEnd + endTag.length);
-            const bypassDeltas = buffer.bypass();
-            for (const bd of bypassDeltas) emittedDeltas.push({ content: bd.content });
-            if (extraReasoning) {
-              emittedDeltas.push({ reasoning_content: extraReasoning });
-            }
-            if (remainingContent) {
-              emittedDeltas.push({ content: remainingContent });
-            }
-            explicitReasoningIndices.delete(index);
-            buffer.bypass();
-            handled = true;
-            if (startTag && remainingContent.includes(startTag)) {
-              contentStartTagSeen.add(index);
-            }
-          }
-        }
-        if (!handled) {
-          if (startTag && delta.content.includes(startTag)) {
-            contentStartTagSeen.add(index);
-          }
-          const bypassDeltas = buffer.bypass();
-          for (const bd of bypassDeltas) emittedDeltas.push({ content: bd.content });
-          emittedDeltas.push({ content: delta.content });
-        }
+      if (choiceState.hasExplicitReasoning) {
+        drainExplicitReasoningContent(emittedDeltas, choiceState, delta.content, taggedReasoning);
       } else {
-        const splitDeltas = buffer.process(delta.content, false);
-        for (const splitDelta of splitDeltas) {
-          if (splitDelta.type === 'thinking') {
-            emittedDeltas.push({ reasoning_content: splitDelta.content });
-          } else {
-            emittedDeltas.push({ content: splitDelta.content });
-          }
-        }
+        pushBufferDeltas(emittedDeltas, choiceState.buffer.process(delta.content, false));
       }
     }
 
-    if (choice.finish_reason && !buffer.bypassed) {
-      const finalDeltas = buffer.process('', true);
-      for (const finalDelta of finalDeltas) {
-        if (finalDelta.type === 'thinking') {
-          emittedDeltas.push({ reasoning_content: finalDelta.content });
-        } else {
-          emittedDeltas.push({ content: finalDelta.content });
-        }
-      }
+    if (choice.finish_reason) {
+      flushChoiceBuffer(emittedDeltas, choiceState);
     }
 
-    if (emittedDeltas.length === 0) {
-      emittedDeltas.push(Object.keys(sharedDelta).length > 0 ? sharedDelta : {});
-    } else if (Object.keys(sharedDelta).length > 0) {
-      emittedDeltas[0] = { ...sharedDelta, ...emittedDeltas[0] };
-    }
-
-    for (let i = 0; i < emittedDeltas.length; i++) {
-      const isLast = i === emittedDeltas.length - 1;
-      expandedChunks.push({
-        ...mappedChunk,
-        choices: [{
-          index,
-          delta: emittedDeltas[i],
-          finish_reason: isLast ? (choice.finish_reason ?? null) : null,
-          logprobs: isLast ? (choice.logprobs ?? null) : null,
-        }],
-      });
-    }
+    expandedChunks.push(...buildExpandedChoiceChunks(
+      mappedChunk,
+      choice,
+      mergeSharedDelta(emittedDeltas, sharedDelta),
+    ));
   }
 
   return expandedChunks.length > 0 ? expandedChunks : [mappedChunk];
 };
 
-// Flushes any remaining buffered content at stream end. Bypassed buffers (native reasoning
-// was detected) are skipped since they were already drained. The explicitReasoningIndices
-// guard prevents double-emitting reasoning when native reasoning was seen in earlier chunks.
-const flushTaggedReasoningBuffers = (chunkId, mappedChunk, buffers, explicitReasoningIndices) => {
+/**
+ * Flushes any remaining buffered content for all choices after the upstream
+ * stream has ended. Bypassed buffers (native reasoning was detected) are
+ * skipped since they were already drained in the chunk that triggered the
+ * bypass.
+ *
+ * @param {string} chunkId - Fallback chunk id to use when the supplied
+ *   `mappedChunk` does not carry one.
+ * @param {Object} mappedChunk - Template chunk to clone per emitted delta.
+ * @param {Map<number, ReturnType<typeof createChoiceState>>} choiceStates -
+ *   Per-choice state accumulated during streaming.
+ * @returns {Array<Object>} Trailing chunks to yield.
+ */
+const flushTaggedReasoningBuffers = (chunkId, mappedChunk, choiceStates) => {
   const flushedChunks = [];
 
-  for (const [index, buffer] of buffers.entries()) {
+  for (const [index, { buffer }] of choiceStates.entries()) {
     if (buffer.bypassed) continue;
     const finalDeltas = buffer.process('', true);
     for (const delta of finalDeltas) {
-      if (delta.type === 'thinking' && explicitReasoningIndices.has(index)) continue;
       flushedChunks.push({
         ...mappedChunk,
         id: mappedChunk.id || chunkId,
@@ -210,6 +417,9 @@ export class OpenAICompatibleAdapter extends BaseProvider {
     const payload = buildOpenAIChatPayload(req, false);
     const apiKey = this.resolveCredentialApiKey(apiCredential);
     const url = `${this.resolveBaseUrl(apiCredential)}/chat/completions`;
+    // Tag-based reasoning extraction is opt-in per request (inherited from
+    // the provider/model config). When disabled, the downstream mapper
+    // leaves `<think>` tags inside `content` unchanged.
     const taggedReasoning = resolveTaggedReasoning(req);
 
     const headers = {
@@ -257,12 +467,12 @@ export class OpenAICompatibleAdapter extends BaseProvider {
     const stream = parseSSEStream(response.body, fetchSignal);
     const accumulator = new StreamAccumulator(chunkId, req.model);
     const taggedReasoning = resolveTaggedReasoning(req);
-    const thinkingBuffers = new Map();
-    // Tracks choice indices where native reasoning_content was seen, so tag extraction
-    // is bypassed and content is preserved as-is for those indices.
-    const explicitReasoningIndices = new Set();
-    // Tracks choice indices where a <think> tag was seen in the content stream.
-    const contentStartTagSeen = new Set();
+    // Per-choice state for tag-based reasoning extraction. Lazily populated
+    // the first time we see a given `choice.index`. Lives for the entire
+    // stream lifetime so the ThinkingBuffer can carry partial-tag state
+    // across SSE chunk boundaries and so we can drain it once the stream
+    // ends.
+    const choiceStates = new Map();
 
     let eventCount = 0;
     try {
@@ -279,13 +489,14 @@ export class OpenAICompatibleAdapter extends BaseProvider {
 
         throwIfStreamErrorPayload(parsedData, this.providerName);
 
+        // Map the raw OpenAI-shaped payload into a normalized StreamChunk,
+        // then optionally expand it into multiple chunks when tag-based
+        // reasoning extraction is active for this request.
         const mappedChunk = mapOpenAIStreamChunk(parsedData, chunkId);
         const chunksToYield = expandTaggedReasoningChunk(
           mappedChunk,
-          thinkingBuffers,
+          choiceStates,
           taggedReasoning,
-          explicitReasoningIndices,
-          contentStartTagSeen,
         );
 
         for (const chunk of chunksToYield) {
@@ -294,13 +505,16 @@ export class OpenAICompatibleAdapter extends BaseProvider {
         }
       }
 
+      // Drain any per-choice ThinkingBuffer that still holds un-flushed
+      // text (e.g. text that arrived between the last SSE chunk and the
+      // stream end). Skipped entirely when tag-based extraction is off.
       if (taggedReasoning) {
         const flushedChunks = flushTaggedReasoningBuffers(chunkId, {
           id: chunkId,
           object: 'chat.completion.chunk',
           created: undefined,
           model: req.model,
-        }, thinkingBuffers, explicitReasoningIndices);
+        }, choiceStates);
 
         for (const chunk of flushedChunks) {
           accumulator.processChunk(chunk);

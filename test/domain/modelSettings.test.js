@@ -21,15 +21,51 @@ describe('Model-Level Defaults, Overrides, and Reasoning Unit Tests', () => {
               temperature: 0.5,
               maxTokens: 100,
               reasoningEffort: 'low',
+              extractReasoningFromThinkBlocks: true,
               overrides: {
                 reasoningSupported: true,
                 reasoningEffort: 'high',
+                extractReasoningFromThinkBlocks: false,
               },
             },
           ],
         },
       };
       expect(() => validator.validate(providers, false, null)).not.toThrow();
+    });
+
+    it('should validate provider-level think block extraction successfully', () => {
+      const providers = {
+        tokenrouter: {
+          baseUrl: 'https://example.com/v1',
+          extractReasoningFromThinkBlocks: true,
+          keys: ['api-key'],
+          models: [
+            {
+              id: 'MiniMax-M3',
+            },
+          ],
+        },
+      };
+
+      expect(() => validator.validate(providers, false, null)).not.toThrow();
+    });
+
+    it('should reject invalid provider-level think block extraction type', () => {
+      const providers = {
+        tokenrouter: {
+          baseUrl: 'https://example.com/v1',
+          extractReasoningFromThinkBlocks: 'yes',
+          keys: ['api-key'],
+          models: [
+            {
+              id: 'MiniMax-M3',
+            },
+          ],
+        },
+      };
+
+      expect(() => validator.validate(providers, false, null)).toThrow(/extractReasoningFromThinkBlocks/);
     });
 
     it('should reject invalid actualModelId type', () => {
@@ -179,6 +215,7 @@ describe('Model-Level Defaults, Overrides, and Reasoning Unit Tests', () => {
       temperature: 0.3,
       maxTokens: 500,
       reasoningEffort: 'medium',
+      extractReasoningFromThinkBlocks: true,
       overrides: {
         maxTokens: 1000,
         reasoningEffort: 'high',
@@ -198,6 +235,7 @@ describe('Model-Level Defaults, Overrides, and Reasoning Unit Tests', () => {
       expect(unifiedReq.maxTokens).toBe(1000);
       expect(unifiedReq.reasoningEffort).toBe('high');
       expect(unifiedReq.reasoningSupported).toBe(true);
+      expect(unifiedReq.extractReasoningFromThinkBlocks).toBe(true);
     });
 
     it('should allow client body to override defaults, but get overridden by overrides', () => {
@@ -222,6 +260,7 @@ describe('Model-Level Defaults, Overrides, and Reasoning Unit Tests', () => {
       expect(secondReq.maxTokens).toBe(1000);
       expect(secondReq.reasoningEffort).toBe('high');
       expect(secondReq.reasoningSupported).toBe(true);
+      expect(secondReq.extractReasoningFromThinkBlocks).toBe(true);
       expect(secondReq.clientParams).toEqual({ model: 'custom-model' });
     });
   });

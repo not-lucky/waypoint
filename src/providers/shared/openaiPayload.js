@@ -7,6 +7,7 @@ const INTERNAL_KEYS = new Set([
   'maxTokens',
   'reasoningSupported',
   'reasoningEffort',
+  'extractReasoningFromThinkBlocks',
   'fallbackModel',
   'isFallback',
 ]);

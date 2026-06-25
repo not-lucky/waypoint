@@ -481,6 +481,269 @@ describe('OpenAICompatibleAdapter Tests', () => {
     expect(response.choices[0].message.content).toBe('final');
   });
 
+  it('assert: generateCompletion extracts reasoning_content from <think> blocks when enabled', async () => {
+    const adapter = new OpenAICompatibleAdapter({ baseUrl: 'https://tokenrouter.example/v1', providerName: 'tokenrouter' });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: 'cmpl-think',
+        choices: [{
+          message: {
+            role: 'assistant',
+            content: 'visible<think>private reasoning</think> answer',
+          },
+        }],
+      }),
+    });
+
+    const response = await adapter.generateCompletion(
+      {
+        model: 'tokenrouter/MiniMax-M3',
+        messages: [],
+        extractReasoningFromThinkBlocks: true,
+      },
+      'key',
+    );
+
+    expect(response.choices[0].message.content).toBe('visible answer');
+    expect(response.choices[0].message.reasoning_content).toBe('private reasoning');
+  });
+
+  it('assert: generateStream extracts reasoning_content from streamed <think> blocks when enabled', async () => {
+    const adapter = new OpenAICompatibleAdapter({ baseUrl: 'https://tokenrouter.example/v1', providerName: 'tokenrouter' });
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode('data: {"choices":[{"index":0,"delta":{"content":"visible<think>private"}}]}\n\n');
+        yield encoder.encode('data: {"choices":[{"index":0,"delta":{"content":" reasoning</think> answer"},"finish_reason":"stop"}]}\n\n');
+      },
+    };
+    mockFetch.mockResolvedValue({ ok: true, body: mockBody });
+
+    const chunks = [];
+    for await (const chunk of adapter.generateStream(
+      {
+        model: 'tokenrouter/MiniMax-M3',
+        messages: [],
+        extractReasoningFromThinkBlocks: true,
+      },
+      'key',
+    )) {
+      chunks.push(chunk);
+    }
+
+    const content = chunks
+      .map((chunk) => chunk.choices[0]?.delta?.content)
+      .filter(Boolean)
+      .join('');
+    const reasoning = chunks
+      .map((chunk) => chunk.choices[0]?.delta?.reasoning_content)
+      .filter(Boolean)
+      .join('');
+
+    expect(content).toBe('visible answer');
+    expect(reasoning).toBe('private reasoning');
+    expect(chunks.at(-1).choices[0].finish_reason).toBe('stop');
+  });
+
+  it('assert: generateCompletion preserves content with think tags when native reasoning_content is present', async () => {
+    const adapter = new OpenAICompatibleAdapter({ baseUrl: 'https://tokenrouter.example/v1', providerName: 'tokenrouter' });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: 'cmpl-native-reasoning',
+        choices: [{
+          message: {
+            role: 'assistant',
+            content: 'visible<think>private reasoning</think> answer',
+            reasoning_content: 'native reasoning',
+          },
+        }],
+      }),
+    });
+
+    const response = await adapter.generateCompletion(
+      {
+        model: 'tokenrouter/MiniMax-M3',
+        messages: [],
+        extractReasoningFromThinkBlocks: true,
+      },
+      'key',
+    );
+
+    expect(response.choices[0].message.content).toBe('visible<think>private reasoning</think> answer');
+    expect(response.choices[0].message.reasoning_content).toBe('native reasoning');
+  });
+
+  it('assert: generateStream preserves content with think tags when native reasoning_content is present', async () => {
+    const adapter = new OpenAICompatibleAdapter({ baseUrl: 'https://tokenrouter.example/v1', providerName: 'tokenrouter' });
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode('data: {"choices":[{"index":0,"delta":{"reasoning_content":"native reasoning"}}]}\n\n');
+        yield encoder.encode('data: {"choices":[{"index":0,"delta":{"content":"visible<think>private"}}]}\n\n');
+        yield encoder.encode('data: {"choices":[{"index":0,"delta":{"content":" reasoning</think> answer"},"finish_reason":"stop"}]}\n\n');
+      },
+    };
+    mockFetch.mockResolvedValue({ ok: true, body: mockBody });
+
+    const chunks = [];
+    for await (const chunk of adapter.generateStream(
+      {
+        model: 'tokenrouter/MiniMax-M3',
+        messages: [],
+        extractReasoningFromThinkBlocks: true,
+      },
+      'key',
+    )) {
+      chunks.push(chunk);
+    }
+
+    const content = chunks
+      .map((chunk) => chunk.choices[0]?.delta?.content)
+      .filter(Boolean)
+      .join('');
+    const reasoning = chunks
+      .map((chunk) => chunk.choices[0]?.delta?.reasoning_content)
+      .filter(Boolean)
+      .join('');
+
+    expect(content).toBe('visible<think>private reasoning</think> answer');
+    expect(reasoning).toBe('native reasoning');
+    expect(chunks.at(-1).choices[0].finish_reason).toBe('stop');
+  });
+
+  it('assert: generateCompletion extracts only the first <think> block; second stays in content', async () => {
+    const adapter = new OpenAICompatibleAdapter({ baseUrl: 'https://tokenrouter.example/v1', providerName: 'tokenrouter' });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: 'cmpl-two-blocks',
+        choices: [{
+          message: {
+            role: 'assistant',
+            content: 'A<think>B</think>C<think>D</think>E',
+          },
+        }],
+      }),
+    });
+
+    const response = await adapter.generateCompletion(
+      {
+        model: 'tokenrouter/MiniMax-M3',
+        messages: [],
+        extractReasoningFromThinkBlocks: true,
+      },
+      'key',
+    );
+
+    expect(response.choices[0].message.reasoning_content).toBe('B');
+    expect(response.choices[0].message.content).toBe('AC<think>D</think>E');
+  });
+
+  it('assert: generateStream extracts only the first <think> block; second stays in content', async () => {
+    const adapter = new OpenAICompatibleAdapter({ baseUrl: 'https://tokenrouter.example/v1', providerName: 'tokenrouter' });
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode('data: {"choices":[{"index":0,"delta":{"content":"A<think>B</think>C<think>D"}}]}\n\n');
+        yield encoder.encode('data: {"choices":[{"index":0,"delta":{"content":"</think>E"},"finish_reason":"stop"}]}\n\n');
+      },
+    };
+    mockFetch.mockResolvedValue({ ok: true, body: mockBody });
+
+    const chunks = [];
+    for await (const chunk of adapter.generateStream(
+      {
+        model: 'tokenrouter/MiniMax-M3',
+        messages: [],
+        extractReasoningFromThinkBlocks: true,
+      },
+      'key',
+    )) {
+      chunks.push(chunk);
+    }
+
+    const content = chunks
+      .map((chunk) => chunk.choices[0]?.delta?.content)
+      .filter(Boolean)
+      .join('');
+    const reasoning = chunks
+      .map((chunk) => chunk.choices[0]?.delta?.reasoning_content)
+      .filter(Boolean)
+      .join('');
+
+    expect(reasoning).toBe('B');
+    expect(content).toBe('AC<think>D</think>E');
+    expect(chunks.at(-1).choices[0].finish_reason).toBe('stop');
+  });
+
+  it('assert: generateCompletion handles premature split when native reasoning is present and unmatched endTag is in content', async () => {
+    const adapter = new OpenAICompatibleAdapter({ baseUrl: 'https://tokenrouter.example/v1', providerName: 'tokenrouter' });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: 'cmpl-premature-split',
+        choices: [{
+          message: {
+            role: 'assistant',
+            content: 'extra reasoning</think> real content',
+            reasoning_content: 'initial reasoning ',
+          },
+        }],
+      }),
+    });
+
+    const response = await adapter.generateCompletion(
+      {
+        model: 'tokenrouter/MiniMax-M3',
+        messages: [],
+        extractReasoningFromThinkBlocks: true,
+      },
+      'key',
+    );
+
+    expect(response.choices[0].message.reasoning_content).toBe('initial reasoning extra reasoning');
+    expect(response.choices[0].message.content).toBe(' real content');
+  });
+
+  it('assert: generateStream handles premature split when native reasoning is present and unmatched endTag is in content', async () => {
+    const adapter = new OpenAICompatibleAdapter({ baseUrl: 'https://tokenrouter.example/v1', providerName: 'tokenrouter' });
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode('data: {"choices":[{"index":0,"delta":{"reasoning_content":"initial reasoning "}}]}\n\n');
+        yield encoder.encode('data: {"choices":[{"index":0,"delta":{"content":"extra reasoning</think> real content"},"finish_reason":"stop"}]}\n\n');
+      },
+    };
+    mockFetch.mockResolvedValue({ ok: true, body: mockBody });
+
+    const chunks = [];
+    for await (const chunk of adapter.generateStream(
+      {
+        model: 'tokenrouter/MiniMax-M3',
+        messages: [],
+        extractReasoningFromThinkBlocks: true,
+      },
+      'key',
+    )) {
+      chunks.push(chunk);
+    }
+
+    const content = chunks
+      .map((chunk) => chunk.choices[0]?.delta?.content)
+      .filter(Boolean)
+      .join('');
+    const reasoning = chunks
+      .map((chunk) => chunk.choices[0]?.delta?.reasoning_content)
+      .filter(Boolean)
+      .join('');
+
+    expect(reasoning).toBe('initial reasoning extra reasoning');
+    expect(content).toBe(' real content');
+    expect(chunks.at(-1).choices[0].finish_reason).toBe('stop');
+  });
+
   it('assert: forwards tools and tool_choice to upstream chat/completions', async () => {
     const adapter = new OpenAICompatibleAdapter({ baseUrl: 'https://api.openai.com/v1', providerName: 'openai' });
     const tools = [{

@@ -34,6 +34,30 @@ describe('ThinkingBuffer', () => {
     expect(buffer.process('', true)).toEqual([{ type: 'text', content: '<tho' }]);
   });
 
+  it('only extracts the first thought block; subsequent tags remain as text', () => {
+    const buffer = new ThinkingBuffer();
+    const deltas = buffer.process(
+      'before<thought>reasoning</thought>middle<thought>not reasoning</thought>after',
+      true,
+    );
+    let content = '';
+    let reasoning = '';
+    for (const d of deltas) {
+      if (d.type === 'thinking') reasoning += d.content;
+      else content += d.content;
+    }
+    expect(reasoning).toBe('reasoning');
+    expect(content).toBe('beforemiddle<thought>not reasoning</thought>after');
+  });
+
+  it('stops extracting after first thought block closes across chunks', () => {
+    const buffer = new ThinkingBuffer();
+    buffer.process('a<thought>b</thought>', false);
+    const deltas = buffer.process('c<thought>d</thought>e', false);
+    expect(deltas.every((d) => d.type === 'text')).toBe(true);
+    expect(deltas.map((d) => d.content).join('')).toBe('c<thought>d</thought>e');
+  });
+
   it('supports custom tag names', () => {
     const buffer = new ThinkingBuffer({ startTag: '<reason>', endTag: '</reason>' });
     const deltas = buffer.process('a<reason>b</reason>c', false);

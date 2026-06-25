@@ -74,6 +74,56 @@ describe('executeThinkingStream', () => {
     expect(mockAdapter.performFetch.mock.calls[0][0]).toContain('/chat/completions');
   });
 
+  it('only extracts the first thought block in streaming; second stays as content', async () => {
+    const mockAdapter = {
+      baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+      timeoutMs: 30000,
+      streamTimeoutMs: null,
+      resolveStreamTimeoutMs() {
+        return this.streamTimeoutMs ?? this.timeoutMs ?? null;
+      },
+      performFetch: vi.fn().mockResolvedValue({
+        response: {
+          body: buildSseBody([
+            {
+              choices: [{
+                index: 0,
+                delta: { content: '<thought>first reasoning</thought>' },
+                finish_reason: null,
+              }],
+            },
+            {
+              choices: [{
+                index: 0,
+                delta: { content: ' answer <thought>not reasoning</thought> tail' },
+                finish_reason: 'stop',
+              }],
+            },
+          ]),
+        },
+        fetchSignal: new AbortController().signal,
+        cleanup: vi.fn(),
+      }),
+    };
+
+    const req = {
+      model: 'gemini/gemini-pro',
+      actualModelId: 'gemini-pro',
+      messages: [{ role: 'user', content: 'hi' }],
+    };
+
+    const chunks = [];
+    for await (const chunk of executeThinkingStream(req, 'test-key', new AbortController().signal, null, mockAdapter)) {
+      chunks.push(chunk);
+    }
+
+    const textDeltas = collectDeltaValues(chunks, 'content');
+    const thinkingDeltas = collectDeltaValues(chunks, 'reasoning_content');
+
+    expect(thinkingDeltas.join('')).toBe('first reasoning');
+    expect(textDeltas.join('')).toBe(' answer <thought>not reasoning</thought> tail');
+  });
+
   it('throws on inline OpenAI-compatible stream error payloads', async () => {
     const mockAdapter = {
       baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',

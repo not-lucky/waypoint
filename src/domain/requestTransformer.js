@@ -37,6 +37,10 @@ const normalizeSettingEntries = (settingsObj) => {
     }
   }
 
+  if (settingsObj.extractReasoningFromThinkBlocks !== undefined) {
+    entries.push(['extractReasoningFromThinkBlocks', settingsObj.extractReasoningFromThinkBlocks]);
+  }
+
   return entries.length > 0 ? entries : EMPTY_ENTRIES;
 };
 

@@ -33,6 +33,10 @@ const SETTINGS_CONFIG = {
     },
     errorMsg: ( path, provider ) => `Setting 'reasoningEffort' at '${ path }' for provider '${ provider }' must be one of 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'.`,
   },
+  extractReasoningFromThinkBlocks: {
+    validate: ( val ) => typeof val === 'boolean',
+    errorMsg: ( path, provider ) => `Setting 'extractReasoningFromThinkBlocks' at '${ path }' for provider '${ provider }' must be a boolean.`,
+  },
 }
 
 const VALID_SETTING_KEYS = new Set( Object.keys( SETTINGS_CONFIG ) )
@@ -49,6 +53,7 @@ const VALID_MODEL_KEYS = [
   'maxTokens',
   'reasoningSupported',
   'reasoningEffort',
+  'extractReasoningFromThinkBlocks',
 ]
 
 function validateCloudflareKeyEntry( entry, providerName, index, shouldExit ) {
@@ -151,6 +156,15 @@ export class ProviderValidator {
       if ( !this.reservedProviders.has( providerName ) && !isNonEmptyString( providerConf.baseUrl ) ) {
         logErrorAndExitOrThrow(
           `Provider '${ providerName }' is a custom provider and must specify a non-empty 'baseUrl'. custom provider requires baseUrl.`,
+          shouldExit,
+        )
+      }
+
+      if ( providerConf.extractReasoningFromThinkBlocks !== undefined ) {
+        ProviderValidator.validateSettings(
+          { extractReasoningFromThinkBlocks: providerConf.extractReasoningFromThinkBlocks },
+          'provider',
+          providerName,
           shouldExit,
         )
       }

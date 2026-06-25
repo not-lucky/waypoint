@@ -63,7 +63,14 @@ export const executeCompletion = async ( req, apiKey, signal, requestLog, adapte
     const resultJson = await response.json()
 
     if ( reasoningSupported ) {
-      return mapOpenAICompletionResponse( req, resultJson, { extractThoughts: true } )
+      // Gemini embeds reasoning in <thought>...</thought> tags within content.
+      // Extract them into reasoning_content when reasoning is supported.
+      return mapOpenAICompletionResponse( req, resultJson, {
+        taggedReasoning: {
+          startTag: '<thought>',
+          endTag: '</thought>',
+        },
+      } )
     }
 
     return translateResponse( FORMATS.OPENAI, FORMATS.GEMINI, resultJson, req )

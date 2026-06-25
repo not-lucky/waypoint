@@ -1,4 +1,4 @@
-import { extractThoughtTags } from '../gemini/geminiFormatter.js';
+import { extractTaggedText } from '../../streaming/thinkingBuffer.js';
 
 const reasoningDetailText = (detail) => {
   if (!detail || typeof detail !== 'object') return '';
@@ -71,13 +71,27 @@ const normalizeStreamDelta = (delta) => {
   return normalized;
 };
 
-const mapCompletionChoice = (c, extractThoughts = false) => {
+const mapCompletionChoice = (c, taggedReasoning = null) => {
   const rawMessage = c.message || {};
   let content = rawMessage.content ?? '';
   if (content === null) content = '';
   let reasoningContent = extractReasoningText(rawMessage);
-  if (extractThoughts) {
-    ({ content, reasoningContent } = extractThoughtTags(content, reasoningContent));
+  // Only strip `<think>` tags from content when no native reasoning_content is available.
+  // When native reasoning exists, content is left untouched to preserve any embedded tags.
+  if (taggedReasoning) {
+    if (reasoningContent === null) {
+      ({ content, reasoningContent } = extractTaggedText(content, reasoningContent, taggedReasoning));
+    } else if (typeof content === 'string' && content.includes(taggedReasoning.endTag)) {
+      const endTag = taggedReasoning.endTag;
+      const startTag = taggedReasoning.startTag;
+      const idxEnd = content.indexOf(endTag);
+      const idxStart = content.indexOf(startTag);
+      if (idxStart === -1 || idxEnd < idxStart) {
+        const extraReasoning = content.slice(0, idxEnd);
+        reasoningContent = reasoningContent + extraReasoning;
+        content = content.slice(idxEnd + endTag.length);
+      }
+    }
   }
 
   const message = {
@@ -98,7 +112,11 @@ const mapCompletionChoice = (c, extractThoughts = false) => {
 /**
  * Maps an OpenAI-compatible chat completion JSON body to a NormalizedResponse.
  */
-export const mapOpenAICompletionResponse = (req, resultJson, { extractThoughts = false } = {}) => {
+export const mapOpenAICompletionResponse = (
+  req,
+  resultJson,
+  { taggedReasoning = null } = {},
+) => {
   let resultId = `waypoint-${Date.now()}`;
   if (resultJson.id) {
     resultId = resultJson.id.startsWith('waypoint-') ? resultJson.id : `waypoint-${resultJson.id}`;
@@ -109,7 +127,7 @@ export const mapOpenAICompletionResponse = (req, resultJson, { extractThoughts =
     object: 'chat.completion',
     created: resultJson.created || Math.floor(Date.now() / 1000),
     model: req.model || resultJson.model,
-    choices: (resultJson.choices || []).map((c) => mapCompletionChoice(c, extractThoughts)),
+    choices: (resultJson.choices || []).map((c) => mapCompletionChoice(c, taggedReasoning)),
     usage: mapUsage(resultJson.usage) ?? {
       prompt_tokens: 0,
       completion_tokens: 0,

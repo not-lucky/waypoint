@@ -19,6 +19,7 @@ describe('modelResolver & RequestTransformer Unit Tests', () => {
     it('should resolve prefixed models', () => {
       const providersConfig = {
         openai: {
+          extractReasoningFromThinkBlocks: true,
           models: [
             { id: 'gpt-4o', aliases: ['4o'] },
             { id: 'gpt-4' },
@@ -30,21 +31,21 @@ describe('modelResolver & RequestTransformer Unit Tests', () => {
       const res1 = resolveModel('openai/gpt-4o', providersConfig);
       expect(res1).toEqual({
         provider: 'openai',
-        modelConfig: { id: 'gpt-4o', aliases: ['4o'] },
+        modelConfig: { id: 'gpt-4o', aliases: ['4o'], extractReasoningFromThinkBlocks: true },
       });
 
       // Alias match
       const res2 = resolveModel('openai/4o', providersConfig);
       expect(res2).toEqual({
         provider: 'openai',
-        modelConfig: { id: 'gpt-4o', aliases: ['4o'] },
+        modelConfig: { id: 'gpt-4o', aliases: ['4o'], extractReasoningFromThinkBlocks: true },
       });
 
       // Fallback: unconfigured model ID inside configured provider
       const res3 = resolveModel('openai/gpt-3.5-turbo', providersConfig);
       expect(res3).toEqual({
         provider: 'openai',
-        modelConfig: { id: 'gpt-3.5-turbo' },
+        modelConfig: { id: 'gpt-3.5-turbo', extractReasoningFromThinkBlocks: true },
       });
 
       // Unconfigured provider
@@ -134,6 +135,7 @@ describe('modelResolver & RequestTransformer Unit Tests', () => {
           id: 'claude-thinking',
           reasoningSupported: true,
           reasoningEffort: 'medium',
+          extractReasoningFromThinkBlocks: true,
         },
       };
 
@@ -141,6 +143,30 @@ describe('modelResolver & RequestTransformer Unit Tests', () => {
       expect(unifiedReq.reasoningSupported).toBe(true);
       expect(unifiedReq.reasoningSupported).toBe(true);
       expect(unifiedReq.reasoningEffort).toBe('medium');
+      expect(unifiedReq.extractReasoningFromThinkBlocks).toBe(true);
+    });
+
+    it('lets model-level think-block extraction override provider-level inheritance', () => {
+      const providersConfig = {
+        tokenrouter: {
+          extractReasoningFromThinkBlocks: true,
+          models: [
+            {
+              id: 'MiniMax-M3',
+              extractReasoningFromThinkBlocks: false,
+            },
+          ],
+        },
+      };
+
+      const resolved = resolveModel('tokenrouter/MiniMax-M3', providersConfig);
+      expect(resolved).toEqual({
+        provider: 'tokenrouter',
+        modelConfig: {
+          id: 'MiniMax-M3',
+          extractReasoningFromThinkBlocks: false,
+        },
+      });
     });
 
     it('should not mutate the original base request object when resolved config is applied', () => {

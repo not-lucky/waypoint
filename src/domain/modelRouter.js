@@ -4,6 +4,27 @@ const findModelInProvider = (modelPart, models) => {
   return { id: modelPart };
 };
 
+// Settings that inherit from provider-level config when not explicitly set on a model.
+const INHERITED_PROVIDER_MODEL_KEYS = [
+  'extractReasoningFromThinkBlocks',
+];
+
+// Applies provider-level settings to a model config when the model doesn't define them.
+const applyProviderModelInheritance = (providerConf, modelConfig) => {
+  const resolvedModelConfig = { ...modelConfig };
+
+  for (const key of INHERITED_PROVIDER_MODEL_KEYS) {
+    if (
+      resolvedModelConfig[key] === undefined
+      && providerConf?.[key] !== undefined
+    ) {
+      resolvedModelConfig[key] = providerConf[key];
+    }
+  }
+
+  return resolvedModelConfig;
+};
+
 const resolutionCache = new WeakMap();
 
 /**
@@ -40,7 +61,13 @@ export const resolveModel = (modelName, providersConfig = {}) => {
     if (providerConf) {
       const modelPart = rest.join('/').trim();
       const models = providerConf.models || [];
-      resolved = { provider: cleanProvider, modelConfig: findModelInProvider(modelPart, models) };
+      resolved = {
+        provider: cleanProvider,
+        modelConfig: applyProviderModelInheritance(
+          providerConf,
+          findModelInProvider(modelPart, models),
+        ),
+      };
     }
   } else {
     const providerEntries = Object.entries(providersConfig);
@@ -53,7 +80,10 @@ export const resolveModel = (modelName, providersConfig = {}) => {
       const match = (pConf.models || []).find(
         (m) => m.id === modelName || m.aliases?.includes(modelName),
       );
-      resolved = { provider: pName, modelConfig: match };
+      resolved = {
+        provider: pName,
+        modelConfig: applyProviderModelInheritance(pConf, match),
+      };
     }
   }
 

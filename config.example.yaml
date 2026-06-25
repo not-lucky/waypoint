@@ -179,12 +179,15 @@ providers:
   custom-openai:
     type: "openai-compatible"                     # Defaults to openai-compatible if omitted
     baseUrl: "https://api.openai.com/v1"         # Required for custom providers
+    extractReasoningFromThinkBlocks: false        # If true, split assistant `<think>...</think>` content into reasoning_content for all models on this provider
     keys:
       - "${OPENAI_API_KEY_1}"
     models:
       - id: "gpt-4o"
         aliases: ["custom-gpt"]
         reasoningSupported: false
+      - id: "minimax-m3"
+        extractReasoningFromThinkBlocks: true     # Model-level setting overrides/inherits provider-level behavior
 
   # Custom Anthropic-compatible provider example
   custom-anthropic:

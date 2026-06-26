@@ -56,8 +56,8 @@ async function expectTwoStageAuditLog(logsDir, endpointFragment) {
 
 describe('Dry Run Endpoints Integration Tests', () => {
   it.each([
-    ['/dryrun/openai/chat/completions', '/dryrun/openai/chat/completions'],
-    ['/dryrun/openai/v1/chat/completions', '/dryrun/openai/v1/chat/completions'],
+    ['/dryrun/chat/completions', '/dryrun/chat/completions'],
+    ['/dryrun/v1/chat/completions', '/dryrun/v1/chat/completions'],
   ])('POST %s - returns dry-run response and writes two audit stages', async (route, endpointFragment) => {
     const { app, logsDir, teardown } = await createDryrunTestApp();
     const payload = {
@@ -87,8 +87,8 @@ describe('Dry Run Endpoints Integration Tests', () => {
   });
 
   it.each([
-    ['/dryrun/anthropic/messages', '/dryrun/anthropic/messages'],
-    ['/dryrun/anthropic/v1/messages', '/dryrun/anthropic/v1/messages'],
+    ['/dryrun/messages', '/dryrun/messages'],
+    ['/dryrun/v1/messages', '/dryrun/v1/messages'],
   ])('POST %s - returns dry-run response and writes two audit stages', async (route, endpointFragment) => {
     const { app, logsDir, teardown } = await createDryrunTestApp();
     const payload = {
@@ -114,7 +114,7 @@ describe('Dry Run Endpoints Integration Tests', () => {
     const { app, teardown } = await createDryrunTestApp();
     try {
       await request(app)
-        .post('/dryrun/openai/chat/completions')
+        .post('/dryrun/chat/completions')
         .send({
           model: 'openai/gpt-4o',
           messages: [{ role: 'user', content: 'no auth' }],
@@ -129,7 +129,7 @@ describe('Dry Run Endpoints Integration Tests', () => {
     const { app, teardown } = await createDryrunTestApp();
     try {
       const res = await authed(app)
-        .post('/dryrun/openai/chat/completions')
+        .post('/dryrun/chat/completions')
         .send({ model: 'openai/gpt-4o' })
         .expect(400);
 
@@ -151,7 +151,7 @@ describe('Dry Run Endpoints Integration Tests', () => {
 
     try {
       await authed(app)
-        .post('/dryrun/openai/chat/completions')
+        .post('/dryrun/chat/completions')
         .send({
           model: 'openai/gpt-4o',
           messages: [{ role: 'user', content: 'no logs' }],
@@ -167,7 +167,7 @@ describe('Dry Run Endpoints Integration Tests', () => {
     const { app, teardown } = await createDryrunTestApp();
     try {
       const res = await authed(app)
-        .post('/dryrun/openai/chat/completions')
+        .post('/dryrun/chat/completions')
         .send({
           model: 'openai/gpt-4o',
           messages: [{ role: 'user', content: 'stream' }],

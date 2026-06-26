@@ -81,7 +81,7 @@ describe('03_provider_response.json on upstream errors', () => {
 
     try {
       await request(app)
-        .post('/openai/chat/completions')
+        .post('/chat/completions')
         .set('Authorization', 'Bearer mock-webui-token')
         .send({
           model: 'gemini/gemini-pro',
@@ -174,7 +174,7 @@ describe('03_provider_response.json on upstream errors', () => {
 
     try {
       const response = await authed(app)
-        .post('/openai/chat/completions')
+        .post('/chat/completions')
         .send({
           model: 'openai/gpt-4o',
           messages: [{ role: 'user', content: 'stream and fail' }],

@@ -1,8 +1,6 @@
 import { z } from 'zod';
 import { getAppLogger } from '../../logging/logger.js';
-import { buildClientErrorEnvelope } from '../../../domain/errors/envelope.js';
-import { resolveIngressFormat } from './ingressFormat.js';
-import { statusToErrorType } from '../../../domain/errors/httpErrorTypes.js';
+import { sendHttpError } from './errorHelper.js';
 
 const logger = getAppLogger('validation');
 
@@ -229,12 +227,7 @@ const respondValidationError = (res, req, result) => {
 
   logger.debug('Validation failed', { details });
 
-  return res.status(400).json(buildClientErrorEnvelope({
-    code: 'validationError',
-    message,
-    errorType: statusToErrorType(400),
-    details,
-  }, resolveIngressFormat(req)));
+  return sendHttpError(res, req, 400, 'validationError', message, null, details);
 };
 
 /**

@@ -92,7 +92,7 @@ describe('Fallback routing with real provider adapters and MSW', () => {
 
     try {
       const response = await request(app)
-        .post('/openai/chat/completions')
+        .post('/chat/completions')
         .set('Authorization', 'Bearer test-client-token')
         .send({
           model: 'requesty/custom-model',
@@ -117,7 +117,7 @@ describe('Fallback routing with real provider adapters and MSW', () => {
 
     try {
       const response = await request(app)
-        .post('/openai/chat/completions')
+        .post('/chat/completions')
         .set('Authorization', 'Bearer test-client-token')
         .send({
           model: 'requesty/custom-model',
@@ -143,7 +143,7 @@ describe('Fallback routing with real provider adapters and MSW', () => {
 
     try {
       const response = await request(app)
-        .post('/openai/chat/completions')
+        .post('/chat/completions')
         .set('Authorization', 'Bearer test-client-token')
         .send({
           model: 'requesty/custom-model',

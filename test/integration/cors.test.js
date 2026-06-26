@@ -219,7 +219,7 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
     it('should attach CORS headers even on error responses like 413 Payload Too Large', async () => {
       await loadServerWithConfig(['http://trusted.com'], '100b');
       const res = await request(app)
-        .post('/openai/chat/completions')
+        .post('/chat/completions')
         .set('Origin', 'http://trusted.com')
         .set('Content-Type', 'application/json')
         .send(JSON.stringify({ data: 'x'.repeat(200) }))
@@ -231,7 +231,7 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
     it('should apply CORS middleware uniformly on Anthropic router endpoints', async () => {
       await loadServerWithConfig(['http://trusted.com'], '10mb');
       const res = await request(app)
-        .options('/anthropic/messages')
+        .options('/messages')
         .set('Origin', 'http://trusted.com')
         .set('Access-Control-Request-Method', 'POST')
         .expect(204);
@@ -253,7 +253,7 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
       expect(Buffer.byteLength(bodyStr)).toBe(limitBytes);
 
       const res = await request(app)
-        .post('/openai/chat/completions')
+        .post('/chat/completions')
         .set('Content-Type', 'application/json')
         .send(bodyStr);
 
@@ -270,7 +270,7 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
       const bodyStr = JSON.stringify({ data: 'x'.repeat(padLength + 1) });
 
       await request(app)
-        .post('/openai/chat/completions')
+        .post('/chat/completions')
         .set('Content-Type', 'application/json')
         .send(bodyStr)
         .expect(413);

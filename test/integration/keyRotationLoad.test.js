@@ -86,7 +86,7 @@ describe( 'Key rotation under load with MSW', () => {
     try {
       await Promise.all(
         Array.from( { length: 4 }, () => request( app )
-          .post( '/openai/chat/completions' )
+          .post( '/chat/completions' )
           .set( 'Authorization', 'Bearer test-client-token' )
           .send( {
             model: 'requesty/custom-model',
@@ -115,7 +115,7 @@ describe( 'Key rotation under load with MSW', () => {
       services.keyRegistry.flagFailure( 'requesty', 'key-b', { statusCode: 429 } )
 
       const response = await request( app )
-        .post( '/openai/chat/completions' )
+        .post( '/chat/completions' )
         .set( 'Authorization', 'Bearer test-client-token' )
         .send( {
           model: 'requesty/custom-model',
@@ -160,7 +160,7 @@ describe( 'Key rotation under load with MSW', () => {
 
     try {
       const first = await request( app )
-        .post( '/openai/chat/completions' )
+        .post( '/chat/completions' )
         .set( 'Authorization', 'Bearer test-client-token' )
         .send( {
           model: 'requesty/custom-model',
@@ -169,7 +169,7 @@ describe( 'Key rotation under load with MSW', () => {
         .expect( 200 )
 
       const second = await request( app )
-        .post( '/openai/chat/completions' )
+        .post( '/chat/completions' )
         .set( 'Authorization', 'Bearer test-client-token' )
         .send( {
           model: 'requesty/custom-model',

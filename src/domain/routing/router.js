@@ -27,6 +27,61 @@ const applyProviderModelInheritance = (providerConf, modelConfig) => {
 
 const resolutionCache = new WeakMap();
 
+const getFromCache = (providersConfig, modelName) => {
+  if (!providersConfig || typeof providersConfig !== 'object') return null;
+  const cache = resolutionCache.get(providersConfig);
+  if (cache && cache.has(modelName)) {
+    return { hit: true, value: cache.get(modelName) };
+  }
+  return { hit: false };
+};
+
+const saveToCache = (providersConfig, modelName, resolved) => {
+  if (!providersConfig || typeof providersConfig !== 'object') return;
+  let cache = resolutionCache.get(providersConfig);
+  if (!cache) {
+    cache = new Map();
+    resolutionCache.set(providersConfig, cache);
+  }
+  cache.set(modelName, resolved);
+};
+
+const resolveModelConfig = (modelName, providersConfig) => {
+  if (modelName.includes('/')) {
+    const [providerPart, ...rest] = modelName.split('/');
+    const cleanProvider = providerPart.trim();
+    const providerConf = providersConfig[cleanProvider];
+    if (!providerConf) return null;
+
+    const modelPart = rest.join('/').trim();
+    const models = providerConf.models || [];
+    return {
+      provider: cleanProvider,
+      modelConfig: applyProviderModelInheritance(
+        providerConf,
+        findModelInProvider(modelPart, models),
+      ),
+    };
+  }
+
+  const providerEntries = Object.entries(providersConfig);
+  const matchEntry = providerEntries.find(([, pConf]) => (pConf.models || []).some(
+    (m) => m.id === modelName || m.aliases?.includes(modelName),
+  ));
+
+  if (!matchEntry) return null;
+
+  const [pName, pConf] = matchEntry;
+  const match = (pConf.models || []).find(
+    (m) => m.id === modelName || m.aliases?.includes(modelName),
+  );
+
+  return {
+    provider: pName,
+    modelConfig: applyProviderModelInheritance(pConf, match),
+  };
+};
+
 /**
  * Resolves the correct model configuration from the providers configuration object.
  * Parses modelName (e.g. "openai/gpt-4o" or "pro") and matches it against
@@ -39,57 +94,13 @@ const resolutionCache = new WeakMap();
 export const resolveModel = (modelName, providersConfig = {}) => {
   if (!modelName) return null;
 
-  const isObject = providersConfig && (typeof providersConfig === 'object');
-  let cache = null;
-  if (isObject) {
-    cache = resolutionCache.get(providersConfig);
-    if (!cache) {
-      cache = new Map();
-      resolutionCache.set(providersConfig, cache);
-    }
-    if (cache.has(modelName)) {
-      return cache.get(modelName);
-    }
+  const cacheResult = getFromCache(providersConfig, modelName);
+  if (cacheResult?.hit) {
+    return cacheResult.value;
   }
 
-  let resolved = null;
+  const resolved = resolveModelConfig(modelName, providersConfig);
 
-  if (modelName.includes('/')) {
-    const [providerPart, ...rest] = modelName.split('/');
-    const cleanProvider = providerPart.trim();
-    const providerConf = providersConfig[cleanProvider];
-    if (providerConf) {
-      const modelPart = rest.join('/').trim();
-      const models = providerConf.models || [];
-      resolved = {
-        provider: cleanProvider,
-        modelConfig: applyProviderModelInheritance(
-          providerConf,
-          findModelInProvider(modelPart, models),
-        ),
-      };
-    }
-  } else {
-    const providerEntries = Object.entries(providersConfig);
-    const matchEntry = providerEntries.find(([, pConf]) => (pConf.models || []).some(
-      (m) => m.id === modelName || m.aliases?.includes(modelName),
-    ));
-
-    if (matchEntry) {
-      const [pName, pConf] = matchEntry;
-      const match = (pConf.models || []).find(
-        (m) => m.id === modelName || m.aliases?.includes(modelName),
-      );
-      resolved = {
-        provider: pName,
-        modelConfig: applyProviderModelInheritance(pConf, match),
-      };
-    }
-  }
-
-  if (cache) {
-    cache.set(modelName, resolved);
-  }
-
+  saveToCache(providersConfig, modelName, resolved);
   return resolved;
 };

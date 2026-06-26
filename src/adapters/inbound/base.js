@@ -145,7 +145,7 @@ export class BaseController {
       ingressFormat,
     } = options;
 
-    const reqLog = createRequestLog(req, this.orchestrator.config);
+    const reqLog = await createRequestLog(req, this.orchestrator.config);
 
     let resolvedProvider = null;
 

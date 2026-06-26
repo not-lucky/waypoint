@@ -1,6 +1,6 @@
 import { safeJsonParse } from '../utils.js';
 
-export function anthropicToolsToOpenAI(tools) {
+export const anthropicToolsToOpenAI = (tools) => {
   if (!tools?.length) return undefined;
   return tools.map((tool) => ({
     type: 'function',
@@ -12,7 +12,7 @@ export function anthropicToolsToOpenAI(tools) {
   }));
 }
 
-export function openAIToolsToAnthropic(tools) {
+export const openAIToolsToAnthropic = (tools) => {
   if (!tools?.length) return undefined;
   return tools.map((tool) => {
     const fn = tool.function || tool;
@@ -24,7 +24,7 @@ export function openAIToolsToAnthropic(tools) {
   });
 }
 
-export function anthropicToolChoiceToOpenAI(toolChoice) {
+export const anthropicToolChoiceToOpenAI = (toolChoice) => {
   if (!toolChoice) return undefined;
   if (toolChoice.type === 'auto') return 'auto';
   if (toolChoice.type === 'any') return 'required';
@@ -34,7 +34,7 @@ export function anthropicToolChoiceToOpenAI(toolChoice) {
   return undefined;
 }
 
-export function openAIToolChoiceToAnthropic(toolChoice) {
+export const openAIToolChoiceToAnthropic = (toolChoice) => {
   if (!toolChoice) return undefined;
   if (toolChoice === 'auto') return { type: 'auto' };
   if (toolChoice === 'required') return { type: 'any' };
@@ -58,7 +58,7 @@ const toolResultContentToString = (content) => {
   return JSON.stringify(content ?? '');
 };
 
-export function anthropicMessageToOpenAI(message) {
+export const anthropicMessageToOpenAI = (message) => {
   const { role } = message;
   const { content } = message;
 
@@ -132,7 +132,7 @@ export function anthropicMessageToOpenAI(message) {
   return [{ role, content }];
 }
 
-export function openAIMessagesToAnthropic(messages) {
+export const openAIMessagesToAnthropic = (messages) => {
   const anthropicMessages = [];
   let pendingToolResults = [];
 
@@ -220,7 +220,7 @@ export function openAIMessagesToAnthropic(messages) {
   return anthropicMessages;
 }
 
-export function anthropicContentToOpenAIMessage(contentArray) {
+export const anthropicContentToOpenAIMessage = (contentArray) => {
   let textContent = '';
   let reasoningContent = null;
   const toolCalls = [];
@@ -251,7 +251,7 @@ export function anthropicContentToOpenAIMessage(contentArray) {
   return message;
 }
 
-export function openAIMessageToAnthropicContent(message) {
+export const openAIMessageToAnthropicContent = (message) => {
   const content = [];
   let contentText = message.content || '';
   let reasoning = message.reasoning_content || '';

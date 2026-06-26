@@ -1,8 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { buildClientErrorEnvelope } from '../../domain/errors/envelope.js';
-import { statusToErrorType } from '../../domain/errors/httpErrorTypes.js';
-import { resolveIngressFormat } from './middleware/ingressFormat.js';
+import { sendHttpError } from './middleware/errorHelper.js';
 import { authMiddleware } from './middleware/auth.js';
 import { dryRunMiddleware } from './middleware/dryRun.js';
 import { createMetricsMiddleware } from './middleware/metricsMiddleware.js';
@@ -11,6 +9,7 @@ import {
   createMetricsRouter,
   createOpenaiRouter,
   createAnthropicRouter,
+  createModelsRouter,
 } from './routes.js';
 
 /**
@@ -24,24 +23,33 @@ import {
  * @param {Object} dependencies.anthropicController - Anthropic controller instance.
  * @param {Object} dependencies.modelCache - Model cache instance.
  */
-function mountProtocolRoutes(app, logger, {
+const mountProtocolRoutes = (app, logger, {
   auth, openAIController, anthropicController, modelCache,
-}) {
-  const openaiDeps = { auth, openAIController, modelCache };
-  const anthropicDeps = { auth, anthropicController, modelCache };
+}) => {
+  const openaiDeps = { auth, openAIController };
+  const anthropicDeps = { auth, anthropicController };
+  const modelsDeps = { auth, modelCache };
 
-  logger.debug('Mounting OpenAI routes at /openai/v1 and /openai');
-  app.use(['/openai/v1', '/openai'], createOpenaiRouter(openaiDeps));
+  logger.debug('Mounting models routes at /v1 and /');
+  app.use('/v1', createModelsRouter(modelsDeps));
+  app.use('/', createModelsRouter(modelsDeps));
 
-  logger.debug('Mounting dryrun OpenAI routes at /dryrun/openai/v1 and /dryrun/openai');
-  app.use(['/dryrun/openai/v1', '/dryrun/openai'], dryRunMiddleware, createOpenaiRouter(openaiDeps));
+  logger.debug('Mounting OpenAI routes at /v1 and /');
+  app.use('/v1', createOpenaiRouter(openaiDeps));
+  app.use('/', createOpenaiRouter(openaiDeps));
 
-  logger.debug('Mounting Anthropic routes at /anthropic/v1 and /anthropic');
-  app.use(['/anthropic/v1', '/anthropic'], createAnthropicRouter(anthropicDeps));
+  logger.debug('Mounting dryrun OpenAI routes at /dryrun/v1 and /dryrun');
+  app.use('/dryrun/v1', dryRunMiddleware, createOpenaiRouter(openaiDeps));
+  app.use('/dryrun', dryRunMiddleware, createOpenaiRouter(openaiDeps));
 
-  logger.debug('Mounting dryrun Anthropic routes at /dryrun/anthropic/v1 and /dryrun/anthropic');
-  app.use(['/dryrun/anthropic/v1', '/dryrun/anthropic'], dryRunMiddleware, createAnthropicRouter(anthropicDeps));
-}
+  logger.debug('Mounting Anthropic routes at /v1 and /');
+  app.use('/v1', createAnthropicRouter(anthropicDeps));
+  app.use('/', createAnthropicRouter(anthropicDeps));
+
+  logger.debug('Mounting dryrun Anthropic routes at /dryrun/v1 and /dryrun');
+  app.use('/dryrun/v1', dryRunMiddleware, createAnthropicRouter(anthropicDeps));
+  app.use('/dryrun', dryRunMiddleware, createAnthropicRouter(anthropicDeps));
+};
 
 /**
  * Creates an Express error handler middleware.
@@ -49,7 +57,7 @@ function mountProtocolRoutes(app, logger, {
  * @param {Object} logger - Logger instance for error reporting.
  * @returns {Function} Express error handler middleware function.
  */
-function errorHandler(logger) {
+const errorHandler = (logger) => {
   // eslint-disable-next-line no-unused-vars
   return (err, req, res, next) => {
     logger.error('Unhandled express exception:', err);
@@ -57,13 +65,9 @@ function errorHandler(logger) {
     let code = 'internalServerError';
     if (status === 413) code = 'payloadTooLarge';
     else if (status === 400) code = 'badRequest';
-    res.status(status).json(buildClientErrorEnvelope({
-      code,
-      message: err.message,
-      errorType: statusToErrorType(status),
-    }, resolveIngressFormat(req)));
+    sendHttpError(res, req, status, code, err.message);
   };
-}
+};
 
 /**
  * Creates and configures the Express application for the Waypoint gateway.
@@ -80,7 +84,7 @@ function errorHandler(logger) {
  * @param {Object} logger - Logger instance.
  * @returns {Object} Configured Express application.
  */
-export function createApp(config, services, logger) {
+export const createApp = (config, services, logger) => {
   const app = express();
   const auth = authMiddleware(config);
 

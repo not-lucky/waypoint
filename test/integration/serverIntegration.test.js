@@ -55,7 +55,7 @@ describe('Server Route Integration Tests', () => {
     executeCompletionSpy.mockResolvedValueOnce(mockResponse);
 
     const res = await request(app)
-      .post('/openai/chat/completions')
+      .post('/chat/completions')
       .set('Authorization', 'Bearer mock-webui-token')
       .send({
         provider: 'openai',
@@ -83,7 +83,7 @@ describe('Server Route Integration Tests', () => {
     executeCompletionSpy.mockResolvedValueOnce(mockErrorResponse);
 
     const res = await request(app)
-      .post('/openai/chat/completions')
+      .post('/chat/completions')
       .set('Authorization', 'Bearer mock-webui-token')
       .send({
         provider: 'openai',
@@ -108,7 +108,7 @@ describe('Server Route Integration Tests', () => {
     executeCompletionSpy.mockResolvedValueOnce(mockResponse);
 
     const res = await request(app)
-      .post('/openai/v1/chat/completions')
+      .post('/v1/chat/completions')
       .set('Authorization', 'Bearer mock-webui-token')
       .send({
         provider: 'openai',
@@ -138,7 +138,7 @@ describe('Server Route Integration Tests', () => {
     executeCompletionSpy.mockResolvedValueOnce(mockOpenAIResponse);
 
     const res = await request(app)
-      .post('/anthropic/messages')
+      .post('/messages')
       .set('Authorization', 'Bearer mock-webui-token')
       .send({
         model: 'anthropic/claude-sonnet-4',
@@ -161,7 +161,7 @@ describe('Server Route Integration Tests', () => {
 
   it('POST /openai/chat/completions - returns 400 on invalid JSON payload', async () => {
     await request(app)
-      .post('/openai/chat/completions')
+      .post('/chat/completions')
       .set('Authorization', 'Bearer mock-webui-token')
       .set('Content-Type', 'application/json')
       .send('{ invalid json')

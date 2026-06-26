@@ -5,8 +5,6 @@
  * @module adapters/BaseProvider
  */
 
-/* eslint-disable no-unused-vars */
-
 import { sanitizeUrl, serializeHeaders, redactHeaders } from '../../infrastructure/logging/requestLoggerUtils.js'
 import { NotImplementedError } from '../../utils/notImplementedError.js'
 import { parseRetryAfter, UpstreamError, normalizeUpstreamError  } from '../../domain/errors/upstream.js'
@@ -122,7 +120,7 @@ export class BaseProvider {
     let errorJson
     try {
       errorJson = JSON.parse(errorText)
-    } catch (e) {
+    } catch {
       errorJson = { message: errorText }
     }
 
@@ -243,11 +241,11 @@ export class BaseProvider {
     return { signal: controller.signal, cleanup }
   }
 
-  async generateCompletion(req, apiKey, signal) {
+  async generateCompletion() {
     throw new NotImplementedError()
   }
 
-  async generateStream(req, apiKey, signal) {
+  async generateStream() {
     throw new NotImplementedError()
   }
 

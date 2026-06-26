@@ -56,7 +56,7 @@ const VALID_MODEL_KEYS = [
   'extractReasoningFromThinkBlocks',
 ]
 
-function validateCloudflareKeyEntry( entry, providerName, index, shouldExit ) {
+const validateCloudflareKeyEntry = ( entry, providerName, index, shouldExit ) => {
   if ( !isCloudflareKeyEntry( entry ) ) {
     logErrorAndExitOrThrow(
       `Provider '${ providerName }' key at index ${ index } must be an object with non-empty 'apiKey' and 'accountId' fields.`,
@@ -79,7 +79,7 @@ function validateCloudflareKeyEntry( entry, providerName, index, shouldExit ) {
   }
 }
 
-function validateProviderKeys( providerName, providerConf, shouldExit ) {
+const validateProviderKeys = ( providerName, providerConf, shouldExit ) => {
   providerConf.keys.forEach( ( entry, index ) => {
     if ( providerName === 'cloudflare' ) {
       validateCloudflareKeyEntry( entry, providerName, index, shouldExit )

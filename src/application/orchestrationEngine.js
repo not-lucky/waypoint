@@ -46,6 +46,32 @@ const updateRequestWithModelConfig = (currentReq, config) => {
 };
 
 /**
+ * Prepares request state for fallback transition.
+ *
+ * @param {Object} currentReq - The current request state.
+ * @param {string} nextModel - The fallback model configuration.
+ * @param {Object} config - The application configuration.
+ * @returns {Object} Next request state.
+ */
+const prepareNextRequestState = (currentReq, nextModel, config) => {
+  const nextReq = {
+    ...currentReq,
+    model: nextModel,
+    isFallback: true,
+  };
+  delete nextReq.resolvedModel;
+
+  if (!resolveModel(nextModel, config.providers) && nextModel.includes('/')) {
+    // Fall back to direct provider/model parsing if not explicitly defined in the map.
+    const [p, ...rest] = nextModel.split('/');
+    nextReq.provider = p.trim();
+    nextReq.actualModelId = rest.join('/').trim();
+  }
+
+  return nextReq;
+};
+
+/**
  * Runs the outer orchestration loop.
  * Iteratively attempts completion requests, executing the retry loop on the current provider.
  * If retry loop reports exhaustion and fallback is defined, triggers fallback transition
@@ -128,26 +154,7 @@ export const runOrchestrationLoop = async ({
         fallbackModel: currentReq.fallbackModel,
       });
 
-      const nextModel = currentReq.fallbackModel;
-      if (!resolveModel(nextModel, config.providers) && nextModel.includes('/')) {
-        // Fall back to direct provider/model parsing if not explicitly defined in the map.
-        const [p, ...rest] = nextModel.split('/');
-        currentReq = {
-          ...currentReq,
-          model: nextModel,
-          provider: p.trim(),
-          actualModelId: rest.join('/').trim(),
-          isFallback: true,
-        };
-        delete currentReq.resolvedModel;
-      } else {
-        currentReq = {
-          ...currentReq,
-          model: nextModel,
-          isFallback: true,
-        };
-        delete currentReq.resolvedModel;
-      }
+      currentReq = prepareNextRequestState(currentReq, currentReq.fallbackModel, config);
       continue;
     }
 

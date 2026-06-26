@@ -20,7 +20,7 @@ const logger = getAppLogger('stream');
  * @yields {any}
  * @returns {Promise<boolean>}
  */
-async function* consumeStreamChunks(iterator, abortController) {
+const consumeStreamChunks = async function* (iterator, abortController) {
   while (true) {
     if (abortController.signal.aborted) {
       logger.debug('Stream abort detected before chunk retrieval');
@@ -45,7 +45,7 @@ async function* consumeStreamChunks(iterator, abortController) {
  * @param {Error} streamErr
  * @param {Object} config
  */
-function handleStreamError(streamErr, config) {
+const handleStreamError = (streamErr, config) => {
   const { abortController, adapter, req, keyRegistry, provider, apiKey } = config;
 
   if (abortController.signal.aborted) return;
@@ -72,7 +72,7 @@ function handleStreamError(streamErr, config) {
  * @param {Object} config
  * @yields {any}
  */
-export async function* createStreamWithAbortGuard(config) {
+export const createStreamWithAbortGuard = async function* (config) {
   const {
     iterator,
     abortController,

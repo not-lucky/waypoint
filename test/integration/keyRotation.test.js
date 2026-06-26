@@ -41,7 +41,7 @@ describe('Key Rotation Strategy Integration Tests', () => {
     );
 
     const send = () => request(app)
-      .post('/openai/chat/completions')
+      .post('/chat/completions')
       .set('Authorization', 'Bearer test-client-token')
       .send({
         model: 'gemini/gemini-pro',
@@ -73,7 +73,7 @@ describe('Key Rotation Strategy Integration Tests', () => {
     );
 
     const send = () => request(app)
-      .post('/openai/chat/completions')
+      .post('/chat/completions')
       .set('Authorization', 'Bearer test-client-token')
       .send({
         model: 'gemini/gemini-pro',
@@ -134,7 +134,7 @@ describe('Key Rotation Strategy Integration Tests', () => {
     services.keyRegistry.flagFailure('gemini', 'key-a', { statusCode: 429 });
 
     await request(app)
-      .post('/openai/chat/completions')
+      .post('/chat/completions')
       .set('Authorization', 'Bearer test-client-token')
       .send({
         model: 'gemini/gemini-pro',

@@ -69,7 +69,7 @@ describe( 'Provider streaming errors with MSW', () => {
 
     try {
       const response = await request( app )
-        .post( '/openai/chat/completions' )
+        .post( '/chat/completions' )
         .set( 'Authorization', 'Bearer test-client-token' )
         .send( {
           model: 'requesty/custom-model',
@@ -93,7 +93,7 @@ describe( 'Provider streaming errors with MSW', () => {
 
     try {
       const response = await request( app )
-        .post( '/openai/chat/completions' )
+        .post( '/chat/completions' )
         .set( 'Authorization', 'Bearer test-client-token' )
         .send( {
           model: 'requesty/custom-model',

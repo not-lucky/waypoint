@@ -75,7 +75,7 @@ describe('Anthropic tool calling integration', () => {
     };
 
     const res = await request(app)
-      .post('/anthropic/v1/messages')
+      .post('/v1/messages')
       .set('x-api-key', 'claude-token')
       .send(payload)
       .expect(200);

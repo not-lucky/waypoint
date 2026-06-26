@@ -30,7 +30,7 @@ const SERVER_ERROR_MAX = 600;
  * @param {number|undefined} statusCode
  * @returns {'retire' | 'cooldown' | 'transport' | 'none'}
  */
-function classifyStatus(statusCode) {
+const classifyStatus = (statusCode) => {
   if (statusCode === undefined) return 'transport';
   if (RETIRE_STATUSES.has(statusCode)) return 'retire';
   if (COOLDOWN_STATUSES.has(statusCode)) return 'cooldown';
@@ -44,7 +44,7 @@ function classifyStatus(statusCode) {
  * @param {number} [statusCode] - Upstream HTTP status code. Undefined for transport errors.
  * @returns {'retire' | 'cooldown' | 'none'}
  */
-export function decideKeyAction(statusCode) {
+export const decideKeyAction = (statusCode) => {
   const classification = classifyStatus(statusCode);
   if (classification === 'retire' || classification === 'cooldown') {
     return classification;
@@ -58,7 +58,7 @@ export function decideKeyAction(statusCode) {
  * @param {number} [statusCode] - Upstream HTTP status code, or undefined for transport errors.
  * @returns {boolean} True if the request should be retried (different key or backoff).
  */
-export function isRetryable(statusCode) {
+export const isRetryable = (statusCode) => {
   // Transport failures retry; status-driven classification drives the rest.
   if (statusCode === undefined) return true;
   return decideKeyAction(statusCode) !== 'none';
@@ -78,14 +78,14 @@ export function isRetryable(statusCode) {
  * @param {number} [args.maxSeconds] - Exponential-backoff cap (rate-limit only).
  * @returns {number} Cooldown duration in seconds (>= 0).
  */
-export function resolveCooldownSeconds({
+export const resolveCooldownSeconds = ({
   statusCode,
   retryAfterSeconds,
   defaultSeconds,
   consecutiveFailures = 1,
   baseSeconds,
   maxSeconds,
-}) {
+}) => {
   if (retryAfterSeconds !== undefined && retryAfterSeconds > 0) {
     return retryAfterSeconds;
   }
@@ -105,7 +105,7 @@ export function resolveCooldownSeconds({
  * @param {number|undefined} statusCode - Upstream HTTP status code.
  * @returns {'retired' | 'cooldown' | 'no_action' | 'transport'}
  */
-export function resolveLifecycleTier(statusCode) {
+export const resolveLifecycleTier = (statusCode) => {
   const action = decideKeyAction(statusCode);
   if (action === 'retire') return 'retired';
   if (action === 'cooldown') return 'cooldown';

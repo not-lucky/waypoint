@@ -33,7 +33,7 @@ describe('/metrics integration', () => {
 
     try {
       await request(app)
-        .post('/openai/chat/completions')
+        .post('/chat/completions')
         .set('Authorization', 'Bearer test-client-token')
         .send({
           model: 'gemini/gemini-pro',

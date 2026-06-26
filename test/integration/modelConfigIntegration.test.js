@@ -6,7 +6,7 @@ describe('Model Configuration Integration Tests (via dry-run)', () => {
     const { app, teardown } = await createModelConfigTestApp();
     try {
       const res = await authed(app)
-        .post('/dryrun/openai/chat/completions')
+        .post('/dryrun/chat/completions')
         .send({
           model: 'gemini/gemini-flash-lite-latest-low',
           messages: [{ role: 'user', content: 'defaults' }],
@@ -28,7 +28,7 @@ describe('Model Configuration Integration Tests (via dry-run)', () => {
     const { app, teardown } = await createModelConfigTestApp();
     try {
       const res = await authed(app)
-        .post('/dryrun/openai/chat/completions')
+        .post('/dryrun/chat/completions')
         .send({
           model: 'gemini/gemini-flash-lite-latest-high',
           messages: [{ role: 'user', content: 'overrides' }],
@@ -46,7 +46,7 @@ describe('Model Configuration Integration Tests (via dry-run)', () => {
     const { app, teardown } = await createModelConfigTestApp();
     try {
       const res = await authed(app)
-        .post('/dryrun/openai/chat/completions')
+        .post('/dryrun/chat/completions')
         .send({
           model: 'custom-openai/custom-alias',
           messages: [{ role: 'user', content: 'custom' }],
@@ -64,7 +64,7 @@ describe('Model Configuration Integration Tests (via dry-run)', () => {
     const { app, teardown } = await createModelConfigTestApp();
     try {
       const defaultsRes = await authed(app)
-        .post('/dryrun/openai/chat/completions')
+        .post('/dryrun/chat/completions')
         .send({
           model: 'gemini/gemini-flash-lite-latest-low',
           messages: [{ role: 'user', content: 'client wins over default' }],
@@ -77,7 +77,7 @@ describe('Model Configuration Integration Tests (via dry-run)', () => {
       expect(defaultsRes.body.request.body.max_tokens).toBe(512);
 
       const overrideRes = await authed(app)
-        .post('/dryrun/openai/chat/completions')
+        .post('/dryrun/chat/completions')
         .send({
           model: 'gemini/gemini-flash-lite-latest-high',
           messages: [{ role: 'user', content: 'override wins over client' }],

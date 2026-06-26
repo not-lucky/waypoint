@@ -85,10 +85,10 @@ describe('Rate Limiting Integration Tests', () => {
   });
 
   it('returns 429 with normalized error schema when client exceeds max requests in window', async () => {
-    await authed().get('/openai/models').expect(200);
-    await authed().get('/openai/models').expect(200);
+    await authed().get('/models').expect(200);
+    await authed().get('/models').expect(200);
 
-    const res = await authed().get('/openai/models').expect(429);
+    const res = await authed().get('/models').expect(429);
     expect(res.body).toEqual({
       error: {
         code: 'rateLimitExceeded',
@@ -100,32 +100,32 @@ describe('Rate Limiting Integration Tests', () => {
   });
 
   it('allows requests again after the sliding window elapses', async () => {
-    await authed().get('/openai/models').expect(200);
-    await authed().get('/openai/models').expect(200);
-    await authed().get('/openai/models').expect(429);
+    await authed().get('/models').expect(200);
+    await authed().get('/models').expect(200);
+    await authed().get('/models').expect(429);
 
     await vi.advanceTimersByTimeAsync(60_001);
 
-    await authed().get('/openai/models').expect(200);
+    await authed().get('/models').expect(200);
   });
 
   it('tracks rate limits independently per authenticated client', async () => {
-    await authed('limited-token').get('/openai/models').expect(200);
-    await authed('limited-token').get('/openai/models').expect(200);
-    await authed('limited-token').get('/openai/models').expect(429);
+    await authed('limited-token').get('/models').expect(200);
+    await authed('limited-token').get('/models').expect(200);
+    await authed('limited-token').get('/models').expect(429);
 
-    await authed('other-token').get('/openai/models').expect(200);
-    await authed('other-token').get('/openai/models').expect(200);
+    await authed('other-token').get('/models').expect(200);
+    await authed('other-token').get('/models').expect(200);
   });
 
   it('does not consume rate limit quota on unauthenticated requests', async () => {
-    await request(app).get('/openai/models').expect(401);
-    await request(app).get('/openai/models').expect(401);
-    await request(app).get('/openai/models').expect(401);
+    await request(app).get('/models').expect(401);
+    await request(app).get('/models').expect(401);
+    await request(app).get('/models').expect(401);
 
-    await authed().get('/openai/models').expect(200);
-    await authed().get('/openai/models').expect(200);
-    await authed().get('/openai/models').expect(429);
+    await authed().get('/models').expect(200);
+    await authed().get('/models').expect(200);
+    await authed().get('/models').expect(429);
   });
 
   it('applies rate limiting to POST completion endpoints', async () => {
@@ -138,9 +138,9 @@ describe('Rate Limiting Integration Tests', () => {
       messages: [{ role: 'user', content: 'hi' }],
     };
 
-    await authed().post('/openai/chat/completions').send(payload).expect(200);
-    await authed().post('/openai/chat/completions').send(payload).expect(200);
-    await authed().post('/openai/chat/completions').send(payload).expect(429);
+    await authed().post('/chat/completions').send(payload).expect(200);
+    await authed().post('/chat/completions').send(payload).expect(200);
+    await authed().post('/chat/completions').send(payload).expect(429);
 
     executeSpy.mockRestore();
   });
@@ -158,9 +158,9 @@ describe('Rate Limiting Integration Tests', () => {
       messages: [{ role: 'user', content: 'hi' }],
     };
 
-    await authed().post('/anthropic/messages').send(payload).expect(200);
-    await authed().post('/anthropic/messages').send(payload).expect(200);
-    await authed().post('/anthropic/messages').send(payload).expect(429);
+    await authed().post('/messages').send(payload).expect(200);
+    await authed().post('/messages').send(payload).expect(200);
+    await authed().post('/messages').send(payload).expect(429);
 
     executeSpy.mockRestore();
   });
@@ -172,7 +172,7 @@ describe('Rate Limiting Integration Tests', () => {
 
   it('returns 401 before rate limit when auth fails on completion endpoint', async () => {
     const res = await request(app)
-      .post('/openai/chat/completions')
+      .post('/chat/completions')
       .send({
         model: 'openai/gpt-4o',
         messages: [{ role: 'user', content: 'hi' }],
@@ -181,8 +181,8 @@ describe('Rate Limiting Integration Tests', () => {
 
     expect(res.body.error.code).toBe('unauthorized');
 
-    await authed().get('/openai/models').expect(200);
-    await authed().get('/openai/models').expect(200);
-    await authed().get('/openai/models').expect(429);
+    await authed().get('/models').expect(200);
+    await authed().get('/models').expect(200);
+    await authed().get('/models').expect(429);
   });
 });

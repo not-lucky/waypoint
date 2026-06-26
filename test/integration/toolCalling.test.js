@@ -66,7 +66,7 @@ describe('Tool calling integration', () => {
     };
 
     const res = await request(app)
-      .post('/openai/v1/chat/completions')
+      .post('/v1/chat/completions')
       .set('Authorization', 'Bearer agent-token')
       .send(payload)
       .expect(200);

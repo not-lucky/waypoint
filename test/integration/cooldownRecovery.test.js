@@ -100,7 +100,7 @@ describe('Cooldown activation and recovery with MSW', () => {
 
     try {
       await request(app)
-        .post('/openai/chat/completions')
+        .post('/chat/completions')
         .set('Authorization', 'Bearer test-client-token')
         .send({
           model: 'requesty/custom-model',
@@ -114,7 +114,7 @@ describe('Cooldown activation and recovery with MSW', () => {
       await vi.advanceTimersByTimeAsync(30000);
 
       const recovered = await request(app)
-        .post('/openai/chat/completions')
+        .post('/chat/completions')
         .set('Authorization', 'Bearer test-client-token')
         .send({
           model: 'requesty/custom-model',
@@ -139,7 +139,7 @@ describe('Cooldown activation and recovery with MSW', () => {
 
     try {
       await request(app)
-        .post('/openai/chat/completions')
+        .post('/chat/completions')
         .set('Authorization', 'Bearer test-client-token')
         .send({
           model: 'requesty/custom-model',
@@ -166,7 +166,7 @@ describe('Cooldown activation and recovery with MSW', () => {
       const key = services.keyRegistry.pools.requesty.keys[0];
 
       await request(app)
-        .post('/openai/chat/completions')
+        .post('/chat/completions')
         .set('Authorization', 'Bearer test-client-token')
         .send({
           model: 'requesty/custom-model',
@@ -178,7 +178,7 @@ describe('Cooldown activation and recovery with MSW', () => {
       await vi.advanceTimersByTimeAsync(30000);
 
       await request(app)
-        .post('/openai/chat/completions')
+        .post('/chat/completions')
         .set('Authorization', 'Bearer test-client-token')
         .send({
           model: 'requesty/custom-model',

@@ -5,137 +5,18 @@ import {
   RESERVED_PROVIDERS,
   replaceEnvVars,
   getMissingEnvVar,
-  coerceToInt,
+  processProviders,
+  processClient,
+  processGateway,
+  interpolateProviderKeyEntry,
 } from './configUtils.js'
 import {
   filterValidKeys,
   getProviderKeyCandidate,
-  isCloudflareKeyEntry,
 } from './configKeyUtils.js'
 import { validateConfig } from './validator.js'
 
 const logger = getAppLogger( 'config' )
-
-function interpolateProviderKeyEntry( entry, path, index, providerName ) {
-  if ( typeof entry === 'string' ) {
-    const missingVar = getMissingEnvVar( entry )
-    if ( missingVar ) {
-      const msg = `WARNING: Missing or empty environment variable ${ missingVar } for key at path ${ path.join( '.' ) }[${ index }]. Skipping key.`
-      logger.warning( msg )
-      return null
-    }
-
-    return replaceEnvVars( entry )
-  }
-
-  if ( providerName === 'cloudflare' && isCloudflareKeyEntry( entry ) ) {
-    const interpolated = structuredClone( entry )
-    for ( const field of [ 'apiKey', 'accountId' ] ) {
-      const value = interpolated[field]
-      const missingVar = getMissingEnvVar( value )
-      if ( missingVar ) {
-        const msg = `WARNING: Missing or empty environment variable ${ missingVar } for key at path ${ path.join( '.' ) }[${ index }].${ field }. Skipping key.`
-        logger.warning( msg )
-        return null
-      }
-
-      interpolated[field] = replaceEnvVars( value )
-    }
-
-    return interpolated
-  }
-
-  const msg = `WARNING: Unsupported key entry shape for provider '${ providerName }' at path ${ path.join( '.' ) }[${ index }]. Expected a string${ providerName === 'cloudflare' ? ' or { apiKey, accountId } object' : '' }. Skipping key.`
-  logger.warning( msg )
-  return null
-}
-
-/**
- * Processes model numeric properties.
- * @param {object} model - Model configuration
- * @returns {object} Processed model config
- */
-function processModel( model ) {
-  let processed = { ...model }
-
-  processed = coerceToInt( processed, 'maxTokens' )
-
-  if ( processed.overrides && typeof processed.overrides === 'object' ) {
-    let overrides = { ...processed.overrides }
-    overrides = coerceToInt( overrides, 'maxTokens' )
-    processed = { ...processed, overrides }
-  }
-
-  return processed
-}
-
-/**
- * Processes individual provider numeric properties.
- * @param {object} providerConf - Single provider configuration
- * @returns {object} Processed provider config
- */
-function processProvider( providerConf ) {
-  const processed = { ...providerConf }
-
-  if ( Array.isArray( processed.models ) ) {
-    processed.models = processed.models.map( ( model ) => processModel( model ) )
-  }
-
-  return processed
-}
-
-/**
- * Processes providers numeric properties.
- * @param {object} providers - Providers configuration
- * @returns {object} Processed providers config
- */
-function processProviders( providers ) {
-  return Object.fromEntries(
-    Object.entries( providers ).map( ( [ name, providerConf ] ) => [
-      name,
-      processProvider( providerConf ),
-    ] ),
-  )
-}
-
-/**
- * Processes client numeric properties.
- * @param {object} client - Client configuration
- * @returns {object} Processed client config
- */
-function processClient( client ) {
-  if ( !client ) return client
-
-  const processed = { ...client }
-
-  if ( processed.rateLimit ) {
-    let rateLimit = { ...processed.rateLimit };
-    [ 'windowMs', 'max' ].forEach( ( key ) => {
-      rateLimit = coerceToInt( rateLimit, key )
-    } )
-    processed.rateLimit = rateLimit
-  }
-
-  return processed
-}
-
-function processGateway( gateway ) {
-  let processed = { ...gateway };
-
-  [ 'port', 'globalRetryLimit', 'httpTimeoutMs', 'streamTimeoutMs' ].forEach( ( key ) => {
-    processed = coerceToInt( processed, key )
-  } )
-
-  if ( processed.cooldown ) {
-    let cooldown = { ...processed.cooldown };
-    [ 'baseSeconds', 'maxSeconds', 'billingSeconds', 'permissionSeconds', 'serverSeconds', 'slowDownMinimumSeconds' ].forEach( ( key ) => {
-      cooldown = coerceToInt( cooldown, key )
-    } )
-    processed = { ...processed, cooldown }
-  }
-
-  return processed
-}
 
 /**
  * ConfigLoader manages parsing, environment variable interpolation, and validation
@@ -220,7 +101,7 @@ export class ConfigLoader {
     }
 
     if ( Array.isArray( processedConfig.clients ) ) {
-      processedConfig.clients = processedConfig.clients.map( ( client ) => processClient( client ) )
+      processedConfig.clients = processedConfig.clients.map( processClient )
     }
 
     if ( processedConfig.providers && typeof processedConfig.providers === 'object' ) {

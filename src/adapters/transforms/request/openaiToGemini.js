@@ -1,3 +1,5 @@
+import { extractSystemPrompt } from '../utils.js';
+
 /**
  * Translates an OpenAI-shaped request payload into the Google Gemini `generateContent` format.
  *
@@ -17,26 +19,13 @@ export const translateOpenAIToGemini = (req) => {
   // history to ensure the model maintains alignment across long context windows.
   // We extract all 'system' messages and concatenate them into a single string to
   // populate Gemini's dedicated `systemInstruction` field later.
-  const systemPrompt = messages
-    .filter((m) => m.role === 'system')
-    .map((m) => {
-      // Handle string payloads
-      if (typeof m.content === 'string') return m.content;
-      // Handle multimodal arrays: System prompts shouldn't generally be multimodal,
-      // but robustly handle it by extracting just the text segments to prevent crashes.
-      if (Array.isArray(m.content)) {
-        return m.content.map((block) => block.text || '').join('\n');
-      }
-      return String(m.content || '');
-    })
-    .join('\n')
-    .trim();
+  const systemPrompt = extractSystemPrompt(messages);
 
   // Rationale: Gemini requires a conversational history strictly mapped to 'user' or 'model'.
   // This filters out the already-extracted system messages and transforms OpenAI's array
   // of contents (which might contain URLs/Data URIs) into Gemini's `parts` format.
   const contents = messages
-    .filter((m) => m.role !== 'system')
+    .filter((m) => m.role !== 'system' && m.role !== 'developer')
     .map((m) => {
       let parts = [];
 

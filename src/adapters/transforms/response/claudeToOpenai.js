@@ -1,5 +1,3 @@
-/* eslint-disable no-unused-vars */
-
 import { anthropicContentToOpenAIMessage } from '../shared/anthropicTools.js';
 import { mapFinishReason, synthesizeMetadata } from '../utils.js';
 
@@ -44,17 +42,17 @@ export const translateClaudeToOpenAI = (claudeRes, req = {}) => {
  *
  * @param {Object} eventObj - The parsed SSE event object ({ event, data }).
  * @param {string} chunkId - A persistent ID for the stream session.
- * @param {Object} req - The original request.
+ * @param {Object} _req - The original request.
  * @returns {Object|null} Mapped OpenAI chunk or null if the event should be swallowed.
  */
-export function translateClaudeChunkToOpenAI(eventObj, chunkId, req = {}) {
+export const translateClaudeChunkToOpenAI = (eventObj, chunkId) => {
   const { data } = eventObj;
   let dataJson;
   try {
     // SSE streams can occasionally truncate chunks or emit malformed keep-alive payloads.
     // Swallowing the error drops the invalid chunk instead of crashing the stream.
     dataJson = JSON.parse(data);
-  } catch (err) {
+  } catch {
     return null;
   }
 

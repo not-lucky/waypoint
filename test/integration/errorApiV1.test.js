@@ -58,7 +58,7 @@ describe('Error API v1 Integration Tests', () => {
     services.keyRegistry.flagFailure('gemini', 'key-beta', { statusCode: 429 });
 
     const res = await request(app)
-      .post('/openai/chat/completions')
+      .post('/chat/completions')
       .set('Authorization', 'Bearer error-api-token')
       .send({
         model: 'gemini/gemini-pro',
@@ -95,7 +95,7 @@ describe('Error API v1 Integration Tests', () => {
     closeHandles.push(close);
 
     const res = await request(app)
-      .post('/openai/chat/completions')
+      .post('/chat/completions')
       .set('Authorization', 'Bearer error-api-token')
       .send({
         model: 'gemini/gemini-pro',
@@ -130,7 +130,7 @@ describe('Error API v1 Integration Tests', () => {
     closeHandles.push(close);
 
     const res = await request(app)
-      .post('/openai/chat/completions')
+      .post('/chat/completions')
       .set('Authorization', 'Bearer error-api-token')
       .send({
         model: 'gemini/gemini-pro',
@@ -162,7 +162,7 @@ describe('Error API v1 Integration Tests', () => {
     closeHandles.push(close);
 
     const res = await request(app)
-      .post('/openai/chat/completions')
+      .post('/chat/completions')
       .set('Authorization', 'Bearer error-api-token')
       .send({
         model: 'gemini/gemini-pro',
@@ -189,7 +189,7 @@ describe('Error API v1 Integration Tests', () => {
     closeHandles.push(close);
 
     const res = await request(app)
-      .post('/openai/chat/completions')
+      .post('/chat/completions')
       .set('Authorization', 'Bearer error-api-token')
       .send({ model: 'gemini/gemini-pro' })
       .expect(400);

@@ -25,7 +25,7 @@ describe('Provider Endpoints Integration Tests', () => {
   describe('Authentication Middleware', () => {
     it('should return 401 when Authorization header is missing', async () => {
       const res = await request(app)
-        .get('/openai/models')
+        .get('/models')
         .expect(401);
 
       expect(res.body.error).toBeDefined();
@@ -35,7 +35,7 @@ describe('Provider Endpoints Integration Tests', () => {
 
     it('should return 401 when Authorization header is not in Bearer format', async () => {
       const res = await request(app)
-        .get('/openai/models')
+        .get('/models')
         .set('Authorization', 'Basic user:pass')
         .expect(401);
 
@@ -46,7 +46,7 @@ describe('Provider Endpoints Integration Tests', () => {
 
     it('should return 401 when token does not match client configuration', async () => {
       const res = await request(app)
-        .get('/openai/models')
+        .get('/models')
         .set('Authorization', 'Bearer invalid-token')
         .expect(401);
 
@@ -57,47 +57,47 @@ describe('Provider Endpoints Integration Tests', () => {
 
     it('should return 200 when a valid client token is provided', async () => {
       await request(app)
-        .get('/openai/models')
+        .get('/models')
         .set('Authorization', 'Bearer mock-webui-token')
         .expect(200);
 
       await request(app)
-        .get('/openai/models')
+        .get('/models')
         .set('Authorization', 'Bearer mock-codex-token')
         .expect(200);
     });
 
     it('edge case: should tolerate lowercase "bearer" scheme', async () => {
       await request(app)
-        .get('/openai/models')
+        .get('/models')
         .set('Authorization', 'bearer mock-webui-token')
         .expect(200);
     });
 
     it('edge case: should tolerate uppercase "BEARER" scheme', async () => {
       await request(app)
-        .get('/openai/models')
+        .get('/models')
         .set('Authorization', 'BEARER mock-webui-token')
         .expect(200);
     });
 
     it('edge case: should tolerate multiple whitespaces between scheme and token', async () => {
       await request(app)
-        .get('/openai/models')
+        .get('/models')
         .set('Authorization', 'Bearer      mock-webui-token')
         .expect(200);
     });
 
     it('edge case: should tolerate leading/trailing whitespaces in Authorization header', async () => {
       await request(app)
-        .get('/openai/models')
+        .get('/models')
         .set('Authorization', '  Bearer mock-webui-token  ')
         .expect(200);
     });
 
     it('edge case: should reject extra token fields in Authorization header', async () => {
       const res = await request(app)
-        .get('/openai/models')
+        .get('/models')
         .set('Authorization', 'Bearer mock-webui-token extra-field')
         .expect(401);
 
@@ -106,7 +106,7 @@ describe('Provider Endpoints Integration Tests', () => {
 
     it('edge case: should reject Authorization header with missing token', async () => {
       const res = await request(app)
-        .get('/openai/models')
+        .get('/models')
         .set('Authorization', 'Bearer ')
         .expect(401);
 
@@ -118,7 +118,7 @@ describe('Provider Endpoints Integration Tests', () => {
     it('should reject unauthorized request with 401 even if body payload is malformed (auth runs first)', async () => {
       // Send empty/invalid body payload to chat completions endpoint without auth header
       const res = await request(app)
-        .post('/openai/chat/completions')
+        .post('/chat/completions')
         .send({}) // Invalid body: missing model and messages
         .expect(401);
 
@@ -130,7 +130,7 @@ describe('Provider Endpoints Integration Tests', () => {
     it('should validate request body and return 400 when authorized but payload is invalid', async () => {
       // Send empty/invalid body payload with valid auth header
       const res = await request(app)
-        .post('/openai/chat/completions')
+        .post('/chat/completions')
         .set('Authorization', 'Bearer mock-webui-token')
         .send({}) // Invalid body: missing model and messages
         .expect(400);
@@ -143,7 +143,7 @@ describe('Provider Endpoints Integration Tests', () => {
       // Malformed JSON triggers the Express body parser, which throws a
       // SyntaxError (status 400) that the terminal errorHandler converts.
       const res = await request(app)
-        .post('/openai/chat/completions')
+        .post('/chat/completions')
         .set('Content-Type', 'application/json')
         .set('Authorization', 'Bearer mock-webui-token')
         .send('{ not-json')
@@ -157,7 +157,7 @@ describe('Provider Endpoints Integration Tests', () => {
   describe('GET /openai/models & /openai/v1/models', () => {
     it('should return models list matching OpenAI schema', async () => {
       const res = await request(app)
-        .get('/openai/models')
+        .get('/models')
         .set('Authorization', 'Bearer mock-webui-token')
         .expect(200);
 
@@ -198,7 +198,7 @@ describe('Provider Endpoints Integration Tests', () => {
 
     it('should support the /openai/v1/models dual-path mount', async () => {
       const res = await request(app)
-        .get('/openai/v1/models')
+        .get('/v1/models')
         .set('Authorization', 'Bearer mock-webui-token')
         .expect(200);
 
@@ -210,8 +210,8 @@ describe('Provider Endpoints Integration Tests', () => {
   describe('GET /anthropic/models & /anthropic/v1/models', () => {
     it('should return models list matching Anthropic schema', async () => {
       const res = await request(app)
-        .get('/anthropic/models')
-        .set('Authorization', 'Bearer mock-webui-token')
+        .get('/models')
+        .set('x-api-key', 'mock-webui-token')
         .expect(200);
 
       expect(res.body).toEqual(
@@ -250,8 +250,8 @@ describe('Provider Endpoints Integration Tests', () => {
 
     it('should support the /anthropic/v1/models dual-path mount', async () => {
       const res = await request(app)
-        .get('/anthropic/v1/models')
-        .set('Authorization', 'Bearer mock-webui-token')
+        .get('/v1/models')
+        .set('x-api-key', 'mock-webui-token')
         .expect(200);
 
       expect(res.body.type).toBe('list');

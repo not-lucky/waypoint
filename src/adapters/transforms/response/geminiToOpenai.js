@@ -1,5 +1,3 @@
-/* eslint-disable no-unused-vars */
-
 import { mapFinishReason, synthesizeMetadata } from '../utils.js';
 
 /**
@@ -13,7 +11,7 @@ import { mapFinishReason, synthesizeMetadata } from '../utils.js';
  * @param {Object} req - The original request.
  * @returns {Object} OpenAI-shaped NormalizedResponse.
  */
-export function translateGeminiToOpenAI(geminiRes, req = {}) {
+export const translateGeminiToOpenAI = (geminiRes, req = {}) => {
   // Safe navigation is used heavily here to prevent unhandled TypeErrors.
   // Gemini can return truncated responses lacking these structures entirely
   // under severe rate limits, model crashes, or strict safety blocks.
@@ -72,10 +70,10 @@ export function translateGeminiToOpenAI(geminiRes, req = {}) {
  *
  * @param {Object} chunkJson - The parsed Gemini JSON stream chunk.
  * @param {string} chunkId - A persistent ID for the stream session, linking this delta to previous ones.
- * @param {Object} req - The original request.
+ * @param {Object} _req - The original request.
  * @returns {Object|null} Mapped OpenAI chunk or null if empty/metadata only.
  */
-export const translateGeminiChunkToOpenAI = (chunkJson, chunkId, req = {}) => {
+export const translateGeminiChunkToOpenAI = (chunkJson, chunkId) => {
   const candidate = chunkJson.candidates?.[0] || {};
   const content = candidate.content || {};
   const parts = content.parts || [];

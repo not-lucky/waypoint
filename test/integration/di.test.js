@@ -144,7 +144,7 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
     });
 
     const res = await request(app)
-      .post('/openai/chat/completions')
+      .post('/chat/completions')
       .set('Authorization', 'Bearer test-client-token')
       .send({
         model: 'gemini/gemini-pro',
@@ -192,7 +192,7 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
     });
 
     const res = await request(app)
-      .post('/anthropic/messages')
+      .post('/messages')
       .set('Authorization', 'Bearer test-client-token')
       .send({
         model: 'anthropic/claude-sonnet',
@@ -243,7 +243,7 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
     });
 
     const res = await request(app)
-      .post('/openai/chat/completions')
+      .post('/chat/completions')
       .set('Authorization', 'Bearer test-client-token')
       .send({
         model: 'gemini/gemini-pro',
@@ -295,7 +295,7 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
     });
 
     const res = await request(app)
-      .post('/anthropic/messages')
+      .post('/messages')
       .set('Authorization', 'Bearer test-client-token')
       .send({
         model: 'anthropic/claude-sonnet',
@@ -364,7 +364,7 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
     });
 
     const res = await request(app)
-      .post('/openai/chat/completions')
+      .post('/chat/completions')
       .set('Authorization', 'Bearer test-client-token')
       .send({
         model: 'gemini/gemini-pro',
@@ -415,7 +415,7 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
     });
 
     const res = await request(app)
-      .post('/openai/chat/completions')
+      .post('/chat/completions')
       .set('Authorization', 'Bearer test-client-token')
       .send({
         model: 'gemini/gemini-pro',

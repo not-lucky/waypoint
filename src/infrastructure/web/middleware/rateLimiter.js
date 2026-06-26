@@ -6,9 +6,7 @@
  */
 import { getAppLogger } from '../../logging/logger.js';
 import { teardownRegistry } from '../../lifecycle/teardownRegistry.js';
-import { buildClientErrorEnvelope } from '../../../domain/errors/envelope.js';
-import { statusToErrorType } from '../../../domain/errors/httpErrorTypes.js';
-import { resolveIngressFormat } from './ingressFormat.js';
+import { sendHttpError } from './errorHelper.js';
 
 /**
  * Symbol property key for tracking the head index in the sliding window.
@@ -55,7 +53,7 @@ export const rateLimiterIntervals = new Set();
  *
  * @returns {Array<number>} Timestamp array with head index property.
  */
-function createTimestampWindow() {
+const createTimestampWindow = () => {
   const timestamps = [];
   Object.defineProperty(timestamps, WINDOW_HEAD_INDEX, {
     value: 0,
@@ -63,7 +61,7 @@ function createTimestampWindow() {
     configurable: true,
   });
   return timestamps;
-}
+};
 
 /**
  * Retrieves the current head index from a timestamp window.
@@ -71,9 +69,9 @@ function createTimestampWindow() {
  * @param {Array<number>} timestamps - Timestamp array with head index property.
  * @returns {number} The current head index (0 if not set).
  */
-function getWindowHeadIndex(timestamps) {
+const getWindowHeadIndex = (timestamps) => {
   return timestamps[WINDOW_HEAD_INDEX] ?? 0;
-}
+};
 
 /**
  * Updates the head index for a timestamp window.
@@ -81,7 +79,7 @@ function getWindowHeadIndex(timestamps) {
  * @param {Array<number>} timestamps - Timestamp array with head index property.
  * @param {number} headIndex - The new head index value.
  */
-function setWindowHeadIndex(timestamps, headIndex) {
+const setWindowHeadIndex = (timestamps, headIndex) => {
   if (!(WINDOW_HEAD_INDEX in timestamps)) {
     Object.defineProperty(timestamps, WINDOW_HEAD_INDEX, {
       value: headIndex,
@@ -92,7 +90,7 @@ function setWindowHeadIndex(timestamps, headIndex) {
   }
    
   timestamps[WINDOW_HEAD_INDEX] = headIndex;
-}
+};
 
 /**
  * Compacts the timestamp array in-place by removing expired entries.
@@ -101,7 +99,7 @@ function setWindowHeadIndex(timestamps, headIndex) {
  *
  * @param {Array<number>} timestamps - Timestamp array with head index property.
  */
-function compactTimestampWindow(timestamps) {
+const compactTimestampWindow = (timestamps) => {
   const headIndex = getWindowHeadIndex(timestamps);
   if (headIndex <= 0) return;
 
@@ -117,7 +115,7 @@ function compactTimestampWindow(timestamps) {
    
   timestamps.length -= headIndex;
   setWindowHeadIndex(timestamps, 0);
-}
+};
 
 /**
  * Conditionally compacts the timestamp window based on head index and threshold.
@@ -126,7 +124,7 @@ function compactTimestampWindow(timestamps) {
  *
  * @param {Array<number>} timestamps - Timestamp array with head index property.
  */
-function maybeCompactTimestampWindow(timestamps) {
+const maybeCompactTimestampWindow = (timestamps) => {
   const headIndex = getWindowHeadIndex(timestamps);
   if (headIndex === 0) return;
 
@@ -134,7 +132,7 @@ function maybeCompactTimestampWindow(timestamps) {
   if (activeCount === 0 || headIndex >= WINDOW_COMPACT_THRESHOLD) {
     compactTimestampWindow(timestamps);
   }
-}
+};
 
 /**
  * Returns the count of active (non-expired) timestamps in the window.
@@ -142,9 +140,9 @@ function maybeCompactTimestampWindow(timestamps) {
  * @param {Array<number>} timestamps - Timestamp array with head index property.
  * @returns {number} The number of active timestamps.
  */
-function getActiveWindowSize(timestamps) {
+const getActiveWindowSize = (timestamps) => {
   return timestamps.length - getWindowHeadIndex(timestamps);
-}
+};
 
 /**
  * Returns a copy of the active (non-expired) timestamps for a client.
@@ -261,11 +259,7 @@ export const rateLimiter = (req, res, next) => {
   // Returns HTTP 429 Too Many Requests per standard API conventions.
   if (activeCount >= max) {
     logger.debug('Rate limit exceeded: blocking request', { clientName, max, currentCount: activeCount });
-    return res.status(429).json(buildClientErrorEnvelope({
-      code: 'rateLimitExceeded',
-      message: 'Rate limit exceeded.',
-      errorType: statusToErrorType(429),
-    }, resolveIngressFormat(req)));
+    return sendHttpError(res, req, 429, 'rateLimitExceeded', 'Rate limit exceeded.');
   }
 
   // Record the current request's timestamp.

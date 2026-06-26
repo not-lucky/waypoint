@@ -45,3 +45,23 @@ export const safeJsonParse = (str, fallback = {}) => {
     return fallback;
   }
 };
+
+/**
+ * Filters and concatenates system/developer messages into a single text prompt.
+ *
+ * @param {Array<Object>} messages - Array of message objects.
+ * @returns {string} Concatenated system prompt.
+ */
+export const extractSystemPrompt = (messages = []) => {
+  return messages
+    .filter((m) => m.role === 'system' || m.role === 'developer')
+    .map((m) => {
+      if (typeof m.content === 'string') return m.content;
+      if (Array.isArray(m.content)) {
+        return m.content.map((block) => block.text || '').join('\n');
+      }
+      return String(m.content || '');
+    })
+    .join('\n')
+    .trim();
+};

@@ -3,6 +3,7 @@ import {
   openAIToolChoiceToAnthropic,
   openAIToolsToAnthropic,
 } from '../shared/anthropicTools.js';
+import { extractSystemPrompt } from '../utils.js';
 
 /**
  * Translates a UnifiedRequest or OpenAI-shaped payload into an Anthropic Messages API payload.
@@ -13,17 +14,7 @@ import {
 export const translateOpenAIToClaude = (req) => {
   const messages = req.messages || [];
 
-  const systemPrompt = messages
-    .filter((m) => m.role === 'system' || m.role === 'developer')
-    .map((m) => {
-      if (typeof m.content === 'string') return m.content;
-      if (Array.isArray(m.content)) {
-        return m.content.map((block) => block.text || '').join('\n');
-      }
-      return String(m.content || '');
-    })
-    .join('\n')
-    .trim();
+  const systemPrompt = extractSystemPrompt(messages);
 
   const nonSystemMessages = openAIMessagesToAnthropic(
     messages.filter((m) => m.role !== 'system' && m.role !== 'developer'),

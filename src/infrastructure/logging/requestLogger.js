@@ -254,6 +254,21 @@ export class RequestLog {
 }
 
 /**
+ * Helper to ensure the request log directory exists.
+ * @param {string} dir
+ * @returns {Promise<boolean>}
+ */
+const ensureLogDirectory = async (dir) => {
+  try {
+    await fsp.mkdir(dir, { recursive: true });
+    return true;
+  } catch (err) {
+    logger.error('Failed to create request log directory', { dir, error: err.message });
+    return false;
+  }
+};
+
+/**
  * Creates a new RequestLog for the current request.
  * Writes the initial client request file (stage 1) immediately.
  *
@@ -261,9 +276,9 @@ export class RequestLog {
  *
  * @param {import('express').Request} req - The Express request object.
  * @param {Object} config - The application config object.
- * @returns {RequestLog} A request log context (or no-op stub).
+ * @returns {Promise<RequestLog>} A request log context (or no-op stub).
  */
-export function createRequestLog(req, config, testLogPath) {
+export const createRequestLog = async (req, config, testLogPath) => {
   const loggingConfig = config?.logging || {};
   if (!loggingConfig.logRequests) {
     if (req?.isDryRun) {
@@ -282,33 +297,29 @@ export function createRequestLog(req, config, testLogPath) {
   const folderName = `${safeTimestamp(now.toISOString())}_${id}`;
   const dir = path.join(basePath, folderName);
 
-  const dirReady = fsp.mkdir(dir, { recursive: true })
-    .then(() => true)
-    .catch((err) => {
-      logger.error('Failed to create request log directory', { dir, error: err.message });
-      return false;
-    });
+  const dirReady = await ensureLogDirectory(dir);
 
-  const reqLog = new RequestLog(dir, id, Date.now(), dirReady);
-  dirReady.then((ok) => { if (!ok) reqLog.dirFailed = true; });
+  const reqLog = new RequestLog(dir, id, Date.now(), Promise.resolve(dirReady));
+  if (!dirReady) {
+    reqLog.dirFailed = true;
+  }
   if (req?.isDryRun) {
     reqLog.isDryRun = true;
   }
 
   // Write stage 1: client raw request
-  const clientReqData = {
-    timestamp: now.toISOString(),
-    endpoint: req.originalUrl || req.url,
-    method: req.method,
-    headers: redactHeaders(req.headers),
-    body: req.body || {},
-  };
-  const p = dirReady.then((ok) => {
-    if (ok) return writeJsonFile(path.join(dir, '01_client_request.json'), clientReqData);
-    return undefined;
-  });
-  reqLog.pendingWrites.push(p);
+  if (dirReady) {
+    const clientReqData = {
+      timestamp: now.toISOString(),
+      endpoint: req.originalUrl || req.url,
+      method: req.method,
+      headers: redactHeaders(req.headers),
+      body: req.body || {},
+    };
+    const p = writeJsonFile(path.join(dir, '01_client_request.json'), clientReqData);
+    reqLog.pendingWrites.push(p);
+  }
 
   logger.debug('Request log created', { dir, id });
   return reqLog;
-}
+};

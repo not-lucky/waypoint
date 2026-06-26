@@ -20,7 +20,7 @@ import { mapGeminiStatusToType } from './geminiErrorTypes.js';
  * @param {any} error - Caught transport error.
  * @returns {{ code: string, message: string, httpStatus: number }}
  */
-export function classifyTransportError(error) {
+export const classifyTransportError = (error) => {
   const message = error?.message || String(error);
   const msgLower = message.toLowerCase();
   let code = 'connect_timeout';
@@ -44,7 +44,7 @@ export function classifyTransportError(error) {
  * @param {string|number} [headerValue] - Raw Retry-After header value.
  * @returns {number|undefined}
  */
-export function parseRetryAfter(headerValue) {
+export const parseRetryAfter = (headerValue) => {
   if (headerValue === undefined || headerValue === null) {
     return undefined;
   }
@@ -113,7 +113,7 @@ export class UpstreamError extends Error {
  * @param {any} error - Error object with potential headers.
  * @returns {Object} Normalized headers object.
  */
-function extractResponseHeaders(error) {
+const extractResponseHeaders = (error) => {
   const rawHeaders = error?.response?.headers ?? error?.headers;
   if (!rawHeaders) return {};
   if (typeof rawHeaders.entries === 'function') {
@@ -133,7 +133,7 @@ function extractResponseHeaders(error) {
  * @param {any} error
  * @returns {number|undefined}
  */
-function resolveStatusCode(error) {
+const resolveStatusCode = (error) => {
   if (typeof error?.statusCode === 'number') return error.statusCode;
   if (typeof error?.status === 'number') return error.status;
   if (typeof error?.response?.status === 'number') return error.response.status;
@@ -157,7 +157,7 @@ function resolveStatusCode(error) {
  *   transportCode: string|undefined,
  * }}
  */
-export function normalizeUpstreamError(error, providerName) {
+export const normalizeUpstreamError = (error, providerName) => {
   if (error instanceof UpstreamError) {
     return {
       message: error.message,
@@ -222,7 +222,7 @@ export function normalizeUpstreamError(error, providerName) {
  * @param {number} [fallback=502]
  * @returns {number}
  */
-export function resolveStreamErrorStatus(errorPayload, fallback = 502) {
+export const resolveStreamErrorStatus = (errorPayload, fallback = 502) => {
   const err = errorPayload?.error || errorPayload;
   if (typeof err?.code === 'number' && err.code >= 100 && err.code < 600) return err.code;
   if (typeof err?.status_code === 'number' && err.status_code >= 100 && err.status_code < 600) {
@@ -241,7 +241,7 @@ export function resolveStreamErrorStatus(errorPayload, fallback = 502) {
  * @param {Object} [headers] - Optional response headers.
  * @returns {UpstreamError}
  */
-export function createStreamUpstreamError(upstreamBody, statusCode, provider, headers = {}) {
+export const createStreamUpstreamError = (upstreamBody, statusCode, provider, headers = {}) => {
   const err = upstreamBody?.error || upstreamBody || {};
   const retryAfterSeconds = parseRetryAfter(
     headers['retry-after'] || headers['Retry-After'],
@@ -264,7 +264,7 @@ export function createStreamUpstreamError(upstreamBody, statusCode, provider, he
  * @param {string} provider - Provider name.
  * @param {Object} [headers] - Optional response headers.
  */
-export function throwIfStreamErrorPayload(parsedData, provider, headers = {}) {
+export const throwIfStreamErrorPayload = (parsedData, provider, headers = {}) => {
   if (!parsedData?.error) return;
   const statusCode = resolveStreamErrorStatus(parsedData);
   throw createStreamUpstreamError(parsedData, statusCode, provider, headers);

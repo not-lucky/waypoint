@@ -10,11 +10,11 @@ const STOP_REASON_MAP = {
   tool_calls: 'tool_use',
 };
 
-function writeSseEvent(res, reqLog, eventType, data) {
+const writeSseEvent = (res, reqLog, eventType, data) => {
   const event = `event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`;
   reqLog.appendStreamEvent('client', event);
   res.write(event);
-}
+};
 
 /**
  * Protocol controller for the Anthropic Messages ingress.

@@ -1,6 +1,6 @@
 import { performance } from 'node:perf_hooks';
 
-function parseProviderFromModel(model) {
+const parseProviderFromModel = (model) => {
   if (typeof model !== 'string' || model.length === 0) {
     return null;
   }
@@ -11,12 +11,12 @@ function parseProviderFromModel(model) {
   }
 
   return model.slice(0, slashIndex) || null;
-}
+};
 
-function parseTrackedRequest(req) {
+const parseTrackedRequest = (req) => {
   const path = req.originalUrl || req.url || '';
-  const isOpenAICompletion = req.method === 'POST' && /\/openai(?:\/v1)?\/chat\/completions$/.test(path);
-  const isAnthropicCompletion = req.method === 'POST' && /\/anthropic(?:\/v1)?\/messages$/.test(path);
+  const isOpenAICompletion = req.method === 'POST' && /\/(?:v1\/)?chat\/completions$/.test(path);
+  const isAnthropicCompletion = req.method === 'POST' && /\/(?:v1\/)?messages$/.test(path);
 
   if (!isOpenAICompletion && !isAnthropicCompletion) {
     return null;
@@ -30,9 +30,9 @@ function parseTrackedRequest(req) {
     provider: parseProviderFromModel(model) || (isAnthropicCompletion ? 'anthropic' : 'openai'),
     model,
   };
-}
+};
 
-export function createMetricsMiddleware(metricsCollector) {
+export const createMetricsMiddleware = (metricsCollector) => {
   return (req, res, next) => {
     const labels = parseTrackedRequest(req);
     if (!labels) {
@@ -55,4 +55,4 @@ export function createMetricsMiddleware(metricsCollector) {
 
     return next();
   };
-}
+};

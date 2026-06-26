@@ -51,8 +51,8 @@ describe('Protocol Route Mounting Integration Tests', () => {
 
   describe('OpenAI dual-path mounts', () => {
     it.each([
-      '/openai/models',
-      '/openai/v1/models',
+      '/models',
+      '/v1/models',
     ])('GET %s returns model list', async (route) => {
       const res = await authed(app).get(route).expect(200);
       expect(res.body.object).toBe('list');
@@ -60,8 +60,8 @@ describe('Protocol Route Mounting Integration Tests', () => {
     });
 
     it.each([
-      '/openai/chat/completions',
-      '/openai/v1/chat/completions',
+      '/chat/completions',
+      '/v1/chat/completions',
     ])('POST %s forwards to orchestrator', async (route) => {
       const res = await authed(app).post(route).send(completionPayload).expect(200);
       expect(res.body.id).toBe('route-test');
@@ -71,17 +71,20 @@ describe('Protocol Route Mounting Integration Tests', () => {
 
   describe('Anthropic dual-path mounts', () => {
     it.each([
-      '/anthropic/models',
-      '/anthropic/v1/models',
+      '/models',
+      '/v1/models',
     ])('GET %s returns model list', async (route) => {
-      const res = await authed(app).get(route).expect(200);
+      const res = await request(app)
+        .get(route)
+        .set('x-api-key', 'mock-webui-token')
+        .expect(200);
       expect(res.body.type).toBe('list');
       expect(res.body.data.length).toBeGreaterThan(0);
     });
 
     it.each([
-      '/anthropic/messages',
-      '/anthropic/v1/messages',
+      '/messages',
+      '/v1/messages',
     ])('POST %s forwards to orchestrator', async (route) => {
       const res = await authed(app).post(route).send(anthropicPayload).expect(200);
       expect(res.body.type).toBe('message');
@@ -93,11 +96,11 @@ describe('Protocol Route Mounting Integration Tests', () => {
     it('returns 404 for unknown paths', async () => {
       await authed(app).get('/nonexistent').expect(404);
       await authed(app).post('/openai/completions').send(completionPayload).expect(404);
-      await authed(app).get('/v1/models').expect(404);
+      await authed(app).get('/openai/v1/models').expect(404);
     });
 
     it('returns 404 for unsupported HTTP methods on known routes', async () => {
-      await authed(app).put('/openai/models').send({}).expect(404);
+      await authed(app).put('/models').send({}).expect(404);
       await authed(app).delete('/health').expect(404);
     });
   });
@@ -105,10 +108,10 @@ describe('Protocol Route Mounting Integration Tests', () => {
   describe('Error response consistency', () => {
     it('returns unified validation error shape on all completion routes', async () => {
       const routes = [
-        '/openai/chat/completions',
-        '/openai/v1/chat/completions',
-        '/anthropic/messages',
-        '/anthropic/v1/messages',
+        '/chat/completions',
+        '/v1/chat/completions',
+        '/messages',
+        '/v1/messages',
       ];
 
       await Promise.all(routes.map(async (route) => {
@@ -134,7 +137,7 @@ describe('Protocol Route Mounting Integration Tests', () => {
     });
 
     it('returns unified unauthorized error shape across protocol routers', async () => {
-      const getRoutes = ['/openai/models', '/anthropic/models', '/health'];
+      const getRoutes = ['/models', '/models', '/health'];
       await Promise.all(getRoutes.map(async (route) => {
         const res = await request(app).get(route).expect(401);
         if (route.includes('/anthropic')) {
@@ -156,7 +159,7 @@ describe('Protocol Route Mounting Integration Tests', () => {
       }));
 
       const postRes = await request(app)
-        .post('/openai/chat/completions')
+        .post('/chat/completions')
         .send({ model: 'openai/gpt-4o', messages: [{ role: 'user', content: 'x' }] })
         .expect(401);
       expect(postRes.body.error).toEqual({
@@ -180,7 +183,7 @@ describe('Protocol Route Mounting Integration Tests', () => {
       executeSpy.mockResolvedValue(errorBody);
 
       const openaiRes = await authed(app)
-        .post('/openai/chat/completions')
+        .post('/chat/completions')
         .send(completionPayload)
         .expect(503);
       expect(openaiRes.body).toEqual({
@@ -193,7 +196,7 @@ describe('Protocol Route Mounting Integration Tests', () => {
       });
 
       const anthropicRes = await authed(app)
-        .post('/anthropic/messages')
+        .post('/messages')
         .send(anthropicPayload)
         .expect(503);
       expect(anthropicRes.body).toEqual({

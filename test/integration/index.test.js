@@ -48,19 +48,19 @@ describe('Index Endpoints Coverage', () => {
 
   it('GET /openai/models', async () => {
     let res = await authed(app)
-      .get('/openai/models')
+      .get('/models')
       .expect(200);
     expect(res.body.object).toBe('list');
 
     res = await authed(app)
-      .get('/openai/models')
+      .get('/models')
       .expect(200);
     expect(res.body.object).toBe('list');
   });
 
   it('POST /openai/chat/completions', async () => {
     const res = await authed(app)
-      .post('/openai/chat/completions')
+      .post('/chat/completions')
       .send({
         model: 'openai/gpt-4o',
         messages: [{ role: 'user', content: 'test' }],
@@ -78,14 +78,15 @@ describe('Index Endpoints Coverage', () => {
 
   it('GET /anthropic/models', async () => {
     const res = await authed(app)
-      .get('/anthropic/models')
+      .get('/models')
+      .set('x-api-key', 'mock-anthropic-key')
       .expect(200);
     expect(res.body.type).toBe('list');
   });
 
   it('POST /anthropic/messages', async () => {
     const res = await authed(app)
-      .post('/anthropic/messages')
+      .post('/messages')
       .send({
         model: 'anthropic/claude-sonnet-4',
         messages: [{ role: 'user', content: 'test' }],
@@ -95,7 +96,7 @@ describe('Index Endpoints Coverage', () => {
 
   it('Global Error Handler - 400', async () => {
     const res = await authed(app)
-      .post('/openai/chat/completions')
+      .post('/chat/completions')
       .set('Content-Type', 'application/json')
       .send('invalid json');
     expect(res.status).toBe(400);
@@ -105,7 +106,7 @@ describe('Index Endpoints Coverage', () => {
   it('Global Error Handler - 413', async () => {
     const largeString = 'a'.repeat(11 * 1024 * 1024);
     const res = await authed(app)
-      .post('/openai/chat/completions')
+      .post('/chat/completions')
       .set('Content-Type', 'application/json')
       .send(`{"model":"gpt-4","messages":[{"role":"user","content":"${largeString}"}]}`);
 
@@ -117,7 +118,7 @@ describe('Index Endpoints Coverage', () => {
     const { ModelCache } = await import('../../src/domain/routing/cache.js');
     vi.spyOn(ModelCache.prototype, 'getUniqueModels').mockReturnValue([]);
     const res = await authed(app)
-      .get('/openai/models')
+      .get('/models')
       .expect(200);
     expect(res.body.object).toBe('list');
     expect(res.body.data).toEqual([]);
@@ -133,7 +134,7 @@ describe('Index Endpoints Coverage', () => {
       });
 
       const res = await authed(app)
-        .get('/openai/models')
+        .get('/models')
         .expect(400);
 
       expect(res.body.error.code).toBe('badRequest');
@@ -149,7 +150,7 @@ describe('Index Endpoints Coverage', () => {
       });
 
       const res = await authed(app)
-        .get('/openai/models')
+        .get('/models')
         .expect(413);
 
       expect(res.body.error.code).toBe('payloadTooLarge');
@@ -164,7 +165,7 @@ describe('Index Endpoints Coverage', () => {
       });
 
       const res = await authed(app)
-        .get('/openai/models')
+        .get('/models')
         .expect(500);
 
       expect(res.body.error.code).toBe('internalServerError');

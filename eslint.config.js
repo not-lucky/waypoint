@@ -61,31 +61,31 @@ export default [
     },
   },
   {
-    files: [ 'src/registry/**/*.js' ],
+    files: [ 'src/domain/keys/**/*.js' ],
     rules: {
       'no-param-reassign': 'off',
     },
   },
   {
-    files: [ 'src/middleware/rateLimiter.js' ],
+    files: [ 'src/infrastructure/web/middleware/rateLimiter.js' ],
     rules: {
       'no-param-reassign': 'off',
     },
   },
   {
-    files: [ 'src/services/*.js', 'src/lifecycle/teardownRegistry.js', 'src/services/streamGuard.js' ],
+    files: [ 'src/application/*.js', 'src/application/retry/**/*.js', 'src/infrastructure/lifecycle/teardownRegistry.js' ],
     rules: {
       'no-await-in-loop': 'off',
     },
   },
   {
-    files: [ 'src/providers/**/*.js' ],
+    files: [ 'src/adapters/outbound/**/*.js' ],
     rules: {
       'class-methods-use-this': 'off',
     },
   },
   {
-    files: [ 'src/app/bootstrap.js', 'src/lifecycle/lifecycle.js', 'src/config/validationErrors.js' ],
+    files: [ 'src/infrastructure/web/server.js', 'src/infrastructure/lifecycle/lifecycle.js', 'src/config/validationErrors.js' ],
     rules: {
       'n/no-process-exit': 'off',
     },
@@ -97,13 +97,13 @@ export default [
     },
   },
   {
-    files: [ 'src/app/bootstrap.js', 'src/logging/logger.js', 'src/logging/requestLoggerUtils.js', 'src/providers/anthropic.js', 'src/streaming/sseParser.js', 'test/config/configLoader.test.js' ],
+    files: [ 'src/infrastructure/web/server.js', 'src/infrastructure/logging/logger.js', 'src/infrastructure/logging/requestLoggerUtils.js', 'src/adapters/outbound/anthropic/index.js', 'src/utils/streaming/sseParser.js', 'test/config/configLoader.test.js' ],
     rules: {
       'no-unused-vars': 'off',
     },
   },
   {
-    files: [ 'src/providers/anthropic.js', 'src/services/streamGuard.js', 'src/transforms/request/claudeToOpenai.js' ],
+    files: [ 'src/adapters/outbound/anthropic/index.js', 'src/application/retry/streamGuard.js', 'src/adapters/transforms/request/claudeToOpenai.js' ],
     rules: {
       'no-useless-assignment': 'off',
     },

@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   MetricsCollector,
   syncKeyPoolMetrics,
-} from '../../src/monitoring/metricsCollector.js';
-import { KeyRegistry } from '../../src/registry/keyRegistry.js';
+} from '../../src/infrastructure/monitoring/metricsCollector.js';
+import { KeyRegistry } from '../../src/domain/keys/keyRegistry.js';
 
 describe('MetricsCollector', () => {
   it('tracks counters, gauges, and histograms in JSON snapshots', () => {

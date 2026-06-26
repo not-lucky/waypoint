@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildUpstreamErrorLogFields } from '../../src/logging/upstreamErrorLogMeta.js';
+import { buildUpstreamErrorLogFields } from '../../src/infrastructure/logging/upstreamErrorLogMeta.js';
 
 describe('upstreamErrorLogMeta', () => {
   it('builds structured fields from a normalized upstream error', () => {

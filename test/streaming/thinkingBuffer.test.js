@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ThinkingBuffer } from '../../src/streaming/thinkingBuffer.js';
+import { ThinkingBuffer } from '../../src/utils/streaming/thinkingBuffer.js';
 
 describe('ThinkingBuffer', () => {
   it('passes through plain text when no tags are present', () => {

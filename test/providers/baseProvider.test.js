@@ -1,7 +1,7 @@
 import {
   describe, it, expect,
 } from 'vitest';
-import { BaseProvider } from '../../src/providers/base.js';
+import { BaseProvider } from '../../src/adapters/outbound/base.js';
 import { NotImplementedError } from '../../src/utils/notImplementedError.js';
 
 describe('BaseProvider Tests', () => {

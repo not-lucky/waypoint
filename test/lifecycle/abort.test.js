@@ -8,11 +8,11 @@ import {
 } from 'vitest';
 import request from 'supertest';
 import express from 'express';
-import { OpenAIController } from '../../src/controllers/openaiController.js';
-import { UnifiedOrchestrator, activeControllers } from '../../src/services/unifiedOrchestrator.js';
-import { KeyRegistry } from '../../src/registry/keyRegistry.js';
-import { ProviderFactory } from '../../src/providers/factory.js';
-import { teardown } from '../../src/lifecycle/lifecycle.js';
+import { OpenAIController } from '../../src/adapters/inbound/openai/index.js';
+import { UnifiedOrchestrator, activeControllers } from '../../src/application/orchestrator.js';
+import { KeyRegistry } from '../../src/domain/keys/keyRegistry.js';
+import { ProviderFactory } from '../../src/adapters/outbound/factory.js';
+import { teardown } from '../../src/infrastructure/lifecycle/lifecycle.js';
 import { normalizeTestError } from '../helpers/normalizeTestError.js';
 
 class MockAdapter {

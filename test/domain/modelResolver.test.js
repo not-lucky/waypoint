@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { resolveModel } from '../../src/domain/modelRouter.js';
-import { transformRequest } from '../../src/domain/requestTransformer.js';
+import { resolveModel } from '../../src/domain/routing/router.js';
+import { transformRequest } from '../../src/domain/routing/transformer.js';
 
 describe('modelResolver & RequestTransformer Unit Tests', () => {
   describe('resolveModel', () => {

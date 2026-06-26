@@ -4,7 +4,7 @@ import {
   expect,
   vi,
 } from 'vitest';
-import { authMiddleware } from '../../src/middleware/auth.js';
+import { authMiddleware } from '../../src/infrastructure/web/middleware/auth.js';
 
 describe('authMiddleware', () => {
   // Helper to create a mock response object that allows chaining.

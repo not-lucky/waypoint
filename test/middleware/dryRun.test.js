@@ -1,7 +1,7 @@
 import {
   describe, it, expect, vi,
 } from 'vitest';
-import { dryRunMiddleware } from '../../src/middleware/dryRun.js';
+import { dryRunMiddleware } from '../../src/infrastructure/web/middleware/dryRun.js';
 
 describe('dryRunMiddleware', () => {
   it('sets req.isDryRun to true and calls next', () => {

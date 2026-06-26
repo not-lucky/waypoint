@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { describe, it, expect, vi } from 'vitest';
-import { MetricsCollector } from '../../src/monitoring/metricsCollector.js';
-import { createMetricsMiddleware } from '../../src/middleware/metricsMiddleware.js';
+import { MetricsCollector } from '../../src/infrastructure/monitoring/metricsCollector.js';
+import { createMetricsMiddleware } from '../../src/infrastructure/web/middleware/metricsMiddleware.js';
 
 describe('createMetricsMiddleware', () => {
   it('tracks request count and latency for completion requests', () => {

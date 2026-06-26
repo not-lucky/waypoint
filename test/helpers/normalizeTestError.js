@@ -1,4 +1,4 @@
-import { normalizeUpstreamError, UpstreamError } from '../../src/errors/upstream.js';
+import { normalizeUpstreamError, UpstreamError } from '../../src/domain/errors/upstream.js';
 
 /**
  * Normalizes test/mock adapter errors through the production error authority.

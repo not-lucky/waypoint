@@ -5,11 +5,11 @@ import {
   expect,
   beforeEach,
 } from 'vitest';
-import { UnifiedOrchestrator } from '../../src/services/unifiedOrchestrator.js';
-import { KeyRegistry } from '../../src/registry/keyRegistry.js';
-import { ProviderFactory } from '../../src/providers/factory.js';
-import { AnthropicAdapter } from '../../src/providers/anthropic.js';
-import { OpenAICompatibleAdapter } from '../../src/providers/openai.js';
+import { UnifiedOrchestrator } from '../../src/application/orchestrator.js';
+import { KeyRegistry } from '../../src/domain/keys/keyRegistry.js';
+import { ProviderFactory } from '../../src/adapters/outbound/factory.js';
+import { AnthropicAdapter } from '../../src/adapters/outbound/anthropic/index.js';
+import { OpenAICompatibleAdapter } from '../../src/adapters/outbound/openai/index.js';
 
 describe('retryExecutor upstream error propagation', () => {
   let mockFetch;

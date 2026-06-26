@@ -24,8 +24,8 @@ describe('Index Endpoints Coverage', () => {
   });
 
   beforeEach(async () => {
-    const { UnifiedOrchestrator } = await import('../../src/services/unifiedOrchestrator.js');
-    const { ModelCache } = await import('../../src/domain/modelCache.js');
+    const { UnifiedOrchestrator } = await import('../../src/application/orchestrator.js');
+    const { ModelCache } = await import('../../src/domain/routing/cache.js');
 
     vi.spyOn(UnifiedOrchestrator.prototype, 'executeCompletion').mockResolvedValue({
       id: 'mock-id',
@@ -114,7 +114,7 @@ describe('Index Endpoints Coverage', () => {
   });
 
   it('GET /openai/models with missing providers config', async () => {
-    const { ModelCache } = await import('../../src/domain/modelCache.js');
+    const { ModelCache } = await import('../../src/domain/routing/cache.js');
     vi.spyOn(ModelCache.prototype, 'getUniqueModels').mockReturnValue([]);
     const res = await authed(app)
       .get('/openai/models')
@@ -125,7 +125,7 @@ describe('Index Endpoints Coverage', () => {
 
   describe('Global Error Handler - status and statusCode variations', () => {
     it('should handle error with status property', async () => {
-      const { ModelCache } = await import('../../src/domain/modelCache.js');
+      const { ModelCache } = await import('../../src/domain/routing/cache.js');
       const err = new Error('Status 400 Error');
       err.status = 400;
       vi.spyOn(ModelCache.prototype, 'getUniqueModels').mockImplementation(() => {
@@ -141,7 +141,7 @@ describe('Index Endpoints Coverage', () => {
     });
 
     it('should handle error with statusCode property', async () => {
-      const { ModelCache } = await import('../../src/domain/modelCache.js');
+      const { ModelCache } = await import('../../src/domain/routing/cache.js');
       const err = new Error('StatusCode 413 Error');
       err.statusCode = 413;
       vi.spyOn(ModelCache.prototype, 'getUniqueModels').mockImplementation(() => {
@@ -157,7 +157,7 @@ describe('Index Endpoints Coverage', () => {
     });
 
     it('should handle error with default 500 status', async () => {
-      const { ModelCache } = await import('../../src/domain/modelCache.js');
+      const { ModelCache } = await import('../../src/domain/routing/cache.js');
       const err = new Error('Default 500 Error');
       vi.spyOn(ModelCache.prototype, 'getUniqueModels').mockImplementation(() => {
         throw err;

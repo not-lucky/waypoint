@@ -8,7 +8,7 @@ import {
   afterAll,
 } from 'vitest';
 import request from 'supertest';
-import { resetRateLimiter } from '../../src/middleware/rateLimiter.js';
+import { resetRateLimiter } from '../../src/infrastructure/web/middleware/rateLimiter.js';
 import {
   reloadTestApp,
   writeTempConfig,
@@ -129,7 +129,7 @@ describe('Rate Limiting Integration Tests', () => {
   });
 
   it('applies rate limiting to POST completion endpoints', async () => {
-    const { UnifiedOrchestrator } = await import('../../src/services/unifiedOrchestrator.js');
+    const { UnifiedOrchestrator } = await import('../../src/application/orchestrator.js');
     const executeSpy = vi.spyOn(UnifiedOrchestrator.prototype, 'executeCompletion')
       .mockResolvedValue({ id: 'ok', choices: [] });
 
@@ -146,7 +146,7 @@ describe('Rate Limiting Integration Tests', () => {
   });
 
   it('applies rate limiting to Anthropic endpoints', async () => {
-    const { UnifiedOrchestrator } = await import('../../src/services/unifiedOrchestrator.js');
+    const { UnifiedOrchestrator } = await import('../../src/application/orchestrator.js');
     const executeSpy = vi.spyOn(UnifiedOrchestrator.prototype, 'executeCompletion')
       .mockResolvedValue({
         id: 'ok',

@@ -8,7 +8,7 @@
 
 import { isPositiveInteger, isNonEmptyString, validateFallbackModel } from './validationHelpers.js'
 import { filterValidKeys, getProviderKeyCandidate, isCloudflareKeyEntry } from './configKeyUtils.js'
-import { getAppLogger } from '../logging/logger.js'
+import { getAppLogger } from '../infrastructure/logging/logger.js'
 import { logErrorAndExitOrThrow } from './validationErrors.js'
 
 const logger = getAppLogger( 'config' )

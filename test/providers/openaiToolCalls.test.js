@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mergeToolCallDeltas } from '../../src/providers/shared/openaiToolCalls.js';
+import { mergeToolCallDeltas } from '../../src/adapters/outbound/shared/openaiToolCalls.js';
 
 describe('mergeToolCallDeltas', () => {
   it('assembles streaming tool call fragments by index', () => {

@@ -6,7 +6,7 @@ import path from 'node:path';
 import * as logtape from '@logtape/logtape';
 import {
   configureLogging, getAppLogger, flushLogs, formatMessage,
-} from '../../src/logging/logger.js';
+} from '../../src/infrastructure/logging/logger.js';
 
 /**
  * Filters out LogTape meta-logger diagnostic messages from console spy calls.

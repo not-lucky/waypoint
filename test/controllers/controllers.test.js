@@ -5,8 +5,8 @@ import {
   expect,
   beforeEach,
 } from 'vitest';
-import { OpenAIController } from '../../src/controllers/openaiController.js';
-import { AnthropicController } from '../../src/controllers/anthropicController.js';
+import { OpenAIController } from '../../src/adapters/inbound/openai/index.js';
+import { AnthropicController } from '../../src/adapters/inbound/anthropic/index.js';
 
 const testConfig = {
   providers: {

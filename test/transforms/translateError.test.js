@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   FORMATS,
   translateError,
-} from '../../src/transforms/index.js';
-import { buildClientErrorEnvelope } from '../../src/errors/envelope.js';
+} from '../../src/adapters/transforms/index.js';
+import { buildClientErrorEnvelope } from '../../src/domain/errors/envelope.js';
 
 const TARGET_FORMATS = [FORMATS.OPENAI, FORMATS.ANTHROPIC, FORMATS.GEMINI];
 

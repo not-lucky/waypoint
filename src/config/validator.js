@@ -5,7 +5,7 @@
  * @module config/validator
  */
 
-import { getAppLogger } from '../logging/logger.js'
+import { getAppLogger } from '../infrastructure/logging/logger.js'
 import { logErrorAndExitOrThrow } from './validationErrors.js'
 import { RESERVED_PROVIDERS } from './configUtils.js'
 import { validateGateway } from './gatewayValidator.js'

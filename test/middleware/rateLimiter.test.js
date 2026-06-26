@@ -11,7 +11,7 @@ import {
   resetRateLimiter,
   clientWindows,
   getClientWindowActiveTimestamps,
-} from '../../src/middleware/rateLimiter.js';
+} from '../../src/infrastructure/web/middleware/rateLimiter.js';
 
 describe('rateLimiter middleware', () => {
   beforeEach(() => {

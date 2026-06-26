@@ -6,9 +6,9 @@ import {
   beforeEach,
   afterEach,
 } from 'vitest';
-import { teardown, registerLifecycle, resetLifecycleState } from '../../src/lifecycle/lifecycle.js';
-import { activeControllers } from '../../src/services/unifiedOrchestrator.js';
-import { rateLimiterIntervals } from '../../src/middleware/rateLimiter.js';
+import { teardown, registerLifecycle, resetLifecycleState } from '../../src/infrastructure/lifecycle/lifecycle.js';
+import { activeControllers } from '../../src/application/orchestrator.js';
+import { rateLimiterIntervals } from '../../src/infrastructure/web/middleware/rateLimiter.js';
 
 describe('Graceful Teardown Sequence', () => {
   let callOrder = [];

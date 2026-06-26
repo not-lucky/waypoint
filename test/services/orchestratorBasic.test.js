@@ -6,10 +6,10 @@ import {
   it,
   expect,
 } from 'vitest';
-import { UnifiedOrchestrator } from '../../src/services/unifiedOrchestrator.js';
+import { UnifiedOrchestrator } from '../../src/application/orchestrator.js';
 import { normalizeTestError } from '../helpers/normalizeTestError.js';
-import { KeyRegistry } from '../../src/registry/keyRegistry.js';
-import { ProviderFactory } from '../../src/providers/factory.js';
+import { KeyRegistry } from '../../src/domain/keys/keyRegistry.js';
+import { ProviderFactory } from '../../src/adapters/outbound/factory.js';
 
 class MockAdapter {
   constructor() {

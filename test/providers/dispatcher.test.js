@@ -25,7 +25,7 @@ describe('providers/dispatcher', () => {
 
   it('assert: getDispatcherAgent() returns an undici Agent instance', async () => {
     const { getDispatcherAgent } = await import(
-      '../../src/providers/dispatcher.js'
+      '../../src/infrastructure/http/dispatcher.js'
     );
     const agent = getDispatcherAgent();
     expect(agent).toBeInstanceOf(Agent);
@@ -33,7 +33,7 @@ describe('providers/dispatcher', () => {
 
   it('assert: getDispatcherAgent() returns the same Agent reference across calls', async () => {
     const { getDispatcherAgent } = await import(
-      '../../src/providers/dispatcher.js'
+      '../../src/infrastructure/http/dispatcher.js'
     );
     const first = getDispatcherAgent();
     const second = getDispatcherAgent();
@@ -44,7 +44,7 @@ describe('providers/dispatcher', () => {
     const {
       getDispatcherAgent,
       installGlobalDispatcher,
-    } = await import('../../src/providers/dispatcher.js');
+    } = await import('../../src/infrastructure/http/dispatcher.js');
 
     const firstAgent = getDispatcherAgent();
     installGlobalDispatcher();

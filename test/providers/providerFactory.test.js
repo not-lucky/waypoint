@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { ProviderFactory } from '../../src/providers/factory.js';
-import { OpenAICompatibleAdapter } from '../../src/providers/openai.js';
-import { AnthropicAdapter } from '../../src/providers/anthropic.js';
+import { ProviderFactory } from '../../src/adapters/outbound/factory.js';
+import { OpenAICompatibleAdapter } from '../../src/adapters/outbound/openai/index.js';
+import { AnthropicAdapter } from '../../src/adapters/outbound/anthropic/index.js';
 
 describe('ProviderFactory Tests', () => {
   it("assert: 'openai' (no baseUrl) -> OpenAICompatibleAdapter whose baseUrl is 'https://api.openai.com/v1'", () => {

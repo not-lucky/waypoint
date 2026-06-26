@@ -6,7 +6,7 @@ import {
   expect,
   beforeEach,
 } from 'vitest';
-import { AnthropicAdapter } from '../../src/providers/anthropic.js';
+import { AnthropicAdapter } from '../../src/adapters/outbound/anthropic/index.js';
 
 describe('AnthropicAdapter Tests', () => {
   let mockFetch;

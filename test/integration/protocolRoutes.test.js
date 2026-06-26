@@ -26,7 +26,7 @@ describe('Protocol Route Mounting Integration Tests', () => {
   });
 
   beforeEach(async () => {
-    const { UnifiedOrchestrator } = await import('../../src/services/unifiedOrchestrator.js');
+    const { UnifiedOrchestrator } = await import('../../src/application/orchestrator.js');
     executeSpy = vi.spyOn(UnifiedOrchestrator.prototype, 'executeCompletion')
       .mockResolvedValue({
         id: 'route-test',

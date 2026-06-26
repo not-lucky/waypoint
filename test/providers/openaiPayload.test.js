@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildOpenAIChatPayload } from '../../src/providers/shared/openaiPayload.js';
+import { buildOpenAIChatPayload } from '../../src/adapters/outbound/shared/openaiPayload.js';
 
 describe('buildOpenAIChatPayload', () => {
   const tools = [{

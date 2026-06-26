@@ -2,7 +2,7 @@ import {
   describe, it, expect, vi, beforeEach, afterEach,
 } from 'vitest';
 import { COOLDOWN_DEFAULTS } from '../../src/config/cooldownDefaults.js';
-import { KeyRegistry } from '../../src/registry/keyRegistry.js';
+import { KeyRegistry } from '../../src/domain/keys/keyRegistry.js';
 
 const rateLimitDescriptor = { statusCode: 429 };
 

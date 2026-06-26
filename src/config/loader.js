@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import yaml from 'js-yaml'
-import { getAppLogger } from '../logging/logger.js'
+import { getAppLogger } from '../infrastructure/logging/logger.js'
 import {
   RESERVED_PROVIDERS,
   replaceEnvVars,

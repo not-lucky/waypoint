@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { StreamAccumulator } from '../../src/streaming/streamAccumulator.js';
+import { StreamAccumulator } from '../../src/utils/streaming/streamAccumulator.js';
 
 describe('StreamAccumulator Unit Tests', () => {
   it('should initialize with defaults', () => {

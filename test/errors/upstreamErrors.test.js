@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { decideKeyAction, isRetryable, resolveCooldownSeconds, resolveLifecycleTier } from '../../src/errors/policy.js';
+import { decideKeyAction, isRetryable, resolveCooldownSeconds, resolveLifecycleTier } from '../../src/domain/errors/policy.js';
 import {
   classifyTransportError, parseRetryAfter,
   UpstreamError, normalizeUpstreamError, throwIfStreamErrorPayload, throwIfGeminiStreamError,
   createStreamUpstreamError,
-} from '../../src/errors/upstream.js';
+} from '../../src/domain/errors/upstream.js';
 import {
   buildClientErrorEnvelope, formatOpenAiSseError, formatAnthropicSseError,
-} from '../../src/errors/envelope.js';
+} from '../../src/domain/errors/envelope.js';
 
 describe('decideKeyAction', () => {
   it('retires the key on 401', () => {

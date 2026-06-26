@@ -6,7 +6,7 @@ import {
 } from 'vitest';
 import path from 'node:path';
 import { writeTempConfig, removeTempConfig } from '../helpers/testServer.js';
-import { resetLifecycleState } from '../../src/lifecycle/lifecycle.js';
+import { resetLifecycleState } from '../../src/infrastructure/lifecycle/lifecycle.js';
 
 const tempConfigPath = path.resolve('test/temp_bootstrap_config.yaml');
 
@@ -49,7 +49,7 @@ providers:
     process.env.WAYPOINT_CONFIG_PATH = tempConfigPath;
     process.env.OPENAI_API_KEY_1 = 'openai-key-1';
 
-    const { bootstrap } = await import('../../src/app/bootstrap.js');
+    const { bootstrap } = await import('../../src/infrastructure/web/server.js');
     const result = await bootstrap();
 
     expect(result.app).toBeDefined();

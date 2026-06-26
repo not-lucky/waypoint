@@ -6,7 +6,7 @@ import {
   expect,
   beforeEach,
 } from 'vitest';
-import { OpenAICompatibleAdapter } from '../../src/providers/openai.js';
+import { OpenAICompatibleAdapter } from '../../src/adapters/outbound/openai/index.js';
 
 describe('OpenAICompatibleAdapter Tests', () => {
   let mockFetch;

@@ -5,12 +5,12 @@ import fsp from 'node:fs/promises';
 import {
   vi, describe, it, expect, beforeEach, afterEach,
 } from 'vitest';
-import { GeminiAdapter } from '../../src/providers/gemini.js';
-import { OpenAIController } from '../../src/controllers/openaiController.js';
-import { RequestLog } from '../../src/logging/requestLogger.js';
+import { GeminiAdapter } from '../../src/adapters/outbound/gemini/index.js';
+import { OpenAIController } from '../../src/adapters/inbound/openai/index.js';
+import { RequestLog } from '../../src/infrastructure/logging/requestLogger.js';
 import {
   sanitizeUrl, serializeHeaders, redactHeaders,
-} from '../../src/logging/requestLoggerUtils.js';
+} from '../../src/infrastructure/logging/requestLoggerUtils.js';
 
 describe('Request Logging', () => {
   let originalFetch;

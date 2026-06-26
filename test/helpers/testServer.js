@@ -4,7 +4,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { vi } from 'vitest';
 import request from 'supertest';
-import { resetLifecycleState } from '../../src/lifecycle/lifecycle.js';
+import { resetLifecycleState } from '../../src/infrastructure/lifecycle/lifecycle.js';
 
 export const DEFAULT_TEST_ENV = {
   OPEN_WEBUI_TOKEN: 'mock-webui-token',
@@ -161,9 +161,9 @@ export async function createTestApp(opts = {}) {
   }
 
   const { ConfigLoader } = await import('../../src/config/loader.js');
-  const { configureLogging, getAppLogger } = await import('../../src/logging/logger.js');
-  const { wireServices } = await import('../../src/app/wireServices.js');
-  const { createApp } = await import('../../src/app/createApp.js');
+  const { configureLogging, getAppLogger } = await import('../../src/infrastructure/logging/logger.js');
+  const { wireServices } = await import('../../src/infrastructure/web/wireServices.js');
+  const { createApp } = await import('../../src/infrastructure/web/createApp.js');
 
   const config = inlineConfig ?? new ConfigLoader().loadConfig();
   await configureLogging(config);

@@ -1,7 +1,7 @@
 import {
   describe, it, expect, vi,
 } from 'vitest';
-import { executeThinkingStream } from '../../src/providers/gemini/geminiThinkingStream.js';
+import { executeThinkingStream } from '../../src/adapters/outbound/gemini/geminiThinkingStream.js';
 
 function collectDeltaValues(chunks, field) {
   return chunks.flatMap((chunk) => chunk.choices.flatMap((choice) => {

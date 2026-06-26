@@ -4,13 +4,13 @@ import {
   translateResponse,
   translateStreamChunk,
   FORMATS,
-} from '../../src/transforms/index.js';
-import { translateClaudeToOpenAIRequest } from '../../src/transforms/request/claudeToOpenai.js';
-import { translateOpenAIToClaude } from '../../src/transforms/request/openaiToClaude.js';
-import { translateOpenAIToGemini } from '../../src/transforms/request/openaiToGemini.js';
-import { translateClaudeChunkToOpenAI } from '../../src/transforms/response/claudeToOpenai.js';
-import { translateGeminiToOpenAI, translateGeminiChunkToOpenAI } from '../../src/transforms/response/geminiToOpenai.js';
-import { translateOpenAIToClaudeResponse } from '../../src/transforms/response/openaiToClaude.js';
+} from '../../src/adapters/transforms/index.js';
+import { translateClaudeToOpenAIRequest } from '../../src/adapters/transforms/request/claudeToOpenai.js';
+import { translateOpenAIToClaude } from '../../src/adapters/transforms/request/openaiToClaude.js';
+import { translateOpenAIToGemini } from '../../src/adapters/transforms/request/openaiToGemini.js';
+import { translateClaudeChunkToOpenAI } from '../../src/adapters/transforms/response/claudeToOpenai.js';
+import { translateGeminiToOpenAI, translateGeminiChunkToOpenAI } from '../../src/adapters/transforms/response/geminiToOpenai.js';
+import { translateOpenAIToClaudeResponse } from '../../src/adapters/transforms/response/openaiToClaude.js';
 
 describe('Translators', () => {
   it('routes hub translations and rejects unsupported formats', () => {

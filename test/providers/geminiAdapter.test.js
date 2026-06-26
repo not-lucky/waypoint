@@ -6,7 +6,7 @@ import {
   expect,
   beforeEach,
 } from 'vitest';
-import { GeminiAdapter } from '../../src/providers/gemini.js';
+import { GeminiAdapter } from '../../src/adapters/outbound/gemini/index.js';
 
 describe('GeminiAdapter Tests', () => {
   let mockFetch;

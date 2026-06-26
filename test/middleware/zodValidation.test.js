@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { anthropicMessagesSchema, completionSchema } from '../../src/middleware/zodValidation.js';
+import { anthropicMessagesSchema, completionSchema } from '../../src/infrastructure/web/middleware/zodValidation.js';
 
 describe('completionSchema tool calling', () => {
   const baseTools = [{

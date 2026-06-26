@@ -17,7 +17,7 @@ describe('Server Route Integration Tests', () => {
   beforeAll(async () => {
     ({ app, close } = await createTestApp());
 
-    const { UnifiedOrchestrator } = await import('../../src/services/unifiedOrchestrator.js');
+    const { UnifiedOrchestrator } = await import('../../src/application/orchestrator.js');
     executeCompletionSpy = vi.spyOn(UnifiedOrchestrator.prototype, 'executeCompletion');
   });
 

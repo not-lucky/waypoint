@@ -8,7 +8,7 @@ import {
   openAIMessagesToAnthropic,
   openAIToolsToAnthropic,
   openAIToolChoiceToAnthropic,
-} from '../../src/transforms/shared/anthropicTools.js';
+} from '../../src/adapters/transforms/shared/anthropicTools.js';
 
 describe('anthropicTools conversions', () => {
   const tools = [{

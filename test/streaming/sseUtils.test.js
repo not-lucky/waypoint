@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { startSSEStream } from '../../src/streaming/sseUtils.js';
+import { startSSEStream } from '../../src/utils/streaming/sseUtils.js';
 
 describe('startSSEStream', () => {
   it('sets the expected SSE headers', () => {

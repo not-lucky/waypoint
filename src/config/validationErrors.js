@@ -1,4 +1,4 @@
-import { getAppLogger } from '../logging/logger.js';
+import { getAppLogger } from '../infrastructure/logging/logger.js';
 
 const logger = getAppLogger('config');
 

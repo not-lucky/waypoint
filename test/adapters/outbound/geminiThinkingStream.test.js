@@ -168,4 +168,66 @@ describe('executeThinkingStream', () => {
       provider: 'gemini',
     });
   });
+
+  it('preserves slash-containing actualModelId values for thinking streams', async () => {
+    const controller = new AbortController();
+    const mockAdapter = {
+      baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+      timeoutMs: 30000,
+      streamTimeoutMs: null,
+      resolveStreamTimeoutMs() {
+        return this.streamTimeoutMs ?? this.timeoutMs ?? null;
+      },
+      performFetch: vi.fn().mockResolvedValue({
+        response: {
+          body: buildSseBody([
+            {
+              choices: [{
+                index: 0,
+                delta: { content: 'hello' },
+                finish_reason: 'stop',
+              }],
+            },
+          ]),
+        },
+        fetchSignal: new AbortController().signal,
+        cleanup: vi.fn(),
+      }),
+    };
+
+    const req = {
+      model: 'gemini/public-name',
+      actualModelId: 'projects/demo/locations/us-central1/models/custom-model',
+      messages: [{ role: 'user', content: 'hi' }],
+    };
+
+    for await (const chunk of executeThinkingStream(req, 'test-key', controller.signal, null, mockAdapter)) {
+      // Consume the stream to exercise the request path.
+    }
+
+    expect(mockAdapter.performFetch).toHaveBeenCalledWith(
+      'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+      {
+        'content-type': 'application/json',
+        Authorization: 'Bearer test-key',
+      },
+      {
+        model: 'projects/demo/locations/us-central1/models/custom-model',
+        messages: [{ role: 'user', content: 'hi' }],
+        stream: true,
+        stream_options: { include_usage: true },
+        extra_body: {
+          google: {
+            thinking_config: {
+              thinking_level: 'medium',
+              include_thoughts: true,
+            },
+          },
+        },
+      },
+      controller.signal,
+      null,
+      30000,
+    );
+  });
 });

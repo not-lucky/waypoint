@@ -2,13 +2,14 @@ import {
   describe, it, expect,
 } from 'vitest';
 import { BaseProvider } from '../../../src/adapters/outbound/base.js';
-import { NotImplementedError } from '../../../src/utils/notImplementedError.js';
 
 describe('BaseProvider Tests', () => {
-  it('should throw NotImplementedError on base class methods', async () => {
+  it('should throw Error on base class methods', async () => {
     const provider = new BaseProvider();
-    await expect(provider.generateCompletion({}, 'key')).rejects.toThrow(NotImplementedError);
-    await expect(provider.generateStream({}, 'key')).rejects.toThrow(NotImplementedError);
+    await expect(provider.generateCompletion({}, 'key'))
+      .rejects.toThrow('BaseProvider.generateCompletion must be implemented by subclass');
+    await expect(provider.generateStream({}, 'key'))
+      .rejects.toThrow('BaseProvider.generateStream must be implemented by subclass');
   });
 
   it('initializes shared provider fields in the constructor', () => {
@@ -59,27 +60,12 @@ describe('BaseProvider Tests', () => {
     });
   });
 
-  describe('normalizeProviderError', () => {
-    it('passes through the upstream status code', () => {
-      const rateLimited = BaseProvider.normalizeProviderError({ statusCode: 429 }, 'openai');
-      expect(rateLimited.statusCode).toBe(429);
-
-      const forbidden = BaseProvider.normalizeProviderError({ statusCode: 403 }, 'anthropic');
-      expect(forbidden.statusCode).toBe(403);
-    });
-
-    it('should classify transport errors with the transport shape', () => {
-      const res = BaseProvider.normalizeProviderError(new Error('boom'), 'gemini');
-      expect(res).toEqual({
-        message: 'Upstream connection failed: boom',
-        statusCode: undefined,
-        errorCode: 'connect_timeout',
-        errorType: 'transport_error',
-        retryAfterSeconds: undefined,
-        provider: 'gemini',
-        upstreamBody: null,
-        transportCode: 'connect_timeout',
-      });
+  describe('normalizeError', () => {
+    it('uses normalizeUpstreamError internally', () => {
+      const provider = new BaseProvider({ providerName: 'openai' });
+      const normalized = provider.normalizeError({ statusCode: 429 });
+      expect(normalized.statusCode).toBe(429);
+      expect(normalized.provider).toBe('openai');
     });
   });
 
@@ -89,7 +75,7 @@ describe('BaseProvider Tests', () => {
         JSON.stringify({ error: { code: 404, message: 'models/wrong_model is not found', status: 'NOT_FOUND' } }),
         { status: 404, headers: { 'content-type': 'application/json' } },
       );
-      const err = await BaseProvider.parseUpstreamError(response);
+      const err = await BaseProvider.parseUpstreamError(response, 'gemini');
       expect(err.statusCode).toBe(404);
       expect(err.errorType).toBe('not_found_error');
       expect(err.errorCode).toBe(404);
@@ -101,7 +87,7 @@ describe('BaseProvider Tests', () => {
         JSON.stringify({ error: { code: 1, message: 'teapot', status: 'I_AM_A_TEAPOT' } }),
         { status: 418, headers: { 'content-type': 'application/json' } },
       );
-      const err = await BaseProvider.parseUpstreamError(response);
+      const err = await BaseProvider.parseUpstreamError(response, 'gemini');
       expect(err.errorType).toBe('I_AM_A_TEAPOT');
     });
 

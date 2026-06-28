@@ -116,7 +116,7 @@ describe('Protocol Route Mounting Integration Tests', () => {
 
       await Promise.all(routes.map(async (route) => {
         const res = await authed(app).post(route).send({}).expect(400);
-        if (route.includes('/anthropic')) {
+        if (route.includes('/messages')) {
           expect(res.body).toEqual({
             type: 'error',
             error: {
@@ -137,37 +137,30 @@ describe('Protocol Route Mounting Integration Tests', () => {
     });
 
     it('returns unified unauthorized error shape across protocol routers', async () => {
-      const getRoutes = ['/models', '/models', '/health'];
+      const getRoutes = ['/models', '/v1/models', '/health'];
       await Promise.all(getRoutes.map(async (route) => {
         const res = await request(app).get(route).expect(401);
-        if (route.includes('/anthropic')) {
-          expect(res.body).toEqual({
+        expect(res.body.error).toEqual({
+          code: 'unauthorized',
+          message: 'Unauthorized: Missing Authorization header.',
+          param: null,
+          type: 'authentication_error',
+        });
+      }));
+
+      await Promise.all(['/messages', '/v1/messages'].map((route) => request(app)
+        .post(route)
+        .send({ model: 'anthropic/claude-sonnet-4', messages: [{ role: 'user', content: 'x' }] })
+        .expect(401)
+        .expect(({ body }) => {
+          expect(body).toEqual({
             type: 'error',
             error: {
               type: 'authentication_error',
               message: 'Unauthorized: Missing Authorization header.',
             },
           });
-        } else {
-          expect(res.body.error).toEqual({
-            code: 'unauthorized',
-            message: 'Unauthorized: Missing Authorization header.',
-            param: null,
-            type: 'authentication_error',
-          });
-        }
-      }));
-
-      const postRes = await request(app)
-        .post('/chat/completions')
-        .send({ model: 'openai/gpt-4o', messages: [{ role: 'user', content: 'x' }] })
-        .expect(401);
-      expect(postRes.body.error).toEqual({
-        code: 'unauthorized',
-        message: 'Unauthorized: Missing Authorization header.',
-        param: null,
-        type: 'authentication_error',
-      });
+        })));
     });
 
     it('maps orchestrator errors to correct HTTP status on both protocols', async () => {

@@ -1,6 +1,6 @@
 import { buildClientErrorEnvelope } from '../../../domain/errors/envelope.js';
 import { statusToErrorType } from '../../../domain/errors/httpErrorTypes.js';
-import { resolveIngressFormat } from './ingressFormat.js';
+import { resolveIngressFormat } from './common.js';
 
 /**
  * Shared utility to build and send a standardized HTTP error response.
@@ -16,7 +16,7 @@ import { resolveIngressFormat } from './ingressFormat.js';
 export const sendHttpError = (res, req, status, code, message, errorType = null, details = null) => {
   const resolvedErrorType = errorType || statusToErrorType(status);
   const envelope = buildClientErrorEnvelope({
-    code,
+    errorCode: code,
     message,
     errorType: resolvedErrorType,
     details,

@@ -12,7 +12,7 @@
  * (the canonical Google API error model: https://cloud.google.com/apis/design/errors)
  */
 
-export const GEMINI_STATUS_TO_TYPE = Object.freeze({
+const GEMINI_STATUS_TO_TYPE = Object.freeze({
   INVALID_ARGUMENT: 'invalid_request_error',
   FAILED_PRECONDITION: 'invalid_request_error',
   UNAUTHENTICATED: 'authentication_error',

@@ -4,8 +4,7 @@
  * @module config/ClientValidator
  */
 
-import { isPositiveInteger, isNonEmptyString } from './validationHelpers.js';
-import { logErrorAndExitOrThrow } from './validationErrors.js';
+import { isPositiveInteger, isNonEmptyString, logErrorAndExitOrThrow } from './validationHelpers.js';
 
 /**
  * Validates the clients configuration block.

@@ -18,10 +18,6 @@ function normalizeLabels(labels = {}) {
   );
 }
 
-// `serializeLabels` operates on labels already passed through `normalizeLabels`
-// so the per-increment hot path runs `normalizeLabels` exactly once. `formatLabels`
-// always re-normalizes because some call sites merge in an unsorted label (e.g.
-// `le` for histogram buckets) which must be sorted into the output.
 function serializeLabels(normalizedLabels = {}) {
   return JSON.stringify(normalizedLabels);
 }

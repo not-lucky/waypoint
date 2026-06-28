@@ -1,6 +1,13 @@
 import { FORMATS, translateRequest, translateStreamChunk } from '../../transforms/index.js';
 import { parseSSEStream, parseSSEEventData } from '../../../utils/streaming/sseParser.js';
-import { throwIfGeminiStreamError } from '../../../domain/errors/upstream.js';
+import { throwIfStreamErrorPayload } from '../../../domain/errors/upstream.js';
+
+const resolveGeminiModelId = (req) => {
+  if (typeof req?.actualModelId === 'string' && req.actualModelId.trim() !== '') {
+    return req.actualModelId;
+  }
+  return (req?.model || '').split('/').pop();
+};
 
 /**
  * Executes a streaming completion for standard Gemini models (without thinking enabled).
@@ -12,7 +19,8 @@ export async function* executeStandardStream(req, apiKey, signal, requestLog, ad
     ? adapter.baseUrl
     : 'https://generativelanguage.googleapis.com/v1beta';
 
-  const urlObj = new URL(`${base}/models/${req.actualModelId}:streamGenerateContent`);
+  const modelId = resolveGeminiModelId(req);
+  const urlObj = new URL(`${base}/models/${modelId}:streamGenerateContent`);
   urlObj.searchParams.set('alt', 'sse');
   urlObj.searchParams.set('key', apiKey);
   const url = urlObj.toString();
@@ -48,7 +56,7 @@ export async function* executeStandardStream(req, apiKey, signal, requestLog, ad
       }
       eventCount += 1;
 
-      throwIfGeminiStreamError(parsedData, 'gemini');
+      throwIfStreamErrorPayload(parsedData, 'gemini');
 
       if (parsedData.candidates?.[0]) {
         const candidate = parsedData.candidates[0];

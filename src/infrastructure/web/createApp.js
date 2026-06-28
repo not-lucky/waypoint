@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { sendHttpError } from './middleware/errorHelper.js';
 import { authMiddleware } from './middleware/auth.js';
-import { dryRunMiddleware } from './middleware/dryRun.js';
+import { dryRunMiddleware } from './middleware/common.js';
 import { createMetricsMiddleware } from './middleware/metricsMiddleware.js';
 import {
   createHealthRouter,
@@ -88,10 +88,12 @@ export const createApp = (config, services, logger) => {
   const app = express();
   const auth = authMiddleware(config);
 
-  const allowedOrigins = config.gateway.cors?.allowedOrigins || ['*'];
+  const allowedOrigins = config.gateway.cors?.allowedOrigins || [];
   const corsOrigin = allowedOrigins.includes('*') ? '*' : allowedOrigins;
-  logger.debug('CORS configuration applied', { corsOrigin });
-  app.use(cors({ origin: corsOrigin }));
+  if (allowedOrigins.length > 0) {
+    logger.debug('CORS configuration applied', { corsOrigin });
+    app.use(cors({ origin: corsOrigin }));
+  }
 
   const maxPayloadSize = config.gateway.maxPayloadSize || '10mb';
   logger.debug(`Body parsing middleware configured with limit: ${maxPayloadSize}`);
@@ -108,4 +110,4 @@ export const createApp = (config, services, logger) => {
 
   app.use(errorHandler(logger));
   return app;
-}
+};

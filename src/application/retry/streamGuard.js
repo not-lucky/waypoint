@@ -37,7 +37,7 @@ const consumeStreamChunks = async function* (iterator, abortController) {
 
     yield nextResult.value;
   }
-}
+};
 
 /**
  * Handles stream errors by logging and applying key cooldown when appropriate.
@@ -64,7 +64,7 @@ const handleStreamError = (streamErr, config) => {
       retryAfterSeconds: normalized.retryAfterSeconds,
     });
   }
-}
+};
 
 /**
  * Wraps an async stream iterator with abort signal monitoring and error handling.
@@ -105,4 +105,4 @@ export const createStreamWithAbortGuard = async function* (config) {
       await iterator.return();
     }
   }
-}
+};

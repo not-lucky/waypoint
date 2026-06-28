@@ -1,6 +1,6 @@
 import { formatOpenAiSseError } from '../../../domain/errors/envelope.js';
 import { StreamAccumulator } from '../../../utils/streaming/streamAccumulator.js';
-import { startSSEStream } from '../../../utils/streaming/sseUtils.js';
+import { startSSEStream } from '../../../utils/streaming/sseSetup.js';
 import { FORMATS } from '../../transforms/index.js';
 import { BaseController } from '../base.js';
 

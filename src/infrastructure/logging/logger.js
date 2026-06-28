@@ -1,14 +1,12 @@
-import fs from 'node:fs'
-import path from 'node:path'
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   configure, configureSync, getConsoleSink, getLogger, reset,
-} from '@logtape/logtape'
-import { getFileSink } from '@logtape/file'
-import { customJsonFormatter, customTextFormatter, formatMessage } from './logFormatters.js'
+} from '@logtape/logtape';
+import { getFileSink } from '@logtape/file';
+import { customJsonFormatter, customTextFormatter, formatMessage } from './logFormatters.js';
 
-export { formatMessage }
-
-const sessionTimestamp = new Date().toISOString().replace( /[:.]/g, '-' )
+const sessionTimestamp = new Date().toISOString().replace( /[:.]/g, '-' );
 
 /**
  * Early-boot logger initialization using synchronous configuration.
@@ -37,7 +35,7 @@ try {
         sinks: [ 'console' ],
       },
     ],
-  } )
+  } );
 } catch ( _err ) {
   // Edge Case: If this module is evaluated multiple times or LogTape is already configured
   // in a testing environment, configureSync throws. We silently swallow this error because
@@ -55,42 +53,42 @@ try {
  * @param {Object} config - The fully validated application configuration.
  */
 export const configureLogging = async ( config, testConfig = {} ) => {
-  const loggingConfig = config?.logging || {}
-  const enableConsole = loggingConfig.enableConsole !== false
-  let enableFile = !!loggingConfig.enableFile
-  let filePath = testConfig.filePath || loggingConfig.filePath || ''
-  const format = loggingConfig.format || 'json'
-  const level = loggingConfig.level || 'info'
+  const loggingConfig = config?.logging || {};
+  const enableConsole = loggingConfig.enableConsole !== false;
+  let enableFile = !!loggingConfig.enableFile;
+  let filePath = testConfig.filePath || loggingConfig.filePath || '';
+  const format = loggingConfig.format || 'json';
+  const level = loggingConfig.level || 'info';
 
   if ( testConfig.disableFile ) {
-    enableFile = false
+    enableFile = false;
   }
 
   if ( filePath && !testConfig.skipTimestamp ) {
-    const parsedPath = path.parse( filePath )
-    filePath = path.join( parsedPath.dir, `${ parsedPath.name }_${ sessionTimestamp }${ parsedPath.ext }` )
+    const parsedPath = path.parse( filePath );
+    filePath = path.join( parsedPath.dir, `${ parsedPath.name }_${ sessionTimestamp }${ parsedPath.ext }` );
   }
 
-  const sinks = {}
-  const activeSinks = []
+  const sinks = {};
+  const activeSinks = [];
 
-  const formatter = format === 'json' ? customJsonFormatter : customTextFormatter
+  const formatter = format === 'json' ? customJsonFormatter : customTextFormatter;
 
   if ( enableConsole ) {
-    sinks.console = getConsoleSink( { formatter } )
-    activeSinks.push( 'console' )
+    sinks.console = getConsoleSink( { formatter } );
+    activeSinks.push( 'console' );
   }
 
   if ( enableFile && filePath ) {
-    const absolutePath = path.resolve( filePath )
-    const directory = path.dirname( absolutePath )
+    const absolutePath = path.resolve( filePath );
+    const directory = path.dirname( absolutePath );
     // Edge case: Users frequently provide arbitrary file paths for logs; failing to create the
     // parent directory causes fatal startup crashes. Explicitly guarantee the directory tree
     // exists before attempting to write.
-    fs.mkdirSync( directory, { recursive: true } )
+    fs.mkdirSync( directory, { recursive: true } );
 
-    sinks.file = getFileSink( absolutePath, { formatter } )
-    activeSinks.push( 'file' )
+    sinks.file = getFileSink( absolutePath, { formatter } );
+    activeSinks.push( 'file' );
   }
 
   // Intent: The `reset: true` flag ensures we cleanly swap the global singleton from our
@@ -111,8 +109,8 @@ export const configureLogging = async ( config, testConfig = {} ) => {
       },
     ],
     reset: true,
-  } )
-}
+  } );
+};
 
 /**
  * Factory for instantiating subsystem-specific child loggers.
@@ -123,7 +121,7 @@ export const configureLogging = async ( config, testConfig = {} ) => {
  * @param {string} category - The specific subsystem category (e.g., 'http', 'auth').
  * @returns {Object} LogTape logger instance bound to the namespace.
  */
-export const getAppLogger = ( category ) => getLogger( [ 'waypoint', category ] )
+export const getAppLogger = ( category ) => getLogger( [ 'waypoint', category ] );
 
 /**
  * Graceful termination hook for the logging pipeline.
@@ -133,5 +131,5 @@ export const getAppLogger = ( category ) => getLogger( [ 'waypoint', category ] 
  * Side Effect: Triggers an awaited reset across all active LogTape sinks.
  */
 export const flushLogs = async () => {
-  await reset()
-}
+  await reset();
+};

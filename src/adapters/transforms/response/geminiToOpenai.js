@@ -59,7 +59,7 @@ export const translateGeminiToOpenAI = (geminiRes, req = {}) => {
       total_tokens: promptTokens + completionTokens,
     },
   };
-}
+};
 
 /**
  * Translates a Google Gemini API stream JSON chunk to an OpenAI-shaped StreamChunk.

@@ -104,7 +104,7 @@ describe('Streaming End-to-End Tests', () => {
         stream: true,
       })
       .expect('Content-Type', /text\/event-stream/)
-      .expect('Cache-Control', 'no-cache')
+      .expect('Cache-Control', 'no-cache, no-transform')
       .expect('X-Accel-Buffering', 'no')
       .expect(200);
 
@@ -151,7 +151,7 @@ describe('Streaming End-to-End Tests', () => {
         stream: true,
       })
       .expect('Content-Type', /text\/event-stream/)
-      .expect('Cache-Control', 'no-cache')
+      .expect('Cache-Control', 'no-cache, no-transform')
       .expect('X-Accel-Buffering', 'no')
       .expect(200);
 

@@ -38,7 +38,7 @@ describe('Server Route Integration Tests', () => {
     expect(res.body).toHaveProperty('routing');
   });
 
-  it('POST /openai/chat/completions - forwards response on success', async () => {
+  it('POST /chat/completions - forwards response on success', async () => {
     const mockResponse = {
       id: 'waypoint-mock-123',
       object: 'chat.completion',
@@ -69,7 +69,7 @@ describe('Server Route Integration Tests', () => {
     expect(executeCompletionSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('POST /openai/chat/completions - status code mapping on error', async () => {
+  it('POST /chat/completions - status code mapping on error', async () => {
     const mockErrorResponse = {
       error: {
         code: 'poolUnavailable',
@@ -102,7 +102,7 @@ describe('Server Route Integration Tests', () => {
     });
   });
 
-  it('POST /openai/v1/chat/completions (alias) - works identically', async () => {
+  it('POST /v1/chat/completions (alias) - works identically', async () => {
     const mockResponse = { id: 'alias-ok' };
 
     executeCompletionSpy.mockResolvedValueOnce(mockResponse);
@@ -120,7 +120,7 @@ describe('Server Route Integration Tests', () => {
     expect(res.body).toEqual(mockResponse);
   });
 
-  it('POST /anthropic/messages - forwards response on success', async () => {
+  it('POST /messages - forwards Anthropic response on success', async () => {
     const mockOpenAIResponse = {
       id: 'waypoint-mock-123',
       object: 'chat.completion',
@@ -159,7 +159,7 @@ describe('Server Route Integration Tests', () => {
     });
   });
 
-  it('POST /openai/chat/completions - returns 400 on invalid JSON payload', async () => {
+  it('POST /chat/completions - returns 400 on invalid JSON payload', async () => {
     await request(app)
       .post('/chat/completions')
       .set('Authorization', 'Bearer mock-webui-token')

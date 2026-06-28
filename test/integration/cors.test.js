@@ -32,8 +32,7 @@ gateway:
   ${maxPayloadSize !== undefined ? `maxPayloadSize: "${maxPayloadSize}"` : ''}
   routing:
     strategy: "round-robin"
-  cors:
-    ${allowedOrigins !== undefined ? `allowedOrigins: ${JSON.stringify(allowedOrigins)}` : ''}
+  ${allowedOrigins !== undefined ? `cors:\n    allowedOrigins: ${JSON.stringify(allowedOrigins)}` : ''}
 logging:
   enableConsole: false
   enableFile: false
@@ -159,7 +158,7 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
       expect(res.headers['access-control-allow-origin']).toBe('http://trusted.com');
     });
 
-    it('should default to wildcard * if cors config block is missing entirely', async () => {
+    it('should deny all cross-origin requests if cors config block is missing entirely', async () => {
       await loadServerWithConfig(undefined, '10mb');
       const res = await request(app)
         .get('/health')
@@ -167,7 +166,7 @@ describe('CORS and Payload Limit - Comprehensive Edge Case Tests', () => {
         .set('Origin', 'http://anydomain.com')
         .expect(200);
 
-      expect(res.headers['access-control-allow-origin']).toBe('*');
+      expect(res.headers['access-control-allow-origin']).toBeUndefined();
     });
 
     it('should handle wildcard * mixed with specific origins by treating it as a global wildcard', async () => {

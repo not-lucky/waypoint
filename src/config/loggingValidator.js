@@ -4,8 +4,7 @@
  * @module config/LoggingValidator
  */
 
-import { isNonEmptyString } from './validationHelpers.js';
-import { logErrorAndExitOrThrow } from './validationErrors.js';
+import { isNonEmptyString, logErrorAndExitOrThrow } from './validationHelpers.js';
 
 /**
  * Validates the logging configuration block.

@@ -107,6 +107,49 @@ describe('Streaming Controller Error Emission', () => {
     expect(response.text).toContain('data: [DONE]');
   });
 
+  it('preserves Retry-After on an immediate OpenAI SSE controller error', async () => {
+    const controller = new OpenAIController(orchestrator);
+    const reqLog = {
+      appendStreamEvent: vi.fn(),
+      logClientStreamSummary: vi.fn(),
+      logClientResponse: vi.fn(),
+      finalize: vi.fn().mockResolvedValue(undefined),
+    };
+    const res = {
+      headersSent: false,
+      writableEnded: false,
+      setHeader: vi.fn((name, _value) => {
+        if (name.toLowerCase() === 'retry-after') {
+          res.retryAfterHeaderSet = true;
+        }
+      }),
+      write: vi.fn(),
+      end: vi.fn(),
+      flushHeaders: vi.fn(() => {
+        res.headersSent = true;
+      }),
+    };
+    const response = {
+      async* [Symbol.asyncIterator]() {
+        // eslint-disable-next-line no-constant-condition
+        if (false) yield;
+        throw new UpstreamError('Rate limit exceeded', {
+          statusCode: 429,
+          errorType: 'rate_limit_error',
+          errorCode: 'rate_limit_exceeded',
+          provider: 'mock-provider',
+          retryAfterSeconds: 45,
+        });
+      },
+    };
+
+    await controller.handleStream(res, response, reqLog);
+
+    expect(res.flushHeaders).not.toHaveBeenCalled();
+    expect(res.setHeader).toHaveBeenCalledWith('Retry-After', '45');
+    expect(res.write).toHaveBeenCalledWith(expect.stringContaining('"code":"rate_limit_exceeded"'));
+  });
+
   it('emits Anthropic error event after stream start', async () => {
     mockAdapter.streamBehavior = async function* () {
       yield {

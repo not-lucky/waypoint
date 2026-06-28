@@ -46,7 +46,7 @@ describe('Index Endpoints Coverage', () => {
     vi.restoreAllMocks();
   });
 
-  it('GET /openai/models', async () => {
+  it('GET /models (OpenAI shape)', async () => {
     let res = await authed(app)
       .get('/models')
       .expect(200);
@@ -58,7 +58,7 @@ describe('Index Endpoints Coverage', () => {
     expect(res.body.object).toBe('list');
   });
 
-  it('POST /openai/chat/completions', async () => {
+  it('POST /chat/completions', async () => {
     const res = await authed(app)
       .post('/chat/completions')
       .send({
@@ -76,7 +76,7 @@ describe('Index Endpoints Coverage', () => {
     expect(res.body).toHaveProperty('uptimeSeconds');
   });
 
-  it('GET /anthropic/models', async () => {
+  it('GET /models (Anthropic shape)', async () => {
     const res = await authed(app)
       .get('/models')
       .set('x-api-key', 'mock-anthropic-key')
@@ -84,7 +84,7 @@ describe('Index Endpoints Coverage', () => {
     expect(res.body.type).toBe('list');
   });
 
-  it('POST /anthropic/messages', async () => {
+  it('POST /messages (Anthropic)', async () => {
     const res = await authed(app)
       .post('/messages')
       .send({
@@ -114,7 +114,7 @@ describe('Index Endpoints Coverage', () => {
     expect(res.body.error.code).toBe('payloadTooLarge');
   });
 
-  it('GET /openai/models with missing providers config', async () => {
+  it('GET /models with missing providers config', async () => {
     const { ModelCache } = await import('../../src/domain/routing/cache.js');
     vi.spyOn(ModelCache.prototype, 'getUniqueModels').mockReturnValue([]);
     const res = await authed(app)

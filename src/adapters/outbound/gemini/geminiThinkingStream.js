@@ -4,6 +4,13 @@ import { getThinkingLevel } from './geminiFormatter.js';
 import { mapUsage } from '../shared/openaiResponse.js';
 import { ThinkingBuffer } from '../../../utils/streaming/thinkingBuffer.js';
 
+const resolveGeminiModelId = (req) => {
+  if (typeof req?.actualModelId === 'string' && req.actualModelId.trim() !== '') {
+    return req.actualModelId;
+  }
+  return (req?.model || '').split('/').pop();
+};
+
 /**
  * Executes a streaming completion for Gemini models with thinking/reasoning enabled.
  * Uses the OpenAI-compatible endpoint with thinking configuration.
@@ -19,7 +26,7 @@ export async function* executeThinkingStream(req, apiKey, signal, requestLog, ad
   };
 
   const payload = {
-    model: req.actualModelId || req.model,
+    model: resolveGeminiModelId(req),
     messages: req.messages,
     stream: true,
     stream_options: { include_usage: true },

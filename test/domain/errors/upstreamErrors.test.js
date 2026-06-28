@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { decideKeyAction, isRetryable, resolveCooldownSeconds, resolveLifecycleTier } from '../../../src/domain/errors/policy.js';
 import {
   classifyTransportError, parseRetryAfter,
-  UpstreamError, normalizeUpstreamError, throwIfStreamErrorPayload, throwIfGeminiStreamError,
+  UpstreamError, normalizeUpstreamError, throwIfStreamErrorPayload,
   createStreamUpstreamError,
 } from '../../../src/domain/errors/upstream.js';
 import {
@@ -345,7 +345,7 @@ describe('throwIfStreamErrorPayload', () => {
   });
 
   it('throws on Gemini native stream error payload', () => {
-    expect(() => throwIfGeminiStreamError({
+    expect(() => throwIfStreamErrorPayload({
       error: { code: 'unavailable', message: 'High demand' },
     }, 'gemini')).toThrow(UpstreamError);
   });

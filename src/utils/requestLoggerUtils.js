@@ -1,8 +1,37 @@
 import crypto from 'node:crypto';
 import fsp from 'node:fs/promises';
-import { getAppLogger } from './logger.js';
 
-const logger = getAppLogger('request-logger');
+/**
+ * Generates a short random ID for request folder naming.
+ * Uses `crypto.randomBytes` (cryptographically secure RNG) and emits a fixed
+ * 6-char lowercase hex string.
+ * @returns {string} 6-character hex string.
+ */
+export const shortId = () => crypto.randomBytes(3).toString('hex');
+
+/**
+ * Converts an ISO timestamp to a filesystem-safe string.
+ * Replaces colons with dashes (e.g., "2026-06-06T10-19-30.123Z") so logs can be
+ * exported natively to Windows disks.
+ * @param {string} iso - ISO 8601 timestamp.
+ * @returns {string} Filesystem-safe timestamp.
+ */
+export const safeTimestamp = (iso) => iso.replace(/:/g, '-');
+
+/**
+ * Writes JSON data to a file asynchronously.
+ * Offloads heavy JSON serialization and IO waiting from the main thread event loop.
+ * @param {string} filePath - Absolute path to write to.
+ * @param {*} data - Data to JSON-stringify and write.
+ * @param {Object} [logger=console] - Logger instance for error reporting.
+ */
+export const writeJsonFile = async (filePath, data, logger = console) => {
+  try {
+    await fsp.writeFile(filePath, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+  } catch (err) {
+    logger.error('Failed to write request log file', { filePath, error: err.message });
+  }
+};
 
 /**
  * Safely sanitizes a URL by removing sensitive credential parameters (e.g. key).
@@ -17,13 +46,18 @@ export const sanitizeUrl = (urlString) => {
     url.searchParams.delete('key');
     return url.toString();
   }
-  // Fallback for malformed URLs: strip `?key=…` / `&key=…` via a literal regex.
-  // `RegExp.escape` is available since Node 24; the `key` literal needs no
-  // escaping, but we use it for forward-compatibility with dynamic prefixes.
-  const pattern = typeof RegExp.escape === 'function'
-    ? new RegExp(`[?&]${RegExp.escape('key')}=[^&]*`, 'g')
-    : /[?&]key=[^&]*/g;
-  return urlString.replace(pattern, '');
+  // Try dummy base for relative paths starting with /
+  if (urlString.startsWith('/') && URL.canParse(urlString, 'http://dummy.com')) {
+    const url = new URL(urlString, 'http://dummy.com');
+    url.searchParams.delete('key');
+    return url.pathname + url.search + url.hash;
+  }
+  // Fallback for other malformed/relative URLs using a safe fixed regex
+  let sanitized = urlString.replace(/[?&]key=[^&]*/g, '');
+  if (urlString.includes('?') && !sanitized.includes('?') && sanitized.includes('&')) {
+    sanitized = sanitized.replace('&', '?');
+  }
+  return sanitized;
 };
 
 /**
@@ -48,25 +82,6 @@ export const serializeHeaders = (headers) => {
 };
 
 /**
- * Generates a short random ID for request folder naming.
- * Uses `crypto.randomBytes` (cryptographically secure RNG) and emits a fixed
- * 6-char lowercase hex string. Replaces the previous `Math.random()` slice
- * which was not seedable from `crypto` and had a slight bias toward shorter
- * strings because the leading hex digit can be 0.
- * @returns {string} 6-character hex string.
- */
-export const shortId = () => crypto.randomBytes(3).toString('hex');
-
-/**
- * Converts an ISO timestamp to a filesystem-safe string.
- * Replaces colons with dashes (e.g., "2026-06-06T10-19-30.123Z") so logs can be
- * exported natively to Windows disks.
- * @param {string} iso - ISO 8601 timestamp.
- * @returns {string} Filesystem-safe timestamp.
- */
-export const safeTimestamp = (iso) => iso.replace(/:/g, '-');
-
-/**
  * Redacts sensitive headers from a headers object.
  * Masks authorization, x-api-key, and similar auth headers to adhere to basic
  * PII and credential safety standards.
@@ -86,18 +101,4 @@ export const redactHeaders = (headers) => {
     }
   });
   return redacted;
-};
-
-/**
- * Writes JSON data to a file asynchronously.
- * Offloads heavy JSON serialization and IO waiting from the main thread event loop.
- * @param {string} filePath - Absolute path to write to.
- * @param {*} data - Data to JSON-stringify and write.
- */
-export const writeJsonFile = async (filePath, data) => {
-  try {
-    await fsp.writeFile(filePath, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
-  } catch (err) {
-    logger.error('Failed to write request log file', { filePath, error: err.message });
-  }
 };

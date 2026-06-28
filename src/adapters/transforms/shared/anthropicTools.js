@@ -10,7 +10,7 @@ export const anthropicToolsToOpenAI = (tools) => {
       parameters: tool.input_schema || { type: 'object', properties: {} },
     },
   }));
-}
+};
 
 export const openAIToolsToAnthropic = (tools) => {
   if (!tools?.length) return undefined;
@@ -22,7 +22,7 @@ export const openAIToolsToAnthropic = (tools) => {
       input_schema: fn.parameters || tool.input_schema || { type: 'object', properties: {} },
     };
   });
-}
+};
 
 export const anthropicToolChoiceToOpenAI = (toolChoice) => {
   if (!toolChoice) return undefined;
@@ -32,7 +32,7 @@ export const anthropicToolChoiceToOpenAI = (toolChoice) => {
     return { type: 'function', function: { name: toolChoice.name } };
   }
   return undefined;
-}
+};
 
 export const openAIToolChoiceToAnthropic = (toolChoice) => {
   if (!toolChoice) return undefined;
@@ -44,7 +44,7 @@ export const openAIToolChoiceToAnthropic = (toolChoice) => {
     if (name) return { type: 'tool', name };
   }
   return undefined;
-}
+};
 
 const toolResultContentToString = (content) => {
   if (typeof content === 'string') return content;
@@ -130,7 +130,7 @@ export const anthropicMessageToOpenAI = (message) => {
   }
 
   return [{ role, content }];
-}
+};
 
 export const openAIMessagesToAnthropic = (messages) => {
   const anthropicMessages = [];
@@ -218,7 +218,7 @@ export const openAIMessagesToAnthropic = (messages) => {
 
   flushToolResults();
   return anthropicMessages;
-}
+};
 
 export const anthropicContentToOpenAIMessage = (contentArray) => {
   let textContent = '';
@@ -249,7 +249,7 @@ export const anthropicContentToOpenAIMessage = (contentArray) => {
   if (reasoningContent) message.reasoning_content = reasoningContent;
   if (toolCalls.length) message.tool_calls = toolCalls;
   return message;
-}
+};
 
 export const openAIMessageToAnthropicContent = (message) => {
   const content = [];
@@ -293,4 +293,4 @@ export const openAIMessageToAnthropicContent = (message) => {
   }
 
   return content;
-}
+};

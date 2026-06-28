@@ -162,4 +162,4 @@ export const translateClaudeChunkToOpenAI = (eventObj, chunkId) => {
   }
 
   return null;
-}
+};

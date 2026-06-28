@@ -23,33 +23,15 @@ describe('providers/dispatcher', () => {
     setGlobalDispatcher(originalDispatcher);
   });
 
-  it('assert: getDispatcherAgent() returns an undici Agent instance', async () => {
-    const { getDispatcherAgent } = await import(
-      '../../../src/infrastructure/http/dispatcher.js'
-    );
-    const agent = getDispatcherAgent();
-    expect(agent).toBeInstanceOf(Agent);
-  });
-
-  it('assert: getDispatcherAgent() returns the same Agent reference across calls', async () => {
-    const { getDispatcherAgent } = await import(
-      '../../../src/infrastructure/http/dispatcher.js'
-    );
-    const first = getDispatcherAgent();
-    const second = getDispatcherAgent();
-    expect(second).toBe(first);
-  });
-
   it('assert: installGlobalDispatcher() is idempotent and returns the active agent', async () => {
-    const {
-      getDispatcherAgent,
-      installGlobalDispatcher,
-    } = await import('../../../src/infrastructure/http/dispatcher.js');
+    const { installGlobalDispatcher } = await import(
+      '../../../src/infrastructure/http/dispatcher.js'
+    );
 
-    const firstAgent = getDispatcherAgent();
-    installGlobalDispatcher();
+    const firstAgent = installGlobalDispatcher();
     const afterFirstInstall = getGlobalDispatcher();
     expect(afterFirstInstall).toBe(firstAgent);
+    expect(firstAgent).toBeInstanceOf(Agent);
 
     // A second install must not throw and must not change the active agent.
     expect(() => installGlobalDispatcher()).not.toThrow();

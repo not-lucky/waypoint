@@ -5,17 +5,17 @@ import {
   describe,
   expect,
   it,
-} from 'vitest'
-import request from 'supertest'
-import { createTestApp } from '../helpers/testServer.js'
+} from 'vitest';
+import request from 'supertest';
+import { createTestApp } from '../helpers/testServer.js';
 import {
   malformedSseHandler,
   midStreamErrorHandler,
-} from '../helpers/mswHandlers.js'
-import { createMSWServer } from '../helpers/mswSetup.js'
+} from '../helpers/mswHandlers.js';
+import { createMSWServer } from '../helpers/mswSetup.js';
 
-const BASE_URL = 'https://requesty.example/v1'
-const server = createMSWServer()
+const BASE_URL = 'https://requesty.example/v1';
+const server = createMSWServer();
 
 function createStreamingConfig( streamTimeoutMs = 30000 ) {
   return {
@@ -39,33 +39,33 @@ function createStreamingConfig( streamTimeoutMs = 30000 ) {
         models: [ { id: 'custom-model' } ],
       },
     },
-  }
+  };
 }
 
 describe( 'Provider streaming errors with MSW', () => {
   beforeAll( () => {
     server.listen( {
       onUnhandledRequest( req, print ) {
-        const url = new URL( req.url )
+        const url = new URL( req.url );
         if ( url.hostname === '127.0.0.1' || url.hostname === 'localhost' ) {
-          return
+          return;
         }
-        print.error()
+        print.error();
       },
-    } )
-  } )
+    } );
+  } );
 
   afterEach( () => {
-    server.resetHandlers()
-  } )
+    server.resetHandlers();
+  } );
 
   afterAll( () => {
-    server.close()
-  } )
+    server.close();
+  } );
 
   it( 'emits an OpenAI SSE error envelope on mid-stream upstream failure', async () => {
-    server.use( midStreamErrorHandler( 'openai', { baseUrl: BASE_URL } ) )
-    const { app, close } = await createTestApp( { config: createStreamingConfig() } )
+    server.use( midStreamErrorHandler( 'openai', { baseUrl: BASE_URL } ) );
+    const { app, close } = await createTestApp( { config: createStreamingConfig() } );
 
     try {
       const response = await request( app )
@@ -76,20 +76,20 @@ describe( 'Provider streaming errors with MSW', () => {
           messages: [ { role: 'user', content: 'stream please' } ],
           stream: true,
         } )
-        .expect( 200 )
+        .expect( 200 );
 
-      expect( response.headers[ 'content-type' ] ).toMatch( /text\/event-stream/ )
-      expect( response.text ).toContain( '"content":"partial"' )
-      expect( response.text ).toContain( '"code":"rate_limit_exceeded"' )
-      expect( response.text ).toContain( 'data: [DONE]' )
+      expect( response.headers[ 'content-type' ] ).toMatch( /text\/event-stream/ );
+      expect( response.text ).toContain( '"content":"partial"' );
+      expect( response.text ).toContain( '"code":"rate_limit_exceeded"' );
+      expect( response.text ).toContain( 'data: [DONE]' );
     } finally {
-      await close()
+      await close();
     }
-  } )
+  } );
 
   it( 'handles malformed SSE payloads gracefully and still terminates the stream', async () => {
-    server.use( malformedSseHandler( 'openai', { baseUrl: BASE_URL } ) )
-    const { app, close } = await createTestApp( { config: createStreamingConfig() } )
+    server.use( malformedSseHandler( 'openai', { baseUrl: BASE_URL } ) );
+    const { app, close } = await createTestApp( { config: createStreamingConfig() } );
 
     try {
       const response = await request( app )
@@ -100,12 +100,12 @@ describe( 'Provider streaming errors with MSW', () => {
           messages: [ { role: 'user', content: 'stream malformed' } ],
           stream: true,
         } )
-        .expect( 200 )
+        .expect( 200 );
 
-      expect( response.text ).toContain( '"content":"partial"' )
-      expect( response.text ).toContain( 'data: [DONE]' )
+      expect( response.text ).toContain( '"content":"partial"' );
+      expect( response.text ).toContain( 'data: [DONE]' );
     } finally {
-      await close()
+      await close();
     }
-  } )
-} )
+  } );
+} );

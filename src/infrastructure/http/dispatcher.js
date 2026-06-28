@@ -49,25 +49,7 @@ const CONNECTIONS_PER_ORIGIN = 32;
  */
 const PIPELINING = 1;
 
-/** @type {Agent | null} */
 let sharedAgent = null;
-
-/**
- * Returns the shared keep-alive Agent, creating it on first access.
- *
- * @returns {Agent}
- */
-export function getDispatcherAgent() {
-  if (!sharedAgent) {
-    sharedAgent = new Agent({
-      keepAliveTimeout: KEEP_ALIVE_TIMEOUT_MS,
-      keepAliveMaxTimeout: KEEP_ALIVE_MAX_TIMEOUT_MS,
-      connections: CONNECTIONS_PER_ORIGIN,
-      pipelining: PIPELINING,
-    });
-  }
-  return sharedAgent;
-}
 
 /**
  * Installs the shared keep-alive Agent as the global undici dispatcher so the
@@ -79,7 +61,14 @@ export function getDispatcherAgent() {
  * @returns {Agent} The active dispatcher.
  */
 export function installGlobalDispatcher() {
-  const agent = getDispatcherAgent();
-  setGlobalDispatcher(agent);
-  return agent;
+  if (!sharedAgent) {
+    sharedAgent = new Agent({
+      keepAliveTimeout: KEEP_ALIVE_TIMEOUT_MS,
+      keepAliveMaxTimeout: KEEP_ALIVE_MAX_TIMEOUT_MS,
+      connections: CONNECTIONS_PER_ORIGIN,
+      pipelining: PIPELINING,
+    });
+  }
+  setGlobalDispatcher(sharedAgent);
+  return sharedAgent;
 }

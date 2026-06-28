@@ -3,11 +3,11 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { getAppLogger } from './logger.js';
 import {
+  redactHeaders,
   shortId,
   safeTimestamp,
-  redactHeaders,
   writeJsonFile,
-} from './requestLoggerUtils.js';
+} from '../../utils/requestLoggerUtils.js';
 
 const logger = getAppLogger('request-logger');
 
@@ -76,7 +76,7 @@ export class RequestLog {
       headers,
       body,
     };
-    const p = writeJsonFile(path.join(this.dir, '02_provider_request.json'), data);
+    const p = writeJsonFile(path.join(this.dir, '02_provider_request.json'), data, logger);
     this.pendingWrites.push(p);
   }
 
@@ -103,7 +103,7 @@ export class RequestLog {
       data.response = response;
     }
 
-    const p = writeJsonFile(path.join(this.dir, '03_provider_response.json'), data);
+    const p = writeJsonFile(path.join(this.dir, '03_provider_response.json'), data, logger);
     this.pendingWrites.push(p);
   }
 
@@ -122,7 +122,7 @@ export class RequestLog {
       _eventCount: data._eventCount || 0,
       summary: data.summary || {},
     };
-    const p = writeJsonFile(path.join(this.dir, '03_provider_response.json'), logData);
+    const p = writeJsonFile(path.join(this.dir, '03_provider_response.json'), logData, logger);
     this.pendingWrites.push(p);
   }
 
@@ -141,7 +141,7 @@ export class RequestLog {
       _eventCount: data._eventCount || 0,
       summary: data.summary || {},
     };
-    const p = writeJsonFile(path.join(this.dir, '04_client_response.json'), logData);
+    const p = writeJsonFile(path.join(this.dir, '04_client_response.json'), logData, logger);
     this.pendingWrites.push(p);
   }
 
@@ -160,7 +160,7 @@ export class RequestLog {
       totalDurationMs: Date.now() - this.startTime,
       response: body,
     };
-    const p = writeJsonFile(path.join(this.dir, '04_client_response.json'), data);
+    const p = writeJsonFile(path.join(this.dir, '04_client_response.json'), data, logger);
     this.pendingWrites.push(p);
   }
 
@@ -316,7 +316,7 @@ export const createRequestLog = async (req, config, testLogPath) => {
       headers: redactHeaders(req.headers),
       body: req.body || {},
     };
-    const p = writeJsonFile(path.join(dir, '01_client_request.json'), clientReqData);
+    const p = writeJsonFile(path.join(dir, '01_client_request.json'), clientReqData, logger);
     reqLog.pendingWrites.push(p);
   }
 

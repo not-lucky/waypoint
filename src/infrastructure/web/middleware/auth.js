@@ -32,7 +32,6 @@ const extractAuthToken = (headers) => {
   const authHeader = headers.authorization;
   const xApiKey = headers['x-api-key'];
 
-  // Prefer Authorization header over x-api-key
   if (authHeader !== undefined) {
     const parts = authHeader.trim().split(/\s+/);
     if (parts.length !== 2 || parts[0].toLowerCase() !== 'bearer') {
@@ -48,7 +47,6 @@ const extractAuthToken = (headers) => {
     return { token: parts[1], error: null };
   }
 
-  // Check x-api-key header
   if (xApiKey !== undefined) {
     const trimmedToken = xApiKey.trim();
     if (!trimmedToken) {
@@ -64,7 +62,6 @@ const extractAuthToken = (headers) => {
     return { token: trimmedToken, error: null };
   }
 
-  // No auth headers provided
   return {
     token: null,
     error: {
@@ -86,7 +83,6 @@ const extractAuthToken = (headers) => {
 export const authMiddleware = (config) => (req, res, next) => {
   logger.debug('Auth attempt: checking credentials');
 
-  // Extract token from request headers
   const { token, error } = extractAuthToken(req.headers);
   if (error) {
     logger.debug('Auth failed: invalid or missing credentials');
@@ -96,7 +92,6 @@ export const authMiddleware = (config) => (req, res, next) => {
 
   const clients = Array.isArray(config?.clients) ? config.clients : [];
 
-  // Build or retrieve cached token map for O(1) lookup
   let tokenMap = clientCache.get(clients);
   if (!tokenMap) {
     tokenMap = new Map();

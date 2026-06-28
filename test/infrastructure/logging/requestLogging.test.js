@@ -10,7 +10,7 @@ import { OpenAIController } from '../../../src/adapters/inbound/openai/index.js'
 import { RequestLog } from '../../../src/infrastructure/logging/requestLogger.js';
 import {
   sanitizeUrl, serializeHeaders, redactHeaders,
-} from '../../../src/infrastructure/logging/requestLoggerUtils.js';
+} from '../../../src/utils/requestLoggerUtils.js';
 
 describe('Request Logging', () => {
   let originalFetch;

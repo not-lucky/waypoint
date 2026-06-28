@@ -11,15 +11,9 @@
  * - No HTTP status (transport / network failure): retry with no cooldown.
  */
 
-/** Status codes that should retire the key (the credential itself is wrong). */
 const RETIRE_STATUSES = new Set([401, 403]);
-
-/** Status codes that should apply a cooldown (rate-limit / timeout / server). */
 const COOLDOWN_STATUSES = new Set([402, 408, 429]);
-
-/** Inclusive lower bound for the 5xx server-error range. */
 const SERVER_ERROR_MIN = 500;
-/** Exclusive upper bound for the 5xx server-error range. */
 const SERVER_ERROR_MAX = 600;
 
 /**
@@ -36,7 +30,7 @@ const classifyStatus = (statusCode) => {
   if (COOLDOWN_STATUSES.has(statusCode)) return 'cooldown';
   if (statusCode >= SERVER_ERROR_MIN && statusCode < SERVER_ERROR_MAX) return 'cooldown';
   return 'none';
-}
+};
 
 /**
  * Resolves the key action (retire / cooldown / none) for a given upstream error.
@@ -50,7 +44,7 @@ export const decideKeyAction = (statusCode) => {
     return classification;
   }
   return 'none';
-}
+};
 
 /**
  * Determines if a request should be retried based on the upstream error.
@@ -62,7 +56,7 @@ export const isRetryable = (statusCode) => {
   // Transport failures retry; status-driven classification drives the rest.
   if (statusCode === undefined) return true;
   return decideKeyAction(statusCode) !== 'none';
-}
+};
 
 /**
  * Resolves the next cooldown delay in seconds for a key that hit a retryable error.
@@ -96,7 +90,7 @@ export const resolveCooldownSeconds = ({
   }
 
   return defaultSeconds ?? 0;
-}
+};
 
 /**
  * Resolves the lifecycle tier label for logging and observability.
@@ -111,4 +105,4 @@ export const resolveLifecycleTier = (statusCode) => {
   if (action === 'cooldown') return 'cooldown';
   if (statusCode === undefined) return 'transport';
   return 'no_action';
-}
+};

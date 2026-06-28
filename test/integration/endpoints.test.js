@@ -154,7 +154,7 @@ describe('Provider Endpoints Integration Tests', () => {
     });
   });
 
-  describe('GET /openai/models & /openai/v1/models', () => {
+  describe('GET /models & /v1/models (OpenAI shape)', () => {
     it('should return models list matching OpenAI schema', async () => {
       const res = await request(app)
         .get('/models')
@@ -196,7 +196,7 @@ describe('Provider Endpoints Integration Tests', () => {
       expect(modelIds).toContain('custom-anthropic/custom-sonnet');
     });
 
-    it('should support the /openai/v1/models dual-path mount', async () => {
+    it('should support the /v1/models dual-path mount (OpenAI)', async () => {
       const res = await request(app)
         .get('/v1/models')
         .set('Authorization', 'Bearer mock-webui-token')
@@ -207,7 +207,7 @@ describe('Provider Endpoints Integration Tests', () => {
     });
   });
 
-  describe('GET /anthropic/models & /anthropic/v1/models', () => {
+  describe('GET /models & /v1/models (Anthropic shape)', () => {
     it('should return models list matching Anthropic schema', async () => {
       const res = await request(app)
         .get('/models')
@@ -248,7 +248,7 @@ describe('Provider Endpoints Integration Tests', () => {
       expect(modelIds).toContain('custom-anthropic/custom-sonnet');
     });
 
-    it('should support the /anthropic/v1/models dual-path mount', async () => {
+    it('should support the /v1/models dual-path mount (Anthropic)', async () => {
       const res = await request(app)
         .get('/v1/models')
         .set('x-api-key', 'mock-webui-token')

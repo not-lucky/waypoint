@@ -8,35 +8,35 @@
  * @param {Function} [getCandidate=(key) => key] - Optional selector for the value to validate.
  * @returns {Array<any>} Filtered valid keys.
  */
-export function filterValidKeys( keys, providerName, logger, getCandidate = ( key ) => key ) {
-  return keys.filter( ( key, index ) => {
-    const candidate = getCandidate( key )
+export function filterValidKeys(keys, providerName, logger, getCandidate = (key) => key) {
+  return keys.filter((key, index) => {
+    const candidate = getCandidate(key);
 
-    if ( candidate == null || ( typeof candidate === 'string' && candidate.trim() === '' ) ) {
+    if (candidate == null || (typeof candidate === 'string' && candidate.trim() === '')) {
       logger.warning(
-        `WARNING: Skipping undefined or empty key for provider '${ providerName }' at index ${ index }.`,
-      )
-      return false
+        `WARNING: Skipping undefined or empty key for provider '${providerName}' at index ${index}.`,
+      );
+      return false;
     }
 
-    return true
-  } )
+    return true;
+  });
 }
 
-export function isCloudflareKeyEntry( entry ) {
-  if ( !entry || typeof entry !== 'object' || Array.isArray( entry ) ) {
-    return false
+export function isCloudflareKeyEntry(entry) {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+    return false;
   }
 
-  const { apiKey, accountId } = entry
+  const { apiKey, accountId } = entry;
   return typeof apiKey === 'string' && apiKey !== ''
-    && typeof accountId === 'string' && accountId !== ''
+    && typeof accountId === 'string' && accountId !== '';
 }
 
-export function getProviderKeyCandidate( entry ) {
-  if ( isCloudflareKeyEntry( entry ) ) {
-    return entry.apiKey
+export function getProviderKeyCandidate(entry) {
+  if (isCloudflareKeyEntry(entry)) {
+    return entry.apiKey;
   }
 
-  return entry
+  return entry;
 }

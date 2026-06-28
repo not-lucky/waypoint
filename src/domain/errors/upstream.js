@@ -10,8 +10,6 @@
  */
 
 
-// ─── Transport classification (preserved for logging/metrics only) ──────────
-
 import { mapGeminiStatusToType } from './geminiErrorTypes.js';
 
 /**
@@ -36,7 +34,7 @@ export const classifyTransportError = (error) => {
   const httpStatus = code === 'read_timeout' ? 504 : 503;
 
   return { code, message: `Upstream connection failed: ${message}`, httpStatus };
-}
+};
 
 /**
  * Parses a Retry-After header value per RFC 7231 (delay-seconds or HTTP-date).
@@ -58,9 +56,7 @@ export const parseRetryAfter = (headerValue) => {
     return Math.max(0, Math.ceil((dateMs - Date.now()) / 1000));
   }
   return undefined;
-}
-
-// ─── UpstreamError class ───────────────────────────────────────────────────
+};
 
 /**
  * Canonical error class for upstream failures.
@@ -105,8 +101,6 @@ export class UpstreamError extends Error {
   }
 }
 
-// ─── Normalization (passthrough) ───────────────────────────────────────────
-
 /**
  * Extracts response headers from an error object.
  *
@@ -124,7 +118,7 @@ const extractResponseHeaders = (error) => {
     return headers;
   }
   return rawHeaders;
-}
+};
 
 /**
  * Resolves the upstream HTTP status from a caught error.
@@ -138,7 +132,7 @@ const resolveStatusCode = (error) => {
   if (typeof error?.status === 'number') return error.status;
   if (typeof error?.response?.status === 'number') return error.response.status;
   return undefined;
-}
+};
 
 /**
  * Normalizes any upstream or transport error into the canonical provider error shape.
@@ -210,9 +204,7 @@ export const normalizeUpstreamError = (error, providerName) => {
     upstreamBody: upstreamBody ?? null,
     transportCode: undefined,
   };
-}
-
-// ─── Stream error helpers ──────────────────────────────────────────────────
+};
 
 /**
  * Resolves the HTTP status code to surface for an inline stream error payload.
@@ -230,7 +222,7 @@ export const resolveStreamErrorStatus = (errorPayload, fallback = 502) => {
   }
   if (typeof err?.status === 'number' && err.status >= 100 && err.status < 600) return err.status;
   return fallback;
-}
+};
 
 /**
  * Builds an UpstreamError from a mid-stream SSE error payload.
@@ -254,7 +246,7 @@ export const createStreamUpstreamError = (upstreamBody, statusCode, provider, he
     provider,
     retryAfterSeconds,
   });
-}
+};
 
 /**
  * Detects inline stream error payloads and throws an UpstreamError when present.
@@ -268,6 +260,6 @@ export const throwIfStreamErrorPayload = (parsedData, provider, headers = {}) =>
   if (!parsedData?.error) return;
   const statusCode = resolveStreamErrorStatus(parsedData);
   throw createStreamUpstreamError(parsedData, statusCode, provider, headers);
-}
+};
 
-export const throwIfGeminiStreamError = throwIfStreamErrorPayload;
+

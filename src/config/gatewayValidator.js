@@ -1,11 +1,11 @@
 /**
  * @fileoverview Validator for the gateway section of configuration.
- * Validates server port, timeouts, routing strategies, and cooldown rules.
+ * Validates server port, timeouts, routing strategies, cooldown rules,
+ * payload size, and CORS configuration.
  * @module config/GatewayValidator
  */
 
-import { isPositiveInteger } from './validationHelpers.js';
-import { logErrorAndExitOrThrow } from './validationErrors.js';
+import { isPositiveInteger, isValidMaxPayloadSize, logErrorAndExitOrThrow } from './validationHelpers.js';
 
 /**
  * Validates the gateway configuration block.
@@ -67,4 +67,26 @@ export const validateGateway = (gateway, shouldExit) => {
       );
     }
   }
+
+  if (gateway.maxPayloadSize !== undefined) {
+    if (!isValidMaxPayloadSize(gateway.maxPayloadSize)) {
+      logErrorAndExitOrThrow("Invalid 'gateway.maxPayloadSize'. Must be a positive integer or bytes string (e.g. '10mb').", shouldExit);
+    }
+  }
+
+  if (gateway.cors !== undefined) {
+    if (typeof gateway.cors !== 'object' || gateway.cors === null) {
+      logErrorAndExitOrThrow("Invalid 'gateway.cors'. Must be an object.", shouldExit);
+    }
+    const { allowedOrigins } = gateway.cors;
+    if (allowedOrigins !== undefined) {
+      if (!Array.isArray(allowedOrigins)) {
+        logErrorAndExitOrThrow("Invalid 'gateway.cors.allowedOrigins'. Must be an array.", shouldExit);
+      }
+      if (allowedOrigins.some(origin => typeof origin !== 'string')) {
+        logErrorAndExitOrThrow("Invalid 'gateway.cors.allowedOrigins'. All origins must be strings.", shouldExit);
+      }
+    }
+  }
+  // If cors is missing (or allowedOrigins is empty), CORS headers are not added.
 };

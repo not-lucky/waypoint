@@ -1,8 +1,28 @@
-import { logErrorAndExitOrThrow } from './validationErrors.js';
+import { getAppLogger } from '../infrastructure/logging/logger.js';
+
+const logger = getAppLogger('config');
+
+export const logErrorAndExitOrThrow = (msg, shouldExit) => {
+  if (shouldExit) {
+    logger.fatal(`FATAL ERROR: ${msg}`);
+    process.exit(1);
+  }
+  throw new Error(msg);
+};
 
 export const isPositiveInteger = (val) => Number.isInteger(val) && val > 0;
 
 export const isNonEmptyString = (val) => typeof val === 'string' && val.trim() !== '';
+
+export const isValidMaxPayloadSize = (val) => {
+  if (typeof val === 'number') {
+    return Number.isInteger(val) && val > 0;
+  }
+  if (typeof val === 'string' && val.trim() !== '') {
+    return /^\d+(?:\.\d+)?\s*(?:b|kb|mb|gb|tb)?$/i.test(val.trim());
+  }
+  return false;
+};
 
 const matchesModelId = (model, fallbackModelId) => (
   model.id === fallbackModelId

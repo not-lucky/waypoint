@@ -1,7 +1,7 @@
 import { formatAnthropicSseError } from '../../../domain/errors/envelope.js';
-import { startSSEStream } from '../../../utils/streaming/sseUtils.js';
 import { FORMATS, translateRequest, translateResponse } from '../../transforms/index.js';
 import { StreamAccumulator } from '../../../utils/streaming/streamAccumulator.js';
+import { startSSEStream } from '../../../utils/streaming/sseSetup.js';
 import { BaseController } from '../base.js';
 
 const STOP_REASON_MAP = {
@@ -50,10 +50,12 @@ export class AnthropicController extends BaseController {
     const accumulator = new StreamAccumulator(msgId, unifiedReq.model);
 
     const transitionBlock = (newBlockType, toolMeta = null) => {
-      if (activeBlockType === newBlockType
-        && newBlockType !== 'tool_use'
-        && activeBlockType !== 'tool_use') {
-        return;
+      if (activeBlockType === newBlockType) {
+        if (newBlockType !== 'tool_use') return;
+        const sameTool =
+          (activeToolMeta?.id || '') === (toolMeta?.id || '')
+          && (activeToolMeta?.name || '') === (toolMeta?.name || '');
+        if (sameTool) return;
       }
 
       if (activeBlockType !== null) {
@@ -199,9 +201,6 @@ export class AnthropicController extends BaseController {
       });
     } catch (err) {
       this.logger.debug('Anthropic SSE response stream aborted or failed', { chunkCount, error: err.message });
-      // Upstream format is best-effort: the orchestrator's normalized response doesn't
-      // carry the upstream format; we default to OPENAI since the unified shape is
-      // OpenAI-shaped after the orchestrator returns.
       this.emitStreamError(
         res,
         reqLog,

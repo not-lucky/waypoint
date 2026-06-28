@@ -90,9 +90,6 @@ export class ProviderFactory {
   }
 }
 
-// Register default adapter strategies
-
-// Gemini Strategy
 ProviderFactory.registerStrategy({
   match: (name) => name === 'gemini',
   create: (name, provider, timeouts) => new GeminiAdapter({
@@ -103,7 +100,6 @@ ProviderFactory.registerStrategy({
   }),
 });
 
-// Anthropic Strategy
 ProviderFactory.registerStrategy({
   match: (name, provider) => name === 'anthropic' || provider?.type === 'anthropic-compatible',
   create: (name, provider, timeouts) => new AnthropicAdapter({
@@ -114,7 +110,6 @@ ProviderFactory.registerStrategy({
   }),
 });
 
-// Cloudflare Strategy
 ProviderFactory.registerStrategy({
   match: (name) => name === 'cloudflare',
   create: (name, provider, timeouts) => new OpenAICompatibleAdapter({
@@ -125,7 +120,6 @@ ProviderFactory.registerStrategy({
   }),
 });
 
-// Default OpenAI & Custom Strategy
 ProviderFactory.registerStrategy({
   match: () => true,
   create: (name, provider, timeouts) => new OpenAICompatibleAdapter({

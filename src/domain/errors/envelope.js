@@ -14,20 +14,24 @@ import { FORMATS } from '../../adapters/transforms/index.js';
 /**
  * Builds the protocol-specific client envelope from a flat error descriptor.
  *
- * @param {Object|undefined} argsOrDescriptor
+ * @param {Object} descriptor
+ * @param {string} [descriptor.message]
+ * @param {string} [descriptor.errorCode]
+ * @param {string} [descriptor.errorType]
+ * @param {string} [descriptor.param]
+ * @param {Object} [descriptor.details]
  * @param {string} [targetFormat=FORMATS.OPENAI]
  * @returns {Object}
  */
-export function buildClientErrorEnvelope(argsOrDescriptor = {}, targetFormat = FORMATS.OPENAI) {
-  const d = argsOrDescriptor || {};
-  const message = d.message || 'Request failed';
-  const errorCode = d.errorCode || d.code || 'upstream_error';
+export function buildClientErrorEnvelope(descriptor = {}, targetFormat = FORMATS.OPENAI) {
+  const message = descriptor.message || 'Request failed';
+  const errorCode = descriptor.errorCode || 'upstream_error';
 
   if (targetFormat === FORMATS.ANTHROPIC) {
     return {
       type: 'error',
       error: {
-        type: d.errorType || 'api_error',
+        type: descriptor.errorType || 'api_error',
         message,
       },
     };
@@ -36,10 +40,10 @@ export function buildClientErrorEnvelope(argsOrDescriptor = {}, targetFormat = F
   return {
     error: {
       message,
-      type: d.errorType || 'api_error',
-      param: d.param || null,
+      type: descriptor.errorType || 'api_error',
+      param: descriptor.param || null,
       code: errorCode,
-      ...(d.details ? { details: d.details } : {}),
+      ...(descriptor.details ? { details: descriptor.details } : {}),
     },
   };
 }

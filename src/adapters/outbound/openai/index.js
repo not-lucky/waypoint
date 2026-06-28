@@ -10,9 +10,6 @@ import {
 } from '../shared/openaiResponse.js';
 import { throwIfStreamErrorPayload } from '../../../domain/errors/upstream.js';
 
-// Tag pair used to delimit reasoning embedded inline in the assistant `content`.
-// `startTag` is emitted when the model transitions from "text" to "thinking";
-// `endTag` marks the return to "text" and is consumed by the stream buffer.
 const THINK_BLOCK_TAGS = Object.freeze({
   startTag: '<think>',
   endTag: '</think>',

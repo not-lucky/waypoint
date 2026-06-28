@@ -104,15 +104,12 @@ const compactTimestampWindow = (timestamps) => {
   if (headIndex <= 0) return;
 
   if (headIndex >= timestamps.length) {
-     
     timestamps.length = 0;
     setWindowHeadIndex(timestamps, 0);
     return;
   }
 
-   
   timestamps.copyWithin(0, headIndex);
-   
   timestamps.length -= headIndex;
   setWindowHeadIndex(timestamps, 0);
 };
@@ -217,14 +214,12 @@ teardownRegistry.add((loggerInstance) => {
 export const rateLimiter = (req, res, next) => {
   const { client } = req;
   logger.debug('Rate limiter check initiated', { clientName: client?.name });
-  // Bypass rate limiting if the client profile or limits are not present.
   if (!client || !client.name || !client.rateLimit) {
     logger.debug('Rate limiter bypassed: missing client name or rate limit config');
     return next();
   }
 
   const { windowMs, max } = client.rateLimit;
-  // Ensure that both rate limit parameters are numeric before proceeding.
   if (typeof windowMs !== 'number' || typeof max !== 'number') {
     logger.debug('Rate limiter bypassed: invalid non-numeric rate limit params');
     return next();
@@ -233,18 +228,12 @@ export const rateLimiter = (req, res, next) => {
   const clientName = client.name;
   const now = Date.now();
 
-  // Initialize the timestamp list for the client if it does not exist yet.
   if (!clientWindows.has(clientName)) {
     clientWindows.set(clientName, createTimestampWindow());
   }
 
   const timestamps = clientWindows.get(clientName);
 
-  // Prune expired timestamps to prevent memory leaks and maintain correct sliding count.
-  // A timestamp is expired if it falls outside the range [now - windowMs, now].
-  // Since timestamps are appended in chronological order, they are naturally sorted.
-  // We locate the first timestamp that is within the window, then prune all expired ones in-place.
-  // This is highly efficient and minimizes object creation overhead.
   const cutoff = now - windowMs;
   let headIndex = getWindowHeadIndex(timestamps);
   while (headIndex < timestamps.length && timestamps[headIndex] <= cutoff) {
@@ -255,14 +244,11 @@ export const rateLimiter = (req, res, next) => {
 
   const activeCount = getActiveWindowSize(timestamps);
 
-  // If the number of requests in the active window meets or exceeds max, block the request.
-  // Returns HTTP 429 Too Many Requests per standard API conventions.
   if (activeCount >= max) {
     logger.debug('Rate limit exceeded: blocking request', { clientName, max, currentCount: activeCount });
     return sendHttpError(res, req, 429, 'rateLimitExceeded', 'Rate limit exceeded.');
   }
 
-  // Record the current request's timestamp.
   logger.debug('Rate limit checked: request allowed', { clientName, max, currentCount: activeCount + 1 });
   timestamps.push(now);
   return next();

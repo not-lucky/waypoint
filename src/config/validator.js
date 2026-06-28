@@ -5,15 +5,15 @@
  * @module config/validator
  */
 
-import { getAppLogger } from '../infrastructure/logging/logger.js'
-import { logErrorAndExitOrThrow } from './validationErrors.js'
-import { RESERVED_PROVIDERS } from './configUtils.js'
-import { validateGateway } from './gatewayValidator.js'
-import { validateClients } from './clientValidator.js'
-import { validateLogging } from './loggingValidator.js'
-import { ProviderValidator } from './providerValidator.js'
+import { getAppLogger } from '../infrastructure/logging/logger.js';
+import { logErrorAndExitOrThrow } from './validationHelpers.js';
+import { RESERVED_PROVIDERS } from './configUtils.js';
+import { validateGateway } from './gatewayValidator.js';
+import { validateClients } from './clientValidator.js';
+import { validateLogging } from './loggingValidator.js';
+import { ProviderValidator } from './providerValidator.js';
 
-const logger = getAppLogger( 'config' )
+const logger = getAppLogger('config');
 
 /**
  * Validates the entire application configuration object.
@@ -29,17 +29,17 @@ export const validateConfig = (
   shouldExit = true,
   reservedProviders = RESERVED_PROVIDERS,
 ) => {
-  if ( !config ) {
-    logErrorAndExitOrThrow( 'Configuration object is null or undefined.', shouldExit )
+  if (!config) {
+    logErrorAndExitOrThrow('Configuration object is null or undefined.', shouldExit);
   }
 
-  const providerValidator = new ProviderValidator( reservedProviders )
+  const providerValidator = new ProviderValidator(reservedProviders);
 
-  validateGateway( config.gateway, shouldExit )
-  validateClients( config.clients, shouldExit )
-  validateLogging( config.logging, shouldExit )
-  const processedProviders = providerValidator.validate( config.providers, shouldExit )
-  config.providers = processedProviders
+  validateGateway(config.gateway, shouldExit);
+  validateClients(config.clients, shouldExit);
+  validateLogging(config.logging, shouldExit);
+  const processedProviders = providerValidator.validate(config.providers, shouldExit);
+  config.providers = processedProviders;
 
-  logger.debug( 'Configuration validation passed successfully' )
-}
+  logger.debug('Configuration validation passed successfully');
+};

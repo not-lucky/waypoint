@@ -1,7 +1,7 @@
-import js from '@eslint/js'
-import importXPlugin from 'eslint-plugin-import-x'
-import nPlugin from 'eslint-plugin-n'
-import globals from 'globals'
+import js from '@eslint/js';
+import importXPlugin from 'eslint-plugin-import-x';
+import nPlugin from 'eslint-plugin-n';
+import globals from 'globals';
 
 export default [
   js.configs.recommended,
@@ -39,6 +39,7 @@ export default [
       'n/no-unsupported-features/node-builtins': [ 'error', {
         version: '>=24.0.0',
       } ],
+      'semi': [ 'error', 'always' ],
     },
   },
   {
@@ -85,7 +86,13 @@ export default [
     },
   },
   {
-    files: [ 'src/infrastructure/web/server.js', 'src/infrastructure/lifecycle/lifecycle.js', 'src/config/validationErrors.js' ],
+    files: [ 'src/infrastructure/web/server.js', 'src/infrastructure/lifecycle/lifecycle.js' ],
+    rules: {
+      'n/no-process-exit': 'off',
+    },
+  },
+  {
+    files: [ 'src/config/validationHelpers.js' ],
     rules: {
       'n/no-process-exit': 'off',
     },
@@ -108,4 +115,4 @@ export default [
       'no-useless-assignment': 'off',
     },
   },
-]
+];

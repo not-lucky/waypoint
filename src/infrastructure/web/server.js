@@ -15,6 +15,7 @@ const FATAL_EXIT_CODE = 1;
 
 const logFatal = async (err) => {
   // LogTape may not be wired yet (e.g. config load failure), so fall back to stderr.
+  // This is a last-resort fallback for bootstrap failures before logging is configured.
   console.error(`[FATAL] Waypoint bootstrap failed: ${err?.stack || err?.message || err}`);
   try {
     await flushLogs();
@@ -24,6 +25,8 @@ const logFatal = async (err) => {
 };
 
 const handleUncaught = (source) => async (err) => {
+  // Use console.error as a fallback when LogTape might be unavailable or corrupted.
+  // This is a safety net for catastrophic failures during the request lifecycle.
   console.error(`[FATAL] Unhandled ${source} during request lifecycle:`, err);
   try {
     await flushLogs();

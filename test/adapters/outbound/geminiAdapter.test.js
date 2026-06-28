@@ -116,6 +116,40 @@ describe('GeminiAdapter Tests', () => {
     });
   });
 
+  it('preserves slash-containing actualModelId values for non-reasoning completions', async () => {
+    const adapter = new GeminiAdapter({});
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        candidates: [
+          {
+            content: {
+              parts: [{ text: 'resource-backed response' }],
+            },
+            finishReason: 'STOP',
+            index: 0,
+          },
+        ],
+      }),
+    });
+
+    const req = {
+      model: 'gemini/public-name',
+      actualModelId: 'tunedModels/custom/model',
+      messages: [{ role: 'user', content: 'hello' }],
+    };
+
+    await adapter.generateCompletion(req, 'gemini-key');
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://generativelanguage.googleapis.com/v1beta/models/tunedModels/custom/model:generateContent?key=gemini-key',
+      expect.objectContaining({
+        method: 'POST',
+      }),
+    );
+  });
+
   it('assert: normalizeError passes through upstream status codes', () => {
     const adapter = new GeminiAdapter({});
 
@@ -202,6 +236,39 @@ describe('GeminiAdapter Tests', () => {
     expect(chunks).toHaveLength(2);
     expect(chunks[0].choices[0].delta.content).toBe('hello');
     expect(chunks[1].choices[0].finish_reason).toBe('stop');
+  });
+
+  it('preserves slash-containing actualModelId values for standard Gemini streaming', async () => {
+    const adapter = new GeminiAdapter({});
+
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode('data: {"candidates": [{"finishReason": "STOP"}]}\n\n');
+      },
+    };
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: mockBody,
+    });
+
+    const req = {
+      model: 'gemini/public-name',
+      actualModelId: 'projects/demo/locations/us-central1/models/custom-model',
+      messages: [],
+    };
+
+    for await (const chunk of adapter.generateStream(req, 'gemini-key', new AbortController().signal)) {
+      // Stream body is intentionally empty; this just drives the request path.
+    }
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://generativelanguage.googleapis.com/v1beta/models/projects/demo/locations/us-central1/models/custom-model:streamGenerateContent?alt=sse&key=gemini-key',
+      expect.objectContaining({
+        method: 'POST',
+      }),
+    );
   });
 
   it('assert: reasoningSupported true without reasoningEffort uses default thinking level medium', async () => {

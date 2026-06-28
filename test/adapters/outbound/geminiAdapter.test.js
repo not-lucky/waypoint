@@ -44,7 +44,7 @@ describe('GeminiAdapter Tests', () => {
 
     const req = {
       model: 'gemini/gemini-2.5-pro',
-      actualModelId: 'gemini-2.5-pro',
+      modelid: 'gemini-2.5-pro',
       messages: [{ role: 'user', content: 'hello' }],
       reasoningSupported: true,
       reasoningEffort: 'low',
@@ -103,7 +103,7 @@ describe('GeminiAdapter Tests', () => {
 
     const req = {
       model: 'gemini/gemini-2.5-pro',
-      actualModelId: 'gemini-2.5-pro',
+      modelid: 'gemini-2.5-pro',
       messages: [{ role: 'user', content: 'hello' }],
     };
 
@@ -116,7 +116,7 @@ describe('GeminiAdapter Tests', () => {
     });
   });
 
-  it('preserves slash-containing actualModelId values for non-reasoning completions', async () => {
+  it('preserves slash-containing modelid values for non-reasoning completions', async () => {
     const adapter = new GeminiAdapter({});
 
     mockFetch.mockResolvedValue({
@@ -136,7 +136,7 @@ describe('GeminiAdapter Tests', () => {
 
     const req = {
       model: 'gemini/public-name',
-      actualModelId: 'tunedModels/custom/model',
+      modelid: 'tunedModels/custom/model',
       messages: [{ role: 'user', content: 'hello' }],
     };
 
@@ -224,7 +224,7 @@ describe('GeminiAdapter Tests', () => {
 
     const req = {
       model: 'gemini/gemini-2.5-pro',
-      actualModelId: 'gemini-2.5-pro',
+      modelid: 'gemini-2.5-pro',
       messages: [],
     };
 
@@ -238,7 +238,7 @@ describe('GeminiAdapter Tests', () => {
     expect(chunks[1].choices[0].finish_reason).toBe('stop');
   });
 
-  it('preserves slash-containing actualModelId values for standard Gemini streaming', async () => {
+  it('preserves slash-containing modelid values for standard Gemini streaming', async () => {
     const adapter = new GeminiAdapter({});
 
     const mockBody = {
@@ -255,7 +255,7 @@ describe('GeminiAdapter Tests', () => {
 
     const req = {
       model: 'gemini/public-name',
-      actualModelId: 'projects/demo/locations/us-central1/models/custom-model',
+      modelid: 'projects/demo/locations/us-central1/models/custom-model',
       messages: [],
     };
 
@@ -283,7 +283,7 @@ describe('GeminiAdapter Tests', () => {
 
     const req = {
       model: 'gemini/gemini-2.5-pro',
-      actualModelId: 'gemini-2.5-pro',
+      modelid: 'gemini-2.5-pro',
       messages: [],
       reasoningSupported: true,
     };
@@ -310,7 +310,7 @@ describe('GeminiAdapter Tests', () => {
 
     const req = {
       model: 'gemini/gemini-2.5-pro',
-      actualModelId: 'gemini-2.5-pro',
+      modelid: 'gemini-2.5-pro',
       messages: [],
       reasoningSupported: true,
       reasoningEffort: 'high',
@@ -344,7 +344,7 @@ describe('GeminiAdapter Tests', () => {
 
     const req = {
       model: 'gemini/gemini-2.5-pro',
-      actualModelId: 'gemini-2.5-pro',
+      modelid: 'gemini-2.5-pro',
       messages: [],
       reasoningSupported: true,
       reasoningEffort: 'high',
@@ -389,7 +389,7 @@ describe('GeminiAdapter Tests', () => {
     const adapter = new GeminiAdapter({});
     const req = {
       model: 'gemini/gemini-2.5-pro',
-      actualModelId: 'gemini-2.5-pro',
+      modelid: 'gemini-2.5-pro',
       messages: [],
     };
     const controller = new AbortController();
@@ -432,7 +432,7 @@ describe('GeminiAdapter Tests', () => {
 
     const req = {
       model: 'gemini/gemini-flash-lite-latest',
-      actualModelId: 'gemini-flash-lite-latest',
+      modelid: 'gemini-flash-lite-latest',
       messages: [],
       reasoningSupported: true,
     };
@@ -461,7 +461,7 @@ describe('GeminiAdapter Tests', () => {
 
     const req = {
       model: 'gemini/gemini-flash-lite-latest',
-      actualModelId: 'gemini-flash-lite-latest',
+      modelid: 'gemini-flash-lite-latest',
       messages: [],
       reasoningSupported: true,
     };

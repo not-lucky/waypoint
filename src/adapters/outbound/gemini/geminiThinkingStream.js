@@ -5,8 +5,8 @@ import { mapUsage } from '../shared/openaiResponse.js';
 import { ThinkingBuffer } from '../../../utils/streaming/thinkingBuffer.js';
 
 const resolveGeminiModelId = (req) => {
-  if (typeof req?.actualModelId === 'string' && req.actualModelId.trim() !== '') {
-    return req.actualModelId;
+  if (typeof req?.modelid === 'string' && req.modelid.trim() !== '') {
+    return req.modelid;
   }
   return (req?.model || '').split('/').pop();
 };

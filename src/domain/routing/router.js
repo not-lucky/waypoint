@@ -1,8 +1,3 @@
-const findModelInProvider = (modelPart, models) => {
-  const match = models.find((m) => m.id === modelPart || m.aliases?.includes(modelPart));
-  if (match) return match;
-  return { id: modelPart };
-};
 
 const INHERITED_PROVIDER_MODEL_KEYS = [
   'extractReasoningFromThinkBlocks',
@@ -45,39 +40,60 @@ const saveToCache = (providersConfig, modelName, resolved) => {
 };
 
 const resolveModelConfig = (modelName, providersConfig) => {
+  // Step 1: Check if the input model starts with providerName/ for any configured provider
   if (modelName.includes('/')) {
-    const [providerPart, ...rest] = modelName.split('/');
-    const cleanProvider = providerPart.trim();
-    const providerConf = providersConfig[cleanProvider];
-    if (!providerConf) return null;
+    const firstSlashIndex = modelName.indexOf('/');
+    const providerPart = modelName.substring(0, firstSlashIndex).trim();
+    const modelPart = modelName.substring(firstSlashIndex + 1).trim();
 
-    const modelPart = rest.join('/').trim();
-    const models = providerConf.models || [];
+    const providerConf = providersConfig[providerPart];
+    if (providerConf) {
+      const models = providerConf.models || [];
+      const match = models.find((m) => m.modelid === modelPart || m.aliases?.includes(modelPart));
+      if (match) {
+        return {
+          provider: providerPart,
+          modelConfig: applyProviderModelInheritance(providerConf, match),
+        };
+      }
+    }
+  }
+
+  // Step 2: Perform an exact check on modelid or aliases globally across all providers
+  const providerEntries = Object.entries(providersConfig);
+  const matchEntry = providerEntries.find(([, pConf]) => (pConf.models || []).some(
+    (m) => m.modelid === modelName || m.aliases?.includes(modelName),
+  ));
+
+  if (matchEntry) {
+    const [pName, pConf] = matchEntry;
+    const match = (pConf.models || []).find(
+      (m) => m.modelid === modelName || m.aliases?.includes(modelName),
+    );
+
     return {
-      provider: cleanProvider,
-      modelConfig: applyProviderModelInheritance(
-        providerConf,
-        findModelInProvider(modelPart, models),
-      ),
+      provider: pName,
+      modelConfig: applyProviderModelInheritance(pConf, match),
     };
   }
 
-  const providerEntries = Object.entries(providersConfig);
-  const matchEntry = providerEntries.find(([, pConf]) => (pConf.models || []).some(
-    (m) => m.id === modelName || m.aliases?.includes(modelName),
-  ));
+  // Step 3: Fallback path - if input contains / and starts with a valid provider name,
+  // return a dynamic model config object for that provider
+  if (modelName.includes('/')) {
+    const firstSlashIndex = modelName.indexOf('/');
+    const providerPart = modelName.substring(0, firstSlashIndex).trim();
+    const modelPart = modelName.substring(firstSlashIndex + 1).trim();
 
-  if (!matchEntry) return null;
+    const providerConf = providersConfig[providerPart];
+    if (providerConf) {
+      return {
+        provider: providerPart,
+        modelConfig: applyProviderModelInheritance(providerConf, { modelid: modelPart }),
+      };
+    }
+  }
 
-  const [pName, pConf] = matchEntry;
-  const match = (pConf.models || []).find(
-    (m) => m.id === modelName || m.aliases?.includes(modelName),
-  );
-
-  return {
-    provider: pName,
-    modelConfig: applyProviderModelInheritance(pConf, match),
-  };
+  return null;
 };
 
 /**

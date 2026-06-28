@@ -15,8 +15,7 @@ describe('Model-Level Defaults, Overrides, and Reasoning Unit Tests', () => {
           keys: ['api-key'],
           models: [
             {
-              id: 'custom-model-low',
-              actualModelId: 'gemini-flash-lite-latest',
+              modelid: 'custom-model-low',
               reasoningSupported: true,
               temperature: 0.5,
               maxTokens: 100,
@@ -42,7 +41,7 @@ describe('Model-Level Defaults, Overrides, and Reasoning Unit Tests', () => {
           keys: ['api-key'],
           models: [
             {
-              id: 'MiniMax-M3',
+              modelid: 'MiniMax-M3',
             },
           ],
         },
@@ -59,7 +58,7 @@ describe('Model-Level Defaults, Overrides, and Reasoning Unit Tests', () => {
           keys: ['api-key'],
           models: [
             {
-              id: 'MiniMax-M3',
+              modelid: 'MiniMax-M3',
             },
           ],
         },
@@ -68,19 +67,18 @@ describe('Model-Level Defaults, Overrides, and Reasoning Unit Tests', () => {
       expect(() => validator.validate(providers, false, null)).toThrow(/extractReasoningFromThinkBlocks/);
     });
 
-    it('should reject invalid actualModelId type', () => {
+    it('should reject invalid modelid type', () => {
       const providers = {
         gemini: {
           keys: ['api-key'],
           models: [
             {
-              id: 'custom-model',
-              actualModelId: 1234,
+              modelid: 1234,
             },
           ],
         },
       };
-      expect(() => validator.validate(providers, false, null)).toThrow(/actualModelId/);
+      expect(() => validator.validate(providers, false, null)).toThrow(/Missing or empty model 'modelid'/);
     });
 
     it('should reject invalid reasoningSupported type', () => {
@@ -89,7 +87,7 @@ describe('Model-Level Defaults, Overrides, and Reasoning Unit Tests', () => {
           keys: ['api-key'],
           models: [
             {
-              id: 'custom-model',
+              modelid: 'custom-model',
               reasoningSupported: 'yes',
             },
           ],
@@ -104,7 +102,7 @@ describe('Model-Level Defaults, Overrides, and Reasoning Unit Tests', () => {
           keys: ['api-key'],
           models: [
             {
-              id: 'custom-model',
+              modelid: 'custom-model',
               invalid_key: true,
             },
           ],
@@ -119,7 +117,7 @@ describe('Model-Level Defaults, Overrides, and Reasoning Unit Tests', () => {
           keys: ['api-key'],
           models: [
             {
-              id: 'custom-model',
+              modelid: 'custom-model',
               defaults: {
                 temperature: 0.5,
               },
@@ -136,7 +134,7 @@ describe('Model-Level Defaults, Overrides, and Reasoning Unit Tests', () => {
           keys: ['api-key'],
           models: [
             {
-              id: 'custom-model',
+              modelid: 'custom-model',
               overrides: {
                 temperature: 2.5,
               },
@@ -153,7 +151,7 @@ describe('Model-Level Defaults, Overrides, and Reasoning Unit Tests', () => {
           keys: ['api-key'],
           models: [
             {
-              id: 'custom-model',
+              modelid: 'custom-model',
               maxTokens: 123.45,
             },
           ],
@@ -168,7 +166,7 @@ describe('Model-Level Defaults, Overrides, and Reasoning Unit Tests', () => {
           keys: ['api-key'],
           models: [
             {
-              id: 'custom-model',
+              modelid: 'custom-model',
               overrides: {
                 reasoningEffort: 'ultra-high',
               },
@@ -190,7 +188,7 @@ describe('Model-Level Defaults, Overrides, and Reasoning Unit Tests', () => {
             keys: ['api-key'],
             models: [
               {
-                id: 'custom-model',
+                modelid: 'custom-model',
                 maxTokens: '500',
                 overrides: {
                   maxTokens: '1000',
@@ -209,8 +207,7 @@ describe('Model-Level Defaults, Overrides, and Reasoning Unit Tests', () => {
 
   describe('RequestTransformer Precedence Hierarchy', () => {
     const modelConfig = {
-      id: 'custom-model',
-      actualModelId: 'gemini-flash-lite-latest',
+      modelid: 'custom-model',
       reasoningSupported: true,
       temperature: 0.3,
       maxTokens: 500,
@@ -291,26 +288,26 @@ describe('Model-Level Defaults, Overrides, and Reasoning Unit Tests', () => {
         // Gemini 3.1 Pro: maps minimal/low to low, medium to medium, high/xhigh/max to high
         const reqProMinimal = {
           reasoningEffort: 'minimal',
-          actualModelId: 'gemini-3.1-pro',
+          modelid: 'gemini-3.1-pro',
         };
         expect(getThinkingLevel(reqProMinimal)).toBe('low');
 
         const reqProHigh = {
           reasoningEffort: 'high',
-          actualModelId: 'gemini-3.1-pro',
+          modelid: 'gemini-3.1-pro',
         };
         expect(getThinkingLevel(reqProHigh)).toBe('high');
 
         // Gemini 3.1 Flash-Lite: minimal->minimal, low->low, medium->medium, high/xhigh/max->high
         const reqLiteMinimal = {
           reasoningEffort: 'minimal',
-          actualModelId: 'gemini-3.1-flash-lite',
+          modelid: 'gemini-3.1-flash-lite',
         };
         expect(getThinkingLevel(reqLiteMinimal)).toBe('minimal');
 
         const reqLiteLow = {
           reasoningEffort: 'low',
-          actualModelId: 'gemini-3.1-flash-lite',
+          modelid: 'gemini-3.1-flash-lite',
         };
         expect(getThinkingLevel(reqLiteLow)).toBe('low');
       });
@@ -321,8 +318,7 @@ describe('Model-Level Defaults, Overrides, and Reasoning Unit Tests', () => {
     it('should apply fallback model config settings correctly and avoid pollution', () => {
       // Replicate what runOrchestrationLoop and updateRequestWithModelConfig do
       const primaryConfig = {
-        id: 'gemini-flash-lite-latest-high',
-        actualModelId: 'gemini-flash-lite-latest',
+        modelid: 'gemini-flash-lite-latest-high',
         reasoningSupported: true,
         overrides: {
           reasoningEffort: 'high',
@@ -330,8 +326,7 @@ describe('Model-Level Defaults, Overrides, and Reasoning Unit Tests', () => {
       };
 
       const fallbackConfig = {
-        id: 'openai/gpt-4o',
-        actualModelId: 'gpt-4o',
+        modelid: 'openai/gpt-4o',
         reasoningSupported: false,
       };
 
@@ -341,7 +336,7 @@ describe('Model-Level Defaults, Overrides, and Reasoning Unit Tests', () => {
 
       const unifiedReq = transformRequest(baseReq, resolvedPrimary);
       expect(unifiedReq.provider).toBe('gemini');
-      expect(unifiedReq.actualModelId).toBe('gemini-flash-lite-latest');
+      expect(unifiedReq.modelid).toBe('gemini-flash-lite-latest-high');
       expect(unifiedReq.reasoningEffort).toBe('high');
       expect(unifiedReq.reasoningSupported).toBe(true);
 
@@ -360,14 +355,14 @@ describe('Model-Level Defaults, Overrides, and Reasoning Unit Tests', () => {
       let req = {
         ...base,
         provider: resolvedFallback.provider,
-        actualModelId: fallbackConfig.actualModelId || fallbackConfig.id,
+        modelid: fallbackConfig.modelid,
       };
 
       req = applyModelConfigToRequest(req, fallbackConfig);
 
       // Verify the fallback request has the correct settings and NO polluted settings from primary!
       expect(req.provider).toBe('openai');
-      expect(req.actualModelId).toBe('gpt-4o');
+      expect(req.modelid).toBe('openai/gpt-4o');
       // reasoningSupported is false on the fallback model config
       expect(req.reasoningSupported).toBe(false);
       // reasoningEffort from primary is completely wiped/not present!

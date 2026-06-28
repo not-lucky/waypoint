@@ -66,19 +66,19 @@ providers:
     keys:
       - "gemini-key"
     models:
-      - id: "gemini-2.5-pro-preview-05-06"
+      - modelid: "gemini-2.5-pro-preview-05-06"
         aliases: ["gemini-pro"]
   anthropic:
     keys:
       - "anthropic-key"
     models:
-      - id: "claude-sonnet-4"
+      - modelid: "claude-sonnet-4"
         aliases: ["sonnet"]
   openai:
     keys:
       - "openai-key"
     models:
-      - id: "gpt-4o"
+      - modelid: "gpt-4o"
         aliases: ["gpt4"]
 `;
 }
@@ -107,14 +107,14 @@ providers:
     keys:
       - "gemini-key"
     models:
-      - id: "gemini-flash-lite-latest-low"
-        actualModelId: "gemini-flash-lite-latest"
+      - modelid: "gemini-flash-lite-latest"
+        aliases: ["gemini-flash-lite-latest-low"]
         reasoningSupported: true
         temperature: 0.3
         maxTokens: 4096
         reasoningEffort: "low"
-      - id: "gemini-flash-lite-latest-high"
-        actualModelId: "gemini-flash-lite-latest"
+      - modelid: "gemini-flash-lite-latest"
+        aliases: ["gemini-flash-lite-latest-high"]
         reasoningSupported: true
         overrides:
           reasoningEffort: "high"
@@ -126,7 +126,7 @@ providers:
     keys:
       - "custom-key"
     models:
-      - id: "custom-model"
+      - modelid: "custom-model"
         aliases: ["custom-alias"]
 `;
 }

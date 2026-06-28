@@ -48,7 +48,7 @@ providers:
     keys:
       - "openai-key-1"
     models:
-      - id: "gpt-4o"
+      - modelid: "gpt-4o"
         reasoningSupported: false
 `;
 }

@@ -39,7 +39,7 @@ describe('Configuration Validation Tests', () => {
       providers: {
         gemini: {
           keys: ['gemini-key-1'],
-          models: [{ id: 'gemini-2.5-pro', aliases: ['gemini-2.5-pro'] }],
+          models: [{ modelid: 'gemini-2.5-pro', aliases: ['gemini-2.5-pro'] }],
         },
       },
     };
@@ -84,7 +84,7 @@ describe('Configuration Validation Tests', () => {
     const missingBaseUrl = getBaseValidConfig();
     missingBaseUrl.providers.custom = {
       keys: ['key'],
-      models: [{ id: 'model' }],
+      models: [{ modelid: 'model' }],
     };
     expect(() => validateConfig(missingBaseUrl)).toThrow('process.exit called');
 
@@ -93,7 +93,7 @@ describe('Configuration Validation Tests', () => {
       baseUrl: 'https://example.com',
       type: 'llm-compatible',
       keys: ['key'],
-      models: [{ id: 'model' }],
+      models: [{ modelid: 'model' }],
     };
     expect(() => validateConfig(invalidType)).toThrow('process.exit called');
   });
@@ -105,7 +105,7 @@ describe('Configuration Validation Tests', () => {
         apiKey: 'cf-api-key',
         accountId: 'cf-account-id',
       }],
-      models: [{ id: '@cf/meta/llama-3.1-8b-instruct' }],
+      models: [{ modelid: '@cf/meta/llama-3.1-8b-instruct' }],
     };
 
     expect(() => validateConfig(config)).not.toThrow();
@@ -117,7 +117,7 @@ describe('Configuration Validation Tests', () => {
       keys: [{
         apiKey: 'cf-api-key',
       }],
-      models: [{ id: '@cf/meta/llama-3.1-8b-instruct' }],
+      models: [{ modelid: '@cf/meta/llama-3.1-8b-instruct' }],
     };
 
     expect(() => validateConfig(config)).toThrow('process.exit called');
@@ -133,7 +133,7 @@ describe('Configuration Validation Tests', () => {
         apiKey: 'cf-api-key',
         accountId: 'cf-account-id',
       }],
-      models: [{ id: '@cf/meta/llama-3.1-8b-instruct' }],
+      models: [{ modelid: '@cf/meta/llama-3.1-8b-instruct' }],
     };
 
     expect(() => validateConfig(config)).not.toThrow();
@@ -151,7 +151,7 @@ describe('Configuration Validation Tests', () => {
     validFallback.providers.gemini.models[0].fallbackModel = 'openai/gpt-4o';
     validFallback.providers.openai = {
       keys: ['openai-key'],
-      models: [{ id: 'gpt-4o' }],
+      models: [{ modelid: 'gpt-4o' }],
     };
     expect(() => validateConfig(validFallback)).not.toThrow();
 

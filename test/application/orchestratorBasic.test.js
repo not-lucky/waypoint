@@ -59,7 +59,7 @@ describe('UnifiedOrchestrator Basic Tests', () => {
     const flagSuccessSpy = vi.spyOn(keyRegistry, 'flagSuccess');
 
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
-    const req = { provider: 'mock-provider', actualModelId: 'test-model' };
+    const req = { provider: 'mock-provider', modelid: 'test-model' };
     const res = await orchestrator.executeCompletion(req, {});
 
     expect(res).toBe(mockResponse);
@@ -84,7 +84,7 @@ describe('UnifiedOrchestrator Basic Tests', () => {
     const providerFactory = new ProviderFactory(config);
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
 
-    const req = { provider: 'mock-provider', actualModelId: 'test-model' };
+    const req = { provider: 'mock-provider', modelid: 'test-model' };
     const res = await orchestrator.executeCompletion(req, {});
 
     expect(res).toEqual({
@@ -130,7 +130,7 @@ describe('UnifiedOrchestrator Basic Tests', () => {
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
     const req = {
       provider: 'primary-provider',
-      actualModelId: 'model-a',
+      modelid: 'model-a',
       fallbackModel: 'fallback-provider/model-b',
     };
 
@@ -183,7 +183,7 @@ describe('UnifiedOrchestrator Basic Tests', () => {
 
     // Run completion in background
     const promise = orchestrator.executeCompletion(
-      { provider: 'mock-provider', actualModelId: 'test-model' },
+      { provider: 'mock-provider', modelid: 'test-model' },
       mockReq,
     );
 
@@ -233,7 +233,7 @@ describe('UnifiedOrchestrator Basic Tests', () => {
     };
 
     const promise = orchestrator.executeCompletion(
-      { provider: 'mock-provider', actualModelId: 'test-model' },
+      { provider: 'mock-provider', modelid: 'test-model' },
       mockReq,
     );
 

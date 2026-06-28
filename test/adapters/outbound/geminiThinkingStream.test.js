@@ -56,7 +56,7 @@ describe('executeThinkingStream', () => {
 
     const req = {
       model: 'gemini/gemini-pro',
-      actualModelId: 'gemini-pro',
+      modelid: 'gemini-pro',
       messages: [{ role: 'user', content: 'hi' }],
     };
 
@@ -108,7 +108,7 @@ describe('executeThinkingStream', () => {
 
     const req = {
       model: 'gemini/gemini-pro',
-      actualModelId: 'gemini-pro',
+      modelid: 'gemini-pro',
       messages: [{ role: 'user', content: 'hi' }],
     };
 
@@ -151,7 +151,7 @@ describe('executeThinkingStream', () => {
 
     const req = {
       model: 'gemini/gemini-pro',
-      actualModelId: 'gemini-pro',
+      modelid: 'gemini-pro',
       messages: [{ role: 'user', content: 'hi' }],
     };
 
@@ -169,7 +169,7 @@ describe('executeThinkingStream', () => {
     });
   });
 
-  it('preserves slash-containing actualModelId values for thinking streams', async () => {
+  it('preserves slash-containing modelid values for thinking streams', async () => {
     const controller = new AbortController();
     const mockAdapter = {
       baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
@@ -197,7 +197,7 @@ describe('executeThinkingStream', () => {
 
     const req = {
       model: 'gemini/public-name',
-      actualModelId: 'projects/demo/locations/us-central1/models/custom-model',
+      modelid: 'projects/demo/locations/us-central1/models/custom-model',
       messages: [{ role: 'user', content: 'hi' }],
     };
 

@@ -28,7 +28,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
       }),
     });
 
-    await customAdapter.generateCompletion({ actualModelId: 'gpt-4o' }, 'api-key');
+    await customAdapter.generateCompletion({ modelid: 'gpt-4o' }, 'api-key');
 
     expect(mockFetch).toHaveBeenCalledWith(
       'https://my-custom.api/v1/chat/completions',
@@ -48,7 +48,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
     });
 
     await adapter.generateCompletion(
-      { actualModelId: '@cf/meta/llama-3.1-8b-instruct', messages: [] },
+      { modelid: '@cf/meta/llama-3.1-8b-instruct', messages: [] },
       { apiKey: 'cf-key', accountId: 'acct-123' },
     );
 
@@ -70,7 +70,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
     expect(() => adapter.resolveBaseUrl(undefined)).toThrow(/accountId/);
 
     await expect(adapter.generateCompletion(
-      { actualModelId: '@cf/meta/llama-3.1-8b-instruct', messages: [] },
+      { modelid: '@cf/meta/llama-3.1-8b-instruct', messages: [] },
       { apiKey: 'cf-key' },
     )).rejects.toThrow(/accountId/);
   });
@@ -87,7 +87,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
     });
 
     // Case 1: Completion forces stream: false
-    await adapter.generateCompletion({ actualModelId: 'gpt-4o' }, 'api-key');
+    await adapter.generateCompletion({ modelid: 'gpt-4o' }, 'api-key');
     expect(mockFetch).toHaveBeenLastCalledWith(
       expect.any(String),
       expect.objectContaining({
@@ -108,7 +108,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
     });
 
     // Consume generator to trigger fetch
-    for await (const chunk of adapter.generateStream({ actualModelId: 'gpt-4o' }, 'api-key', new AbortController().signal)) {
+    for await (const chunk of adapter.generateStream({ modelid: 'gpt-4o' }, 'api-key', new AbortController().signal)) {
       expect(chunk).toBeDefined();
     }
 
@@ -148,7 +148,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
 
     const req = {
       model: 'openai/gpt-4o',
-      actualModelId: 'gpt-4o',
+      modelid: 'gpt-4o',
       messages: [{ role: 'user', content: 'hello' }],
       temperature: 0.7,
     };
@@ -211,7 +211,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
 
     const req = {
       model: 'openai/gpt-4o',
-      actualModelId: 'gpt-4o',
+      modelid: 'gpt-4o',
       messages: [{ role: 'user', content: 'hello' }],
       maxTokens: 100,
     };
@@ -275,7 +275,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
     });
 
     await adapter.generateCompletion({
-      actualModelId: 'gpt-4o',
+      modelid: 'gpt-4o',
       messages: [],
       reasoningEffort: 'high',
     }, 'test-api-key');
@@ -297,7 +297,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
     };
 
     await expect(adapter.generateCompletion({
-      actualModelId: 'gpt-4o',
+      modelid: 'gpt-4o',
       messages: [],
     }, 'test-key', null, requestLog)).rejects.toThrow('Network error');
 
@@ -313,7 +313,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
     });
 
     await expect(adapter.generateCompletion({
-      actualModelId: 'gpt-4o',
+      modelid: 'gpt-4o',
       messages: [],
     }, 'test-key')).rejects.toThrow('Bad Gateway Plain Text Error');
   });
@@ -329,7 +329,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
       appendStreamEvent: vi.fn(),
     };
 
-    const streamGen = adapter.generateStream({ actualModelId: 'gpt-4o', messages: [] }, 'test-key', null, requestLog);
+    const streamGen = adapter.generateStream({ modelid: 'gpt-4o', messages: [] }, 'test-key', null, requestLog);
     await expect(async () => {
       for await (const chunk of streamGen) {}
     }).rejects.toThrow('Stream Network Error');
@@ -341,7 +341,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
       status: 500,
       text: async () => 'HTML Error Page',
     });
-    const streamGen2 = adapter.generateStream({ actualModelId: 'gpt-4o', messages: [] }, 'test-key', null, requestLog);
+    const streamGen2 = adapter.generateStream({ modelid: 'gpt-4o', messages: [] }, 'test-key', null, requestLog);
     await expect(async () => {
       for await (const chunk of streamGen2) {}
     }).rejects.toThrow('HTML Error Page');
@@ -361,7 +361,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
     });
 
     const abortController = new AbortController();
-    const streamGen3 = adapter.generateStream({ actualModelId: 'gpt-4o', messages: [] }, 'test-key', abortController.signal, requestLog);
+    const streamGen3 = adapter.generateStream({ modelid: 'gpt-4o', messages: [] }, 'test-key', abortController.signal, requestLog);
     const chunks = [];
     for await (const chunk of streamGen3) {
       chunks.push(chunk);
@@ -759,7 +759,7 @@ describe('OpenAICompatibleAdapter Tests', () => {
     });
 
     await adapter.generateCompletion({
-      actualModelId: 'gpt-4o',
+      modelid: 'gpt-4o',
       messages: [{ role: 'user', content: 'run ls' }],
       clientParams: {
         tools,

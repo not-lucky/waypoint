@@ -21,7 +21,7 @@ describe('AnthropicAdapter Tests', () => {
     const adapter = new AnthropicAdapter({});
     const req = {
       model: 'anthropic/claude-3-5-sonnet',
-      actualModelId: 'claude-3-5-sonnet',
+      modelid: 'claude-3-5-sonnet',
       messages: [],
     };
 
@@ -55,7 +55,7 @@ describe('AnthropicAdapter Tests', () => {
     const adapter = new AnthropicAdapter({ baseUrl: customUrl });
     const req = {
       model: 'anthropic/claude-3-5-sonnet',
-      actualModelId: 'claude-3-5-sonnet',
+      modelid: 'claude-3-5-sonnet',
       messages: [],
     };
 
@@ -101,7 +101,7 @@ describe('AnthropicAdapter Tests', () => {
 
     await adapter.generateCompletion({
       model: 'anthropic/claude-sonnet-4',
-      actualModelId: 'claude-sonnet-4',
+      modelid: 'claude-sonnet-4',
       messages: [
         { role: 'user', content: 'read package.json' },
         {
@@ -195,7 +195,7 @@ describe('AnthropicAdapter Tests', () => {
 
     const req = {
       model: 'anthropic/claude-3-5-sonnet',
-      actualModelId: 'claude-3-5-sonnet',
+      modelid: 'claude-3-5-sonnet',
       messages: [{ role: 'user', content: 'solve' }],
       reasoningSupported: true,
       reasoningEffort: 'high',
@@ -321,7 +321,7 @@ describe('AnthropicAdapter Tests', () => {
 
     const req = {
       model: 'anthropic/claude-3-5-sonnet',
-      actualModelId: 'claude-3-5-sonnet',
+      modelid: 'claude-3-5-sonnet',
       messages: [],
     };
 
@@ -340,7 +340,7 @@ describe('AnthropicAdapter Tests', () => {
     const adapter = new AnthropicAdapter({});
     const req = {
       model: 'anthropic/claude-3-5-sonnet',
-      actualModelId: 'claude-3-5-sonnet',
+      modelid: 'claude-3-5-sonnet',
       messages: [],
       reasoningSupported: true,
     };
@@ -367,7 +367,7 @@ describe('AnthropicAdapter Tests', () => {
     const adapter = new AnthropicAdapter({});
     const req = {
       model: 'anthropic/claude-3-5-sonnet',
-      actualModelId: 'claude-3-5-sonnet',
+      modelid: 'claude-3-5-sonnet',
       messages: [],
       reasoningSupported: true,
       reasoningEffort: 'low',
@@ -419,7 +419,7 @@ describe('AnthropicAdapter Tests', () => {
     const adapter = new AnthropicAdapter({});
     const req = {
       model: 'anthropic/claude-3-5-sonnet',
-      actualModelId: 'claude-3-5-sonnet',
+      modelid: 'claude-3-5-sonnet',
       messages: [],
     };
     const controller = new AbortController();
@@ -444,7 +444,7 @@ describe('AnthropicAdapter Tests', () => {
 
   it('assert: generateCompletion handles fetch error and calls requestLog', async () => {
     const adapter = new AnthropicAdapter({});
-    const req = { model: 'claude-3', actualModelId: 'claude-3', messages: [] };
+    const req = { model: 'claude-3', modelid: 'claude-3', messages: [] };
     mockFetch.mockRejectedValue(new Error('Fetch failed'));
 
     const requestLog = {
@@ -457,7 +457,7 @@ describe('AnthropicAdapter Tests', () => {
 
   it('assert: generateStream throws UpstreamError when an SSE error event is received', async () => {
     const adapter = new AnthropicAdapter({});
-    const req = { model: 'claude-3', actualModelId: 'claude-3', messages: [] };
+    const req = { model: 'claude-3', modelid: 'claude-3', messages: [] };
 
     const errorFrame = 'event: error\ndata: {"type":"error","error":{"type":"overloaded_error","message":"Upstream overloaded"}}\n\n';
     const encoder = new TextEncoder();

@@ -54,7 +54,7 @@ describe('Streaming End-to-End Tests', () => {
           keys: ['mock-key-1'],
           models: [
             {
-              id: 'test-model',
+              modelid: 'test-model',
             },
           ],
         },
@@ -255,7 +255,7 @@ describe('Streaming End-to-End Tests', () => {
         'mock-provider': {
           keys: ['key-1', 'key-2'],
           models: [
-            { id: 'test-model' },
+            { modelid: 'test-model' },
           ],
         },
       },
@@ -312,13 +312,13 @@ describe('Streaming End-to-End Tests', () => {
         'primary-provider': {
           keys: ['primary-key'],
           models: [
-            { id: 'model-a', fallbackModel: 'fallback-provider/model-b' },
+            { modelid: 'model-a', fallbackModel: 'fallback-provider/model-b' },
           ],
         },
         'fallback-provider': {
           keys: ['fallback-key'],
           models: [
-            { id: 'model-b' },
+            { modelid: 'model-b' },
           ],
         },
       },
@@ -412,7 +412,7 @@ describe('Streaming End-to-End Tests', () => {
       providers: {
         'primary-provider': {
           keys: ['key-primary'],
-          models: [{ id: 'model-a', fallbackModel: 'bare-fallback-model' }],
+          models: [{ modelid: 'model-a', fallbackModel: 'bare-fallback-model' }],
         },
       },
     };

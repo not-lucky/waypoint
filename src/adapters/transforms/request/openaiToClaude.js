@@ -21,7 +21,7 @@ export const translateOpenAIToClaude = (req) => {
   );
 
   const payload = {
-    model: req.actualModelId || req.model,
+    model: req.modelid || req.model,
     messages: nonSystemMessages,
     max_tokens: req.maxTokens || 4096,
   };

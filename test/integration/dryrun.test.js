@@ -34,7 +34,7 @@ providers:
     keys:
       - "openai-key"
     models:
-      - id: "gpt-4o"
+      - modelid: "gpt-4o"
         aliases: ["gpt4"]
 `;
 }

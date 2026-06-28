@@ -36,7 +36,7 @@ function createStreamingConfig( streamTimeoutMs = 30000 ) {
         type: 'openai-compatible',
         baseUrl: BASE_URL,
         keys: [ 'requesty-key' ],
-        models: [ { id: 'custom-model' } ],
+        models: [ { modelid: 'custom-model' } ],
       },
     },
   };

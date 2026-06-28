@@ -49,7 +49,7 @@ describe('Streaming Controller Error Emission', () => {
       providers: {
         'mock-provider': {
           keys: ['mock-key-1'],
-          models: [{ id: 'test-model' }],
+          models: [{ modelid: 'test-model' }],
         },
       },
     };

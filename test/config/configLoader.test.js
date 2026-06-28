@@ -190,7 +190,7 @@ providers:
     keys:
       - "ollama-key"
     models:
-      - id: "llama3"
+      - modelid: "llama3"
 `);
 
       // Assertion: Custom provider without baseUrl is a fatal error.
@@ -218,7 +218,7 @@ providers:
     keys:
       - "ollama-key"
     models:
-      - id: "llama3"
+      - modelid: "llama3"
 `);
 
       const config = configLoader.loadConfig( tempConfigPath );
@@ -240,7 +240,7 @@ providers:
     keys:
       - "cohere-key"
     models:
-      - id: "cohere-model"
+      - modelid: "cohere-model"
 `);
 
       const customReserved = new Set( [ 'cohere' ] );
@@ -265,7 +265,7 @@ providers:
       - apiKey: "\${CLOUDFLARE_API_KEY_1}"
         accountId: "\${CLOUDFLARE_ACCOUNT_ID_1}"
     models:
-      - id: "@cf/meta/llama-3.1-8b-instruct"
+      - modelid: "@cf/meta/llama-3.1-8b-instruct"
 ` );
 
       const config = configLoader.loadConfig( tempConfigPath );
@@ -292,7 +292,7 @@ providers:
       - apiKey: "\${CLOUDFLARE_API_KEY_1}"
         accountId: "\${CLOUDFLARE_ACCOUNT_ID_1}"
     models:
-      - id: "@cf/meta/llama-3.1-8b-instruct"
+      - modelid: "@cf/meta/llama-3.1-8b-instruct"
 ` );
 
       expect( () => {
@@ -318,7 +318,7 @@ providers:
       - null
       - "key-2"
     models:
-      - id: "gemini-2.5-pro"
+      - modelid: "gemini-2.5-pro"
 `);
 
       const config = configLoader.loadConfig( tempConfigPath );
@@ -341,7 +341,7 @@ providers:
     keys:
       - "ollama-key"
     models:
-      - id: "llama3"
+      - modelid: "llama3"
 `);
 
       const config = configLoader.loadConfig( tempConfigPath );
@@ -359,7 +359,7 @@ providers:
         providers: {
           openai: {
             keys: [ 'mock-key' ],
-            models: [ { id: 'mock-model' } ],
+            models: [ { modelid: 'mock-model' } ],
           },
         },
       } );
@@ -379,7 +379,7 @@ providers:
     keys:
       - "proxy-key"
     models:
-      - id: "claude-proxy"
+      - modelid: "claude-proxy"
 `);
 
       const config = configLoader.loadConfig( tempConfigPath );
@@ -402,7 +402,7 @@ providers:
     keys:
       - "gemini-key"
     models:
-      - id: "gemini-2.5-pro"
+      - modelid: "gemini-2.5-pro"
 `);
 
       const config = configLoader.loadConfig( tempConfigPath );
@@ -432,7 +432,7 @@ providers:
     keys:
       - "some-key"
     models:
-      - id: "model-1"
+      - modelid: "model-1"
 `);
 
       expect( () => {
@@ -473,7 +473,7 @@ providers:
     keys:
       - "gemini-key"
     models:
-      - id: "gemini-2.5-pro"
+      - modelid: "gemini-2.5-pro"
 `);
 
       const config = configLoader.loadConfig( tempConfigPath );

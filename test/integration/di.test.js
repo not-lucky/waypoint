@@ -132,7 +132,7 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
         gemini: {
           keys: ['mock-gemini-key-1'],
           models: [
-            { id: 'gemini-pro' },
+            { modelid: 'gemini-pro' },
           ],
         },
       },
@@ -180,7 +180,7 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
         anthropic: {
           keys: ['mock-anthropic-key-1'],
           models: [
-            { id: 'claude-sonnet' },
+            { modelid: 'claude-sonnet' },
           ],
         },
       },
@@ -231,7 +231,7 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
         gemini: {
           keys: ['mock-gemini-key-1'],
           models: [
-            { id: 'gemini-pro' },
+            { modelid: 'gemini-pro' },
           ],
         },
       },
@@ -283,7 +283,7 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
         anthropic: {
           keys: ['mock-anthropic-key-1'],
           models: [
-            { id: 'claude-sonnet' },
+            { modelid: 'claude-sonnet' },
           ],
         },
       },
@@ -337,7 +337,7 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
           keys: ['mock-gemini-key-1'],
           models: [
             {
-              id: 'gemini-pro',
+              modelid: 'gemini-pro',
               fallbackModel: 'openai/gpt-4o',
             },
           ],
@@ -345,7 +345,7 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
         openai: {
           keys: ['mock-openai-key-1'],
           models: [
-            { id: 'gpt-4o' },
+            { modelid: 'gpt-4o' },
           ],
         },
       },
@@ -399,7 +399,7 @@ describe('Dependency Injection (DI) Graph Integration Tests', () => {
         gemini: {
           keys: ['mock-gemini-key-1'],
           models: [
-            { id: 'gemini-pro' },
+            { modelid: 'gemini-pro' },
           ],
         },
       },

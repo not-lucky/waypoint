@@ -126,24 +126,24 @@ providers:
       - "${GEMINI_API_KEY_2}"
     # Models array (required)
     models:
-      - id: "gemini-2.5-pro-preview-05-06"              # The model ID exposed by the gateway (required, string)
+      - modelid: "gemini-2.5-pro-preview-05-06"        # The model ID of the upstream model (required, string)
         aliases: ["gemini-2.5-pro", "gemini-pro", "pro"] # Alternative IDs to match this model (optional, array of strings)
         reasoningSupported: true                       # Whether the model supports reasoning/thinking (optional, boolean)
         fallbackModel: "openai/gpt-4o"                 # Model to use if all keys for this provider fail (optional format: provider/model-id)
-      - id: "gemini-flash-lite-latest-low"
-        actualModelId: "gemini-flash-lite-latest"     # The underlying model to call upstream (optional, string)
+      - modelid: "gemini-flash-lite-latest"
+        aliases: ["gemini-flash-lite-latest-low"]     # Expose a custom name to clients (optional)
         reasoningSupported: true                       # Whether reasoning is supported (optional, boolean)
         temperature: 0.3                                # Default parameters applied if not specified by client (optional)
         maxTokens: 4096                                 # Default parameters applied if not specified by client (optional)
         reasoningEffort: "low"                         # Unified reasoning level: minimal | low | medium | high | xhigh | max
-      - id: "gemini-flash-lite-latest-high"
-        actualModelId: "gemini-flash-lite-latest"
+      - modelid: "gemini-flash-lite-latest"
+        aliases: ["gemini-flash-lite-latest-high"]
         reasoningSupported: true
         overrides:                                      # Locked settings that ignore/override client-supplied values or headers (optional, object)
           reasoningEffort: "high"
           temperature: 0.8
           maxTokens: 8192
-      - id: "gemini-2.0-flash"
+      - modelid: "gemini-2.0-flash"
         aliases: ["flash"]
         reasoningSupported: false
 
@@ -151,7 +151,7 @@ providers:
     keys:
       - "${ANTHROPIC_API_KEY_1}"
     models:
-      - id: "claude-sonnet-4-20250514"
+      - modelid: "claude-sonnet-4-20250514"
         aliases: ["claude-sonnet-4", "sonnet"]
         reasoningSupported: true
         reasoningEffort: "medium"
@@ -161,7 +161,7 @@ providers:
     keys:
       - "${OPENAI_API_KEY_1}"
     models:
-      - id: "gpt-4o"
+      - modelid: "gpt-4o"
         aliases: ["gpt4"]
         reasoningSupported: false
 
@@ -171,7 +171,7 @@ providers:
   #     - apiKey: "${CLOUDFLARE_API_KEY_1}"
   #       accountId: "${CLOUDFLARE_ACCOUNT_ID_1}"
   #   models:
-  #     - id: "@cf/meta/llama-3.1-8b-instruct"
+  #     - modelid: "@cf/meta/llama-3.1-8b-instruct"
   #       aliases: ["cf-llama"]
   #       reasoningSupported: false
 
@@ -183,10 +183,10 @@ providers:
     keys:
       - "${OPENAI_API_KEY_1}"
     models:
-      - id: "gpt-4o"
+      - modelid: "gpt-4o"
         aliases: ["custom-gpt"]
         reasoningSupported: false
-      - id: "minimax-m3"
+      - modelid: "minimax-m3"
         extractReasoningFromThinkBlocks: true     # Model-level setting overrides/inherits provider-level behavior
 
   # Custom Anthropic-compatible provider example
@@ -196,7 +196,7 @@ providers:
     keys:
       - "${ANTHROPIC_API_KEY_1}"
     models:
-      - id: "claude-sonnet-4"
+      - modelid: "claude-sonnet-4"
         aliases: ["custom-sonnet"]
         reasoningSupported: true
         reasoningEffort: "high"
@@ -208,7 +208,7 @@ providers:
     keys:
       - "${REQUESTY_API_KEY_1}"
     models:
-      - id: "nebius/nvidia/nemotron-3-nano-omni"
+      - modelid: "nebius/nvidia/nemotron-3-nano-omni"
         reasoningSupported: true
 
   # Local or self-hosted provider example (e.g. Ollama)
@@ -217,6 +217,6 @@ providers:
     keys:
       - "dummy-key-required-but-unused"           # A key is required even if unused by the endpoint
     models:
-      - id: "llama3:70b"
+      - modelid: "llama3:70b"
         aliases: ["llama3"]
         reasoningSupported: false

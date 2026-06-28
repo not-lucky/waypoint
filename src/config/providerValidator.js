@@ -43,9 +43,8 @@ const VALID_SETTING_KEYS = new Set(Object.keys(SETTINGS_CONFIG));
 const VALID_PROVIDER_TYPES = ['openai-compatible', 'anthropic-compatible'];
 
 const VALID_MODEL_KEYS = [
-  'id',
+  'modelid',
   'aliases',
-  'actualModelId',
   'fallbackModel',
   'overrides',
   'temperature',
@@ -199,14 +198,14 @@ export class ProviderValidator {
         if (!model || typeof model !== 'object') {
           logErrorAndExitOrThrow(`Invalid model at index ${j} for provider '${providerName}'.`, shouldExit);
         }
-        if (!isNonEmptyString(model.id)) {
-          logErrorAndExitOrThrow(`Missing or empty model 'id' at index ${j} for provider '${providerName}'.`, shouldExit);
+        if (!isNonEmptyString(model.modelid)) {
+          logErrorAndExitOrThrow(`Missing or empty model 'modelid' at index ${j} for provider '${providerName}'.`, shouldExit);
         }
 
         Object.entries(model).forEach(([key, val]) => {
           if (!VALID_MODEL_KEYS.includes(key)) {
             logErrorAndExitOrThrow(
-              `Invalid model configuration key '${key}' at index ${j} for provider '${providerName}'.`,
+              `Invalid model configuration key '${key}' at index ${j} for provider '${providerName}'. Valid keys are: ${VALID_MODEL_KEYS.join(', ')}.`,
               shouldExit,
             );
           }
@@ -215,13 +214,6 @@ export class ProviderValidator {
             if (!Array.isArray(val)) {
               logErrorAndExitOrThrow(
                 `Invalid 'aliases' at index ${j} for provider '${providerName}'. Must be an array.`,
-                shouldExit,
-              );
-            }
-          } else if (key === 'actualModelId') {
-            if (!isNonEmptyString(val)) {
-              logErrorAndExitOrThrow(
-                `Invalid 'actualModelId' at index ${j} for provider '${providerName}'. Must be a non-empty string.`,
                 shouldExit,
               );
             }

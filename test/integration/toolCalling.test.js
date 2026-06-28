@@ -19,7 +19,7 @@ const baseConfig = {
   providers: {
     openai: {
       keys: ['upstream-key'],
-      models: [{ id: 'gpt-4o' }],
+      models: [{ modelid: 'gpt-4o' }],
     },
   },
 };

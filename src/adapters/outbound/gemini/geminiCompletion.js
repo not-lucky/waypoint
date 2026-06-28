@@ -3,8 +3,8 @@ import { getThinkingLevel } from './geminiFormatter.js';
 import { mapOpenAICompletionResponse } from '../shared/openaiResponse.js';
 
 const resolveGeminiModelId = (req) => {
-  if (typeof req?.actualModelId === 'string' && req.actualModelId.trim() !== '') {
-    return req.actualModelId;
+  if (typeof req?.modelid === 'string' && req.modelid.trim() !== '') {
+    return req.modelid;
   }
   return (req?.model || '').split('/').pop();
 };

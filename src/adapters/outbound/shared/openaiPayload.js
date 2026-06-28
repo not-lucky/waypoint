@@ -3,7 +3,7 @@ import { resolveReasoningEffort } from './openaiResponse.js';
 const INTERNAL_KEYS = new Set([
   'clientParams',
   'provider',
-  'actualModelId',
+  'modelid',
   'maxTokens',
   'reasoningSupported',
   'reasoningEffort',
@@ -24,7 +24,7 @@ export function buildOpenAIChatPayload(req, stream) {
     delete payload[key];
   }
 
-  payload.model = req.actualModelId || client.model || req.model;
+  payload.model = req.modelid || client.model || req.model;
   payload.messages = req.messages ?? client.messages;
   payload.stream = stream;
 

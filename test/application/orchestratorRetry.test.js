@@ -52,7 +52,7 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests (HTTP-status-based)
     const flagSuccessSpy = vi.spyOn(keyRegistry, 'flagSuccess');
 
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
-    const req = { provider: 'mock-provider', actualModelId: 'test-model' };
+    const req = { provider: 'mock-provider', modelid: 'test-model' };
     const res = await orchestrator.executeCompletion(req, {});
 
     expect(res).toEqual({ id: 'waypoint-retry-ok', object: 'chat.completion', choices: [], usage: {} });
@@ -94,7 +94,7 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests (HTTP-status-based)
 
     const flagFailureSpy = vi.spyOn(keyRegistry, 'flagFailure');
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
-    const req = { provider: 'mock-provider', actualModelId: 'test-model' };
+    const req = { provider: 'mock-provider', modelid: 'test-model' };
     const res = await orchestrator.executeCompletion(req, {});
 
     // Passthrough envelope: the last upstream error's message and status are returned
@@ -144,7 +144,7 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests (HTTP-status-based)
 
     const flagFailureSpy = vi.spyOn(keyRegistry, 'flagFailure');
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
-    const req = { provider: 'mock-provider', actualModelId: 'test-model' };
+    const req = { provider: 'mock-provider', modelid: 'test-model' };
     await orchestrator.executeCompletion(req, {});
 
     // Both 429s trigger the same cooldown path (no quota/billing disambiguation).
@@ -169,7 +169,7 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests (HTTP-status-based)
     providerFactory.register('mock-provider', mockAdapter);
 
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
-    const req = { provider: 'mock-provider', actualModelId: 'test-model' };
+    const req = { provider: 'mock-provider', modelid: 'test-model' };
     const res = await orchestrator.executeCompletion(req, {});
 
     expect(mockAdapter.callCount).toBe(0);
@@ -190,7 +190,7 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests (HTTP-status-based)
     mockAdapter.enqueue(makeHttpError('Failure', 500));
 
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
-    const req = { provider: 'mock-provider', actualModelId: 'test-model' };
+    const req = { provider: 'mock-provider', modelid: 'test-model' };
     const res = await orchestrator.executeCompletion(req, {});
 
     expect(mockAdapter.callCount).toBe(1);
@@ -216,7 +216,7 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests (HTTP-status-based)
     keyRegistry.pools['mock-provider'].keys[2].cooldownUntil = Date.now() + 10000;
 
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
-    const req = { provider: 'mock-provider', actualModelId: 'test-model' };
+    const req = { provider: 'mock-provider', modelid: 'test-model' };
     const res = await orchestrator.executeCompletion(req, {});
 
     expect(res.error.code).toBe('poolUnavailable');
@@ -241,7 +241,7 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests (HTTP-status-based)
     keyRegistry.pools['mock-provider'].keys[1].cooldownUntil = Date.now() - 5000;
 
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
-    const req = { provider: 'mock-provider', actualModelId: 'test-model' };
+    const req = { provider: 'mock-provider', modelid: 'test-model' };
     const res = await orchestrator.executeCompletion(req, {});
 
     expect(res.error.code).toBe('poolUnavailable');
@@ -276,7 +276,7 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests (HTTP-status-based)
 
     const flagFailureSpy = vi.spyOn(keyRegistry, 'flagFailure');
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
-    const req = { provider: 'mock-provider', actualModelId: 'test-model' };
+    const req = { provider: 'mock-provider', modelid: 'test-model' };
     await orchestrator.executeCompletion(req, {});
 
     // The first three errors have HTTP status (401, 500, 429) -> key cooldown.
@@ -320,7 +320,7 @@ describe('UnifiedOrchestrator Retry and Key Exhaustion Tests (HTTP-status-based)
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
     const req = {
       provider: 'primary-provider',
-      actualModelId: 'model-p',
+      modelid: 'model-p',
       fallbackModel: 'fallback-provider/model-f',
     };
     const res = await orchestrator.executeCompletion(req, {});

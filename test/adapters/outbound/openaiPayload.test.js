@@ -14,7 +14,7 @@ describe('buildOpenAIChatPayload', () => {
   it('forwards tools, tool_choice, and tool messages from clientParams', () => {
     const payload = buildOpenAIChatPayload({
       model: 'openrouter/gpt-4o',
-      actualModelId: 'openai/gpt-4o',
+      modelid: 'openai/gpt-4o',
       messages: [
         { role: 'user', content: 'read main.ts' },
         {
@@ -51,7 +51,7 @@ describe('buildOpenAIChatPayload', () => {
   it('sets stream_options for streaming requests', () => {
     const payload = buildOpenAIChatPayload({
       model: 'openai/gpt-4o',
-      actualModelId: 'gpt-4o',
+      modelid: 'gpt-4o',
       messages: [],
       maxTokens: 512,
       reasoningSupported: true,

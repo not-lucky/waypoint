@@ -22,7 +22,7 @@ export class ModelCache {
     const models = Object.entries(providers).flatMap(([providerName, providerConfig]) => {
       const providerModels = providerConfig.models || [];
       return providerModels.flatMap((modelConfig) => [
-        ...(modelConfig.id ? [`${providerName}/${modelConfig.id}`] : []),
+        ...(modelConfig.modelid ? [`${providerName}/${modelConfig.modelid}`] : []),
         ...(modelConfig.aliases || []).map((alias) => `${providerName}/${alias}`),
       ]);
     });

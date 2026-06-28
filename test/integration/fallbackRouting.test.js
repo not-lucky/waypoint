@@ -36,13 +36,13 @@ function createFallbackConfig() {
         baseUrl: PRIMARY_BASE_URL,
         keys: ['requesty-key'],
         models: [{
-          id: 'custom-model',
+          modelid: 'custom-model',
           fallbackModel: 'openai/gpt-4o',
         }],
       },
       openai: {
         keys: ['openai-key'],
-        models: [{ id: 'gpt-4o' }],
+        models: [{ modelid: 'gpt-4o' }],
       },
     },
   };

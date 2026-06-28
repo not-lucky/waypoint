@@ -29,7 +29,7 @@ const getGeminiThinkingLevel = (effort, modelId = '') => {
 export const getThinkingLevel = (req) => {
   const effort = req.reasoningEffort;
   if (effort) {
-    return getGeminiThinkingLevel(effort, req.actualModelId || req.model || '');
+    return getGeminiThinkingLevel(effort, req.modelid || req.model || '');
   }
   return 'medium';
 };

@@ -45,7 +45,7 @@ describe('retryExecutor upstream error propagation', () => {
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
     const res = await orchestrator.executeCompletion({
       provider: 'requesty',
-      actualModelId: 'gpt-4o',
+      modelid: 'gpt-4o',
       messages: [{ role: 'user', content: 'hello' }],
     }, {});
 
@@ -83,7 +83,7 @@ describe('retryExecutor upstream error propagation', () => {
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
     const req = {
       provider: 'requesty',
-      actualModelId: 'nebius/nvidia/nemotron-3-nano-omni',
+      modelid: 'nebius/nvidia/nemotron-3-nano-omni',
       messages: [{ role: 'user', content: 'hello' }],
     };
 
@@ -127,7 +127,7 @@ describe('retryExecutor upstream error propagation', () => {
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
     await orchestrator.executeCompletion({
       provider: 'requesty',
-      actualModelId: 'gpt-4o',
+      modelid: 'gpt-4o',
       messages: [{ role: 'user', content: 'hello' }],
     }, {});
 
@@ -155,7 +155,7 @@ describe('retryExecutor upstream error propagation', () => {
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
     const res = await orchestrator.executeCompletion({
       provider: 'requesty',
-      actualModelId: 'gpt-4o',
+      modelid: 'gpt-4o',
       messages: [{ role: 'user', content: 'hello' }],
     }, {});
 

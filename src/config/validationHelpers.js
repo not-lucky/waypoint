@@ -25,7 +25,7 @@ export const isValidMaxPayloadSize = (val) => {
 };
 
 const matchesModelId = (model, fallbackModelId) => (
-  model.id === fallbackModelId
+  model.modelid === fallbackModelId
   || (Array.isArray(model.aliases) && model.aliases.includes(fallbackModelId))
 );
 
@@ -46,8 +46,18 @@ export const validateFallbackModel = (
     );
   }
 
-  const [fallbackProvider, fallbackModelId, ...rest] = fallbackRef.split('/');
-  if (!fallbackProvider?.trim() || !fallbackModelId?.trim() || rest.length > 0) {
+  const firstSlashIndex = fallbackRef.indexOf('/');
+  if (firstSlashIndex === -1) {
+    logErrorAndExitOrThrow(
+      `Invalid 'fallbackModel' format '${fallbackRef}' at index ${modelIndex} for provider '${providerName}'. Must be in 'provider/model-id' format.`,
+      shouldExit,
+    );
+  }
+
+  const fallbackProvider = fallbackRef.substring(0, firstSlashIndex).trim();
+  const fallbackModelId = fallbackRef.substring(firstSlashIndex + 1).trim();
+
+  if (!fallbackProvider || !fallbackModelId) {
     logErrorAndExitOrThrow(
       `Invalid 'fallbackModel' format '${fallbackRef}' at index ${modelIndex} for provider '${providerName}'. Must be in 'provider/model-id' format.`,
       shouldExit,

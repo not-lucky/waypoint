@@ -72,7 +72,7 @@ describe('03_provider_response.json on upstream errors', () => {
         providers: {
           gemini: {
             keys: ['gemini-key'],
-            models: [{ id: 'gemini-pro' }],
+            models: [{ modelid: 'gemini-pro' }],
           },
         },
       },
@@ -165,7 +165,7 @@ describe('03_provider_response.json on upstream errors', () => {
         providers: {
           openai: {
             keys: ['openai-key'],
-            models: [{ id: 'gpt-4o' }],
+            models: [{ modelid: 'gpt-4o' }],
           },
         },
       },

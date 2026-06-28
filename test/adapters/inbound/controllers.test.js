@@ -13,7 +13,7 @@ const testConfig = {
     gemini: {
       keys: ['gemini-key-1'],
       models: [{
-        id: 'gemini-2.5-pro-preview-05-06',
+        modelid: 'gemini-2.5-pro-preview-05-06',
         aliases: ['gemini-2.5-pro', 'pro'],
         reasoningSupported: true,
         reasoningEffort: 'medium',
@@ -22,7 +22,7 @@ const testConfig = {
     },
     openai: {
       keys: ['openai-key-1'],
-      models: [{ id: 'gpt-4o', aliases: ['gpt4'] }],
+      models: [{ modelid: 'gpt-4o', aliases: ['gpt4'] }],
     },
   },
 };
@@ -78,7 +78,7 @@ describe('Protocol Controllers', () => {
       expect(mockOrchestrator.executeCompletion).toHaveBeenCalledWith(
         expect.objectContaining({
           provider: 'gemini',
-          actualModelId: 'gemini-2.5-pro-preview-05-06',
+          modelid: 'gemini-2.5-pro-preview-05-06',
           fallbackModel: 'openai/gpt-4o',
           reasoningSupported: true,
           reasoningEffort: 'medium',

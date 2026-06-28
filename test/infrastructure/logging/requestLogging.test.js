@@ -66,7 +66,7 @@ describe('Request Logging', () => {
 
     await adapter.generateCompletion({
       model: 'gemini/gemini-2.5-pro',
-      actualModelId: 'gemini-2.5-pro',
+      modelid: 'gemini-2.5-pro',
       messages: [{ role: 'user', content: 'hello' }],
     }, 'gemini-key', null, requestLog);
 

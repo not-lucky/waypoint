@@ -22,9 +22,9 @@ flowchart LR
   A[Client] --> B[Auth]
   B --> C[Rate limit]
   C --> D[Zod validate]
-  D --> E[Controller<br/>OpenAI / Anthropic]
+  D --> E["Controller<br/>OpenAI / Anthropic"]
   E --> F[UnifiedOrchestrator]
-  F --> G[OrchestrationEngine<br/>Fallback loop]
+  F --> G["OrchestrationEngine<br/>Fallback loop"]
   G --> H[Key rotation loop]
   H --> I[Provider adapter]
   I --> J[Upstream HTTP]
@@ -42,7 +42,7 @@ matrix also validates against Node 26.
 1. Clone, install, copy the example config and env file:
 
    ```bash
-   git clone <repo-url> waypoint
+   git clone https://github.com/not-lucky/waypoint.git waypoint
    cd waypoint
    npm install
    cp config.example.yaml config/config.yaml

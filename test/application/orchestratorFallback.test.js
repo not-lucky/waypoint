@@ -47,7 +47,7 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
           keys: ['key-gemini-1'],
           models: [
             {
-              id: 'gemini-1.5-flash-actual',
+              modelid: 'gemini-1.5-flash-actual',
               aliases: ['gemini-1.5-flash'],
               fallbackModel: 'openai/gpt-4o',
             },
@@ -57,7 +57,7 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
           keys: ['key-openai-1'],
           models: [
             {
-              id: 'gpt-4o-actual',
+              modelid: 'gpt-4o-actual',
               aliases: ['gpt-4o'],
             },
           ],
@@ -83,7 +83,7 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
     const req = {
       provider: 'gemini',
-      actualModelId: 'gemini-1.5-flash-actual',
+      modelid: 'gemini-1.5-flash-actual',
       model: 'gemini/gemini-1.5-flash',
     };
 
@@ -92,7 +92,7 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
     expect(geminiAdapter.callCount).toBe(0);
     expect(openaiAdapter.callCount).toBe(1);
     expect(openaiAdapter.reqsReceived[0].isFallback).toBe(true);
-    expect(openaiAdapter.reqsReceived[0].actualModelId).toBe('gpt-4o-actual');
+    expect(openaiAdapter.reqsReceived[0].modelid).toBe('gpt-4o-actual');
   });
 
   it('assert: fallback adapter also fails -> 503 returned, openai adapter called exactly once (no loop)', async () => {
@@ -105,7 +105,7 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
           keys: ['key-gemini-1'],
           models: [
             {
-              id: 'gemini-1.5-flash-actual',
+              modelid: 'gemini-1.5-flash-actual',
               aliases: ['gemini-1.5-flash'],
               fallbackModel: 'openai/gpt-4o',
             },
@@ -115,7 +115,7 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
           keys: ['key-openai-1'],
           models: [
             {
-              id: 'gpt-4o-actual',
+              modelid: 'gpt-4o-actual',
               aliases: ['gpt-4o'],
             },
           ],
@@ -142,7 +142,7 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
     const req = {
       provider: 'gemini',
-      actualModelId: 'gemini-1.5-flash-actual',
+      modelid: 'gemini-1.5-flash-actual',
       model: 'gemini/gemini-1.5-flash',
     };
 
@@ -167,7 +167,7 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
           keys: ['key-gemini-1'],
           models: [
             {
-              id: 'gemini-1.5-flash-actual',
+              modelid: 'gemini-1.5-flash-actual',
               aliases: ['gemini-1.5-flash'],
               fallbackModel: 'openai/gpt-4o',
             },
@@ -177,7 +177,7 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
           keys: ['key-openai-1'],
           models: [
             {
-              id: 'gpt-4o-actual',
+              modelid: 'gpt-4o-actual',
               aliases: ['gpt-4o'],
             },
           ],
@@ -200,7 +200,7 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
     const req = {
       provider: 'gemini',
-      actualModelId: 'gemini-1.5-flash-actual',
+      modelid: 'gemini-1.5-flash-actual',
       model: 'gemini/gemini-1.5-flash',
       isFallback: true,
     };
@@ -222,7 +222,7 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
           keys: ['key-gemini'],
           models: [
             {
-              id: 'gemini-flash',
+              modelid: 'gemini-flash',
               fallbackModel: 'openai/model-alias',
             },
           ],
@@ -231,7 +231,7 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
           keys: ['key-openai'],
           models: [
             {
-              id: 'openai-actual-mapped-id',
+              modelid: 'openai-actual-mapped-id',
               aliases: ['model-alias', 'real-id'],
             },
           ],
@@ -258,7 +258,7 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
 
     expect(res).toEqual({ id: 'ok' });
     expect(openaiAdapter.callCount).toBe(1);
-    expect(openaiAdapter.reqsReceived[0].actualModelId).toBe('openai-actual-mapped-id');
+    expect(openaiAdapter.reqsReceived[0].modelid).toBe('openai-actual-mapped-id');
   });
 
   it('assert: fallback model containing multiple slashes is correctly parsed', async () => {
@@ -269,7 +269,7 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
           keys: ['key-gemini'],
           models: [
             {
-              id: 'gemini-flash',
+              modelid: 'gemini-flash',
               fallbackModel: 'openai/user/custom/model',
             },
           ],
@@ -278,7 +278,7 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
           keys: ['key-openai'],
           models: [
             {
-              id: 'deep-nested-id',
+              modelid: 'deep-nested-id',
               aliases: ['user/custom/model'],
             },
           ],
@@ -306,7 +306,7 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
     expect(res).toEqual({ id: 'ok-nested' });
     expect(openaiAdapter.callCount).toBe(1);
     expect(openaiAdapter.reqsReceived[0].provider).toBe('openai');
-    expect(openaiAdapter.reqsReceived[0].actualModelId).toBe('deep-nested-id');
+    expect(openaiAdapter.reqsReceived[0].modelid).toBe('deep-nested-id');
   });
 
   it('assert: unsupported fallback provider returns 400 when transition occurs', async () => {
@@ -317,7 +317,7 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
           keys: ['key-gemini'],
           models: [
             {
-              id: 'gemini-flash',
+              modelid: 'gemini-flash',
               fallbackModel: 'unconfigured-provider/some-model',
             },
           ],
@@ -354,7 +354,7 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
           keys: ['key-gemini-1', 'key-gemini-2'],
           models: [
             {
-              id: 'gemini-flash',
+              modelid: 'gemini-flash',
               fallbackModel: 'openai/gpt-4o',
             },
           ],
@@ -363,7 +363,7 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
           keys: ['key-openai'],
           models: [
             {
-              id: 'gpt-4o-actual',
+              modelid: 'gpt-4o-actual',
               aliases: ['gpt-4o'],
             },
           ],
@@ -411,7 +411,7 @@ describe('UnifiedOrchestrator Fallback Integration Tests', () => {
           keys: ['key-gemini-1', 'key-gemini-2'],
           models: [
             {
-              id: 'gemini-flash',
+              modelid: 'gemini-flash',
               fallbackModel: 'openai/gpt-4o',
             },
           ],

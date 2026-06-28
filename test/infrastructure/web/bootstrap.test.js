@@ -43,7 +43,7 @@ providers:
     keys:
       - "openai-key-1"
     models:
-      - id: "gpt-4o"
+      - modelid: "gpt-4o"
 `, tempConfigPath);
 
     process.env.WAYPOINT_CONFIG_PATH = tempConfigPath;

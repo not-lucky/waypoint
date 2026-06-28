@@ -65,7 +65,7 @@ describe('UnifiedOrchestrator – Retry and Fallback Behavior', () => {
     mockAdapter.enqueue(makeHttpError('Rate limited', 429));
     mockAdapter.enqueue({ id: 'ok' });
 
-    const req = { provider: 'mock-provider', actualModelId: 'test-model' };
+    const req = { provider: 'mock-provider', modelid: 'test-model' };
     const res = await orchestrator.executeCompletion(req, {});
 
     expect(res).toEqual({ id: 'ok' });
@@ -79,7 +79,7 @@ describe('UnifiedOrchestrator – Retry and Fallback Behavior', () => {
     mockAdapter.enqueue(makeHttpError('err2', 500));
     mockAdapter.enqueue(makeHttpError('err3', 402));
 
-    const req = { provider: 'mock-provider', actualModelId: 'test-model' };
+    const req = { provider: 'mock-provider', modelid: 'test-model' };
     const res = await orchestrator.executeCompletion(req, {});
 
     expect(res.error).toBeDefined();
@@ -91,7 +91,7 @@ describe('UnifiedOrchestrator – Retry and Fallback Behavior', () => {
 
     mockAdapter.enqueue({ id: 'success' });
 
-    const req = { provider: 'mock-provider', actualModelId: 'test-model' };
+    const req = { provider: 'mock-provider', modelid: 'test-model' };
     const res = await orchestrator.executeCompletion(req, {});
 
     expect(res).toEqual({ id: 'success' });
@@ -109,7 +109,7 @@ describe('UnifiedOrchestrator – Retry and Fallback Behavior', () => {
       return { id: 'ok' };
     };
 
-    const req = { provider: 'mock-provider', actualModelId: 'test-model' };
+    const req = { provider: 'mock-provider', modelid: 'test-model' };
     const res = await orchestrator.executeCompletion(req, {});
 
     expect(res).toEqual({ id: 'ok' });
@@ -139,7 +139,7 @@ describe('UnifiedOrchestrator – Retry and Fallback Behavior', () => {
     const orchestrator = new UnifiedOrchestrator(kr, pf, config);
     const req = {
       provider: 'primary',
-      actualModelId: 'model-a',
+      modelid: 'model-a',
       fallbackModel: 'fallback/model-b',
     };
 
@@ -173,7 +173,7 @@ describe('UnifiedOrchestrator – Retry and Fallback Behavior', () => {
     const orchestrator = new UnifiedOrchestrator(kr, pf, config);
     const req = {
       provider: 'primary',
-      actualModelId: 'model-a',
+      modelid: 'model-a',
       fallbackModel: 'fallback/model-b',
     };
 

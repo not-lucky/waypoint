@@ -116,11 +116,11 @@ export const transformRequest = (baseReq, resolved) => {
   let req = baseReq;
 
   let provider;
-  let actualModelId;
+  let modelid;
   if (resolved) {
     provider = resolved.provider;
     const { modelConfig } = resolved;
-    actualModelId = modelConfig.actualModelId || modelConfig.id;
+    modelid = modelConfig.modelid;
     req = applyModelConfigToRequest(req, modelConfig);
   }
 
@@ -128,8 +128,8 @@ export const transformRequest = (baseReq, resolved) => {
   if (provider) {
     transformedReq.provider = provider;
   }
-  if (actualModelId) {
-    transformedReq.actualModelId = actualModelId;
+  if (modelid) {
+    transformedReq.modelid = modelid;
   }
   return transformedReq;
 };

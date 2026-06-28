@@ -3,8 +3,8 @@ import { parseSSEStream, parseSSEEventData } from '../../../utils/streaming/sseP
 import { throwIfStreamErrorPayload } from '../../../domain/errors/upstream.js';
 
 const resolveGeminiModelId = (req) => {
-  if (typeof req?.actualModelId === 'string' && req.actualModelId.trim() !== '') {
-    return req.actualModelId;
+  if (typeof req?.modelid === 'string' && req.modelid.trim() !== '') {
+    return req.modelid;
   }
   return (req?.model || '').split('/').pop();
 };

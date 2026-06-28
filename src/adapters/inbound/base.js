@@ -170,7 +170,7 @@ export class BaseController {
         model: body.model,
         stream: body.stream || false,
         resolvedProvider: unifiedReq.provider,
-        resolvedModel: unifiedReq.actualModelId,
+        resolvedModel: unifiedReq.modelid,
       });
 
       const response = await this.orchestrator.executeCompletion(unifiedReq, req, reqLog);

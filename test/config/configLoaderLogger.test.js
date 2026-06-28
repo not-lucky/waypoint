@@ -23,7 +23,7 @@ describe('ConfigLoader – Module Logger Integration', () => {
         gemini: {
           type: 'openai-compatible',
           keys: ['key'],
-          models: [{ id: 'model' }],
+          models: [{ modelid: 'model' }],
         },
       },
     });

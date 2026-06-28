@@ -64,7 +64,7 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
     const flagFailureSpy = vi.spyOn(keyRegistry, 'flagFailure');
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
 
-    const req = { provider: 'mock-provider', actualModelId: 'test-model' };
+    const req = { provider: 'mock-provider', modelid: 'test-model' };
     const res = await orchestrator.executeCompletion(req, {});
 
     // Assert exact retry limit respected
@@ -105,7 +105,7 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
     mockAdapter.enqueue(err);
 
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
-    const req = { provider: 'mock-provider', actualModelId: 'test-model' };
+    const req = { provider: 'mock-provider', modelid: 'test-model' };
     const res = await orchestrator.executeCompletion(req, {});
 
     // Should call adapter exactly once and then stop because no keys are left
@@ -152,7 +152,7 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
     const req = {
       provider: 'primary-provider',
-      actualModelId: 'model-a',
+      modelid: 'model-a',
       fallbackModel: 'fallback-provider/model-b',
     };
 
@@ -179,7 +179,7 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
     const providerFactory = new ProviderFactory(config);
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
 
-    const req = { provider: 'unknown-provider', actualModelId: 'test' };
+    const req = { provider: 'unknown-provider', modelid: 'test' };
     const res = await orchestrator.executeCompletion(req, {});
 
     expect(res.error).toEqual({
@@ -211,7 +211,7 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
     const req = {
       provider: 'primary-provider',
-      actualModelId: 'model-a',
+      modelid: 'model-a',
       fallbackModel: 'unsupported-fallback/model-b',
     };
 
@@ -275,7 +275,7 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
 
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
     const result = await orchestrator.executeCompletion(
-      { provider: 'mock-provider', actualModelId: 'test-model' },
+      { provider: 'mock-provider', modelid: 'test-model' },
       mockReq,
     );
 
@@ -296,7 +296,7 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
 
     const result = await orchestrator.executeCompletion(
-      { provider: 'mock-provider', actualModelId: 'test-model' },
+      { provider: 'mock-provider', modelid: 'test-model' },
       null,
     );
     expect(result.id).toBe('ok');
@@ -329,7 +329,7 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
     };
 
     const resPromise = orchestrator.executeCompletion(
-      { provider: 'mock-provider', actualModelId: 'test-model' },
+      { provider: 'mock-provider', modelid: 'test-model' },
       mockReq,
     );
 
@@ -363,7 +363,7 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
     };
 
     const resPromise = orchestrator.executeCompletion(
-      { provider: 'mock-provider', actualModelId: 'test-model' },
+      { provider: 'mock-provider', modelid: 'test-model' },
       mockReq,
     );
 
@@ -405,7 +405,7 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
     };
 
     const resPromise = orchestrator.executeCompletion(
-      { provider: 'mock-provider', actualModelId: 'test-model' },
+      { provider: 'mock-provider', modelid: 'test-model' },
       mockReq,
     );
 
@@ -427,7 +427,7 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
     providerFactory.register('mock-provider', mockAdapter);
 
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
-    const req = { provider: 'mock-provider', actualModelId: 'test-model' };
+    const req = { provider: 'mock-provider', modelid: 'test-model' };
     const res = await orchestrator.executeCompletion(req, {});
 
     expect(res.error.code).toBe('poolUnavailable');
@@ -468,7 +468,7 @@ describe('UnifiedOrchestrator Edge Cases Tests', () => {
     providerFactory.register('mock-provider', mockAdapter);
 
     const orchestrator = new UnifiedOrchestrator(keyRegistry, providerFactory, config);
-    const req = { provider: 'mock-provider', actualModelId: 'test-model', stream: true };
+    const req = { provider: 'mock-provider', modelid: 'test-model', stream: true };
     const res = await orchestrator.executeCompletion(req, {});
 
     // Consume the stream

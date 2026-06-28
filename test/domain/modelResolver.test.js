@@ -21,8 +21,8 @@ describe('modelResolver & RequestTransformer Unit Tests', () => {
         openai: {
           extractReasoningFromThinkBlocks: true,
           models: [
-            { id: 'gpt-4o', aliases: ['4o'] },
-            { id: 'gpt-4' },
+            { modelid: 'gpt-4o', aliases: ['4o'] },
+            { modelid: 'gpt-4' },
           ],
         },
       };
@@ -31,21 +31,21 @@ describe('modelResolver & RequestTransformer Unit Tests', () => {
       const res1 = resolveModel('openai/gpt-4o', providersConfig);
       expect(res1).toEqual({
         provider: 'openai',
-        modelConfig: { id: 'gpt-4o', aliases: ['4o'], extractReasoningFromThinkBlocks: true },
+        modelConfig: { modelid: 'gpt-4o', aliases: ['4o'], extractReasoningFromThinkBlocks: true },
       });
 
       // Alias match
       const res2 = resolveModel('openai/4o', providersConfig);
       expect(res2).toEqual({
         provider: 'openai',
-        modelConfig: { id: 'gpt-4o', aliases: ['4o'], extractReasoningFromThinkBlocks: true },
+        modelConfig: { modelid: 'gpt-4o', aliases: ['4o'], extractReasoningFromThinkBlocks: true },
       });
 
       // Fallback: unconfigured model ID inside configured provider
       const res3 = resolveModel('openai/gpt-3.5-turbo', providersConfig);
       expect(res3).toEqual({
         provider: 'openai',
-        modelConfig: { id: 'gpt-3.5-turbo', extractReasoningFromThinkBlocks: true },
+        modelConfig: { modelid: 'gpt-3.5-turbo', extractReasoningFromThinkBlocks: true },
       });
 
       // Unconfigured provider
@@ -56,10 +56,10 @@ describe('modelResolver & RequestTransformer Unit Tests', () => {
     it('should resolve bare name models across all providers, and handle empty models lists', () => {
       const providersConfig = {
         openai: {
-          models: [{ id: 'gpt-4' }],
+          models: [{ modelid: 'gpt-4' }],
         },
         anthropic: {
-          models: [{ id: 'claude-3-opus', aliases: ['opus', 'claude-3'] }],
+          models: [{ modelid: 'claude-3-opus', aliases: ['opus', 'claude-3'] }],
         },
         emptyProvider: {},
       };
@@ -67,12 +67,12 @@ describe('modelResolver & RequestTransformer Unit Tests', () => {
       // Match by ID
       const res1 = resolveModel('gpt-4', providersConfig);
       expect(res1.provider).toBe('openai');
-      expect(res1.modelConfig.id).toBe('gpt-4');
+      expect(res1.modelConfig.modelid).toBe('gpt-4');
 
       // Match by alias
       const res2 = resolveModel('opus', providersConfig);
       expect(res2.provider).toBe('anthropic');
-      expect(res2.modelConfig.id).toBe('claude-3-opus');
+      expect(res2.modelConfig.modelid).toBe('claude-3-opus');
 
       // No match
       const res3 = resolveModel('unknown-model', providersConfig);
@@ -82,7 +82,7 @@ describe('modelResolver & RequestTransformer Unit Tests', () => {
     it('should read from and write to resolution cache', () => {
       const providersConfig = {
         openai: {
-          models: [{ id: 'gpt-4o' }],
+          models: [{ modelid: 'gpt-4o' }],
         },
       };
 
@@ -111,19 +111,19 @@ describe('modelResolver & RequestTransformer Unit Tests', () => {
       expect(unifiedReq.clientParams).toEqual({ model: 'gpt-4o', temperature: 0.5 });
     });
 
-    it('should set provider, actualModelId, and optional fallbackModel from resolved', () => {
+    it('should set provider, modelid, and optional fallbackModel from resolved', () => {
       const baseReq = { model: 'test' };
       const resolved = {
         provider: 'openai',
         modelConfig: {
-          id: 'gpt-4o-real',
+          modelid: 'gpt-4o-real',
           fallbackModel: 'anthropic/claude-3',
         },
       };
 
       const unifiedReq = transformRequest(baseReq, resolved);
       expect(unifiedReq.provider).toBe('openai');
-      expect(unifiedReq.actualModelId).toBe('gpt-4o-real');
+      expect(unifiedReq.modelid).toBe('gpt-4o-real');
       expect(unifiedReq.fallbackModel).toBe('anthropic/claude-3');
     });
 
@@ -132,7 +132,7 @@ describe('modelResolver & RequestTransformer Unit Tests', () => {
       const resolved = {
         provider: 'anthropic',
         modelConfig: {
-          id: 'claude-thinking',
+          modelid: 'claude-thinking',
           reasoningSupported: true,
           reasoningEffort: 'medium',
           extractReasoningFromThinkBlocks: true,
@@ -152,7 +152,7 @@ describe('modelResolver & RequestTransformer Unit Tests', () => {
           extractReasoningFromThinkBlocks: true,
           models: [
             {
-              id: 'MiniMax-M3',
+              modelid: 'MiniMax-M3',
               extractReasoningFromThinkBlocks: false,
             },
           ],
@@ -163,7 +163,7 @@ describe('modelResolver & RequestTransformer Unit Tests', () => {
       expect(resolved).toEqual({
         provider: 'tokenrouter',
         modelConfig: {
-          id: 'MiniMax-M3',
+          modelid: 'MiniMax-M3',
           extractReasoningFromThinkBlocks: false,
         },
       });
@@ -174,8 +174,7 @@ describe('modelResolver & RequestTransformer Unit Tests', () => {
       const resolved = {
         provider: 'openai',
         modelConfig: {
-          id: 'gpt-4o-real',
-          actualModelId: 'gpt-4o-real',
+          modelid: 'gpt-4o-real',
           maxTokens: 512,
           overrides: {
             reasoningEffort: 'high',
@@ -189,7 +188,7 @@ describe('modelResolver & RequestTransformer Unit Tests', () => {
       expect(baseReq).toEqual(snapshot);
       expect(unifiedReq).toMatchObject({
         provider: 'openai',
-        actualModelId: 'gpt-4o-real',
+        modelid: 'gpt-4o-real',
         maxTokens: 512,
         reasoningEffort: 'high',
       });

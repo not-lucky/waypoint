@@ -36,7 +36,7 @@ const updateRequestWithModelConfig = (currentReq, config) => {
   let req = {
     ...base,
     provider: resolved.provider,
-    actualModelId: modelConfig.actualModelId || modelConfig.id,
+    modelid: modelConfig.modelid,
   };
 
   req = applyModelConfigToRequest(req, modelConfig);
@@ -63,9 +63,9 @@ const prepareNextRequestState = (currentReq, nextModel, config) => {
 
   if (!resolveModel(nextModel, config.providers) && nextModel.includes('/')) {
     // Fall back to direct provider/model parsing if not explicitly defined in the map.
-    const [p, ...rest] = nextModel.split('/');
-    nextReq.provider = p.trim();
-    nextReq.actualModelId = rest.join('/').trim();
+    const firstSlashIndex = nextModel.indexOf('/');
+    nextReq.provider = nextModel.substring(0, firstSlashIndex).trim();
+    nextReq.modelid = nextModel.substring(firstSlashIndex + 1).trim();
   }
 
   return nextReq;
@@ -108,7 +108,7 @@ export const runOrchestrationLoop = async ({
     currentReq = updateRequestWithModelConfig(currentReq, config);
 
     // Prevent infinite fallback loops
-    const modelKey = currentReq.model || currentReq.actualModelId;
+    const modelKey = currentReq.model || currentReq.modelid;
     if (visitedModels.has(modelKey)) {
       logger.error('Infinite fallback loop detected, aborting request', { modelCycle: Array.from(visitedModels), failingModel: modelKey });
       return {

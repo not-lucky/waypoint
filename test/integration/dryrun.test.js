@@ -76,6 +76,8 @@ describe('Dry Run Endpoints Integration Tests', () => {
       expect(res.body.request.body).toEqual({
         model: 'gpt-4o',
         messages: payload.messages,
+        include_reasoning: true,
+        reasoning_effort: 'high',
         stream: false,
         temperature: 0.7,
       });

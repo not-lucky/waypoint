@@ -108,6 +108,7 @@ describe('modelResolver & RequestTransformer Unit Tests', () => {
 
       expect(unifiedReq.model).toBe('gpt-4o');
       expect(unifiedReq.temperature).toBe(0.5);
+      expect(unifiedReq.reasoningSupported).toBe(true);
       expect(unifiedReq.clientParams).toEqual({ model: 'gpt-4o', temperature: 0.5 });
     });
 
@@ -125,6 +126,7 @@ describe('modelResolver & RequestTransformer Unit Tests', () => {
       expect(unifiedReq.provider).toBe('openai');
       expect(unifiedReq.modelid).toBe('gpt-4o-real');
       expect(unifiedReq.fallbackModel).toBe('anthropic/claude-3');
+      expect(unifiedReq.reasoningSupported).toBe(true);
     });
 
     it('should set thinking properties if supported in resolved modelConfig', () => {

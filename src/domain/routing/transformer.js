@@ -101,6 +101,10 @@ export const applyModelConfigToRequest = (req, modelConfig) => {
     }
   });
 
+  if (finalReq.reasoningSupported === undefined) {
+    finalReq.reasoningSupported = true;
+  }
+
   return finalReq;
 };
 
@@ -125,6 +129,9 @@ export const transformRequest = (baseReq, resolved) => {
   }
 
   const transformedReq = { ...req, clientParams };
+  if (transformedReq.reasoningSupported === undefined) {
+    transformedReq.reasoningSupported = true;
+  }
   if (provider) {
     transformedReq.provider = provider;
   }

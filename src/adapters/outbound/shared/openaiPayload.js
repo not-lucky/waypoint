@@ -52,7 +52,8 @@ export function buildOpenAIChatPayload(req, stream) {
   if (effort && payload.reasoning_effort === undefined) {
     payload.reasoning_effort = effort;
   }
-  if (req.reasoningSupported && payload.include_reasoning === undefined) {
+  const reasoningSupported = req.reasoningSupported !== false;
+  if (reasoningSupported && payload.include_reasoning === undefined) {
     payload.include_reasoning = true;
   }
 

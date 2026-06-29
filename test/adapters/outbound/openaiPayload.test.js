@@ -64,4 +64,27 @@ describe('buildOpenAIChatPayload', () => {
     expect(payload.include_reasoning).toBe(true);
     expect(payload.tool_choice).toBe('required');
   });
+
+  it('defaults reasoningSupported to true when unset and emits reasoning fields', () => {
+    const payload = buildOpenAIChatPayload({
+      model: 'openai/gpt-4o',
+      modelid: 'gpt-4o',
+      messages: [],
+    }, false);
+
+    expect(payload.include_reasoning).toBe(true);
+    expect(payload.reasoning_effort).toBe('high');
+  });
+
+  it('omits reasoning fields when reasoningSupported is explicitly false', () => {
+    const payload = buildOpenAIChatPayload({
+      model: 'openai/gpt-4o',
+      modelid: 'gpt-4o',
+      messages: [],
+      reasoningSupported: false,
+    }, false);
+
+    expect(payload.include_reasoning).toBeUndefined();
+    expect(payload.reasoning_effort).toBeUndefined();
+  });
 });

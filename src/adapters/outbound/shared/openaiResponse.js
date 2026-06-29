@@ -40,7 +40,7 @@ export const resolveReasoningEffort = (req) => {
     if (['xhigh', 'max'].includes(effort)) return 'high';
     return effort;
   }
-  if (req.reasoningSupported) {
+  if (req.reasoningSupported !== false) {
     return 'high';
   }
   return undefined;

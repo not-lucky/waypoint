@@ -48,7 +48,7 @@ export const translateOpenAIToClaude = (req) => {
     payload.tool_choice = toolChoice;
   }
 
-  const reasoningSupported = req.reasoningSupported || false;
+  const reasoningSupported = req.reasoningSupported !== false;
   if (reasoningSupported) {
     let budget = 2048;
     const effort = req.reasoningEffort;

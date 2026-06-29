@@ -105,6 +105,7 @@ describe('GeminiAdapter Tests', () => {
       model: 'gemini/gemini-2.5-pro',
       modelid: 'gemini-2.5-pro',
       messages: [{ role: 'user', content: 'hello' }],
+      reasoningSupported: false,
     };
 
     const response = await adapter.generateCompletion(req, 'gemini-key');
@@ -138,6 +139,7 @@ describe('GeminiAdapter Tests', () => {
       model: 'gemini/public-name',
       modelid: 'tunedModels/custom/model',
       messages: [{ role: 'user', content: 'hello' }],
+      reasoningSupported: false,
     };
 
     await adapter.generateCompletion(req, 'gemini-key');
@@ -226,6 +228,7 @@ describe('GeminiAdapter Tests', () => {
       model: 'gemini/gemini-2.5-pro',
       modelid: 'gemini-2.5-pro',
       messages: [],
+      reasoningSupported: false,
     };
 
     const chunks = [];
@@ -257,6 +260,7 @@ describe('GeminiAdapter Tests', () => {
       model: 'gemini/public-name',
       modelid: 'projects/demo/locations/us-central1/models/custom-model',
       messages: [],
+      reasoningSupported: false,
     };
 
     for await (const chunk of adapter.generateStream(req, 'gemini-key', new AbortController().signal)) {
@@ -477,5 +481,136 @@ describe('GeminiAdapter Tests', () => {
     expect(nonTrivialChunks[0].choices[0].delta).toEqual({ content: null, reasoning_content: 'think' });
     expect(nonTrivialChunks[1].choices[0].delta).toEqual({ content: null, reasoning_content: 'ing' });
     expect(nonTrivialChunks[2].choices[0].delta).toEqual({ content: 'Hello', reasoning_content: null });
+  });
+
+  it('assert: generateCompletion defaults reasoningSupported to true and uses the OpenAI-compatible thinking path', async () => {
+    const adapter = new GeminiAdapter({});
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: 'hello' } }],
+      }),
+    });
+
+    const req = {
+      model: 'gemini/gemini-2.5-pro',
+      modelid: 'gemini-2.5-pro',
+      messages: [],
+    };
+
+    await adapter.generateCompletion(req, 'gemini-key');
+
+    expect(mockFetch).toHaveBeenLastCalledWith(
+      'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'Bearer gemini-key' }),
+        body: expect.stringContaining('"include_thoughts":true'),
+      }),
+    );
+  });
+
+  it('assert: generateCompletion with reasoningSupported false uses the standard generateContent path', async () => {
+    const adapter = new GeminiAdapter({});
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        candidates: [
+          {
+            content: { parts: [{ text: 'no thinking here' }] },
+            finishReason: 'STOP',
+            index: 0,
+          },
+        ],
+      }),
+    });
+
+    const req = {
+      model: 'gemini/gemini-2.5-pro',
+      modelid: 'gemini-2.5-pro',
+      messages: [],
+      reasoningSupported: false,
+    };
+
+    await adapter.generateCompletion(req, 'gemini-key');
+
+    expect(mockFetch).toHaveBeenLastCalledWith(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=gemini-key',
+      expect.objectContaining({
+        method: 'POST',
+      }),
+    );
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.extra_body).toBeUndefined();
+  });
+
+  it('assert: generateStream defaults reasoningSupported to true and routes to thinking stream', async () => {
+    const adapter = new GeminiAdapter({});
+
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode('data: {"choices": [{"delta": {"content": "ok"}}]}\n\n');
+        yield encoder.encode('data: [DONE]\n\n');
+      },
+    };
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: mockBody,
+    });
+
+    const req = {
+      model: 'gemini/gemini-2.5-pro',
+      modelid: 'gemini-2.5-pro',
+      messages: [],
+    };
+
+    for await (const chunk of adapter.generateStream(req, 'gemini-key', new AbortController().signal)) {
+      expect(chunk).toBeDefined();
+    }
+
+    expect(mockFetch).toHaveBeenLastCalledWith(
+      'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+      expect.objectContaining({
+        body: expect.stringContaining('"include_thoughts":true'),
+      }),
+    );
+  });
+
+  it('assert: generateStream with reasoningSupported false routes to the standard stream', async () => {
+    const adapter = new GeminiAdapter({});
+
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode('data: {"candidates": [{"finishReason": "STOP"}]}\n\n');
+      },
+    };
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: mockBody,
+    });
+
+    const req = {
+      model: 'gemini/gemini-2.5-pro',
+      modelid: 'gemini-2.5-pro',
+      messages: [],
+      reasoningSupported: false,
+    };
+
+    for await (const chunk of adapter.generateStream(req, 'gemini-key', new AbortController().signal)) {
+      expect(chunk).toBeDefined();
+    }
+
+    expect(mockFetch).toHaveBeenLastCalledWith(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:streamGenerateContent?alt=sse&key=gemini-key',
+      expect.objectContaining({
+        method: 'POST',
+      }),
+    );
   });
 });

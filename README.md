@@ -157,7 +157,7 @@ Models support advanced configuration options:
 - **actualModelId**: The underlying model ID to call upstream (optional, string). Useful for exposing different model IDs to clients while using the same upstream model
 - **aliases**: Alternative IDs that can be used to reference this model (optional, array of strings)
 - **overrides**: Locked settings that override client-supplied values (optional, object)
-- **reasoningSupported**: Whether the model supports reasoning/thinking capabilities (optional, boolean)
+- **reasoningSupported**: Whether the model supports reasoning/thinking capabilities (optional, boolean, defaults to `true` unless explicitly set to `false`)
 - **reasoningEffort**: Unified reasoning level - one of "minimal", "low", "medium", "high", "xhigh", "max" (optional, string)
 - **extractReasoningFromThinkBlocks**: If true, splits assistant content containing thinking/reasoning into `reasoning_content` field (optional, boolean). Can be set at provider or model level
 

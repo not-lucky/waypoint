@@ -6,7 +6,7 @@ import { executeStandardStream } from './geminiStandardStream.js';
  * Delivers tokens in real-time, handling tag reconstruction for reasoning models.
  */
 export async function* executeStream(req, apiKey, signal, requestLog, adapter) {
-  const reasoningSupported = req.reasoningSupported || false;
+  const reasoningSupported = req.reasoningSupported !== false;
 
   if (reasoningSupported) {
     yield* executeThinkingStream(req, apiKey, signal, requestLog, adapter);

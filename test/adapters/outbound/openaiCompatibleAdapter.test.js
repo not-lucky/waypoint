@@ -167,6 +167,8 @@ describe('OpenAICompatibleAdapter Tests', () => {
           messages: [{ role: 'user', content: 'hello' }],
           stream: false,
           temperature: 0.7,
+          reasoning_effort: 'high',
+          include_reasoning: true,
         }),
       }),
     );
@@ -236,6 +238,8 @@ describe('OpenAICompatibleAdapter Tests', () => {
             include_usage: true,
           },
           max_tokens: 100,
+          reasoning_effort: 'high',
+          include_reasoning: true,
         }),
       }),
     );
@@ -286,6 +290,47 @@ describe('OpenAICompatibleAdapter Tests', () => {
         body: expect.stringContaining('"reasoning_effort":"high"'),
       }),
     );
+  });
+
+  it('assert: reasoningSupported defaults to true and includes reasoning fields', async () => {
+    const adapter = new OpenAICompatibleAdapter({ baseUrl: 'https://api.openai.com/v1', providerName: 'openai' });
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: 'hello' } }],
+      }),
+    });
+
+    await adapter.generateCompletion({
+      modelid: 'gpt-4o',
+      messages: [],
+    }, 'test-api-key');
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.include_reasoning).toBe(true);
+    expect(body.reasoning_effort).toBe('high');
+  });
+
+  it('assert: reasoningSupported explicitly false omits reasoning fields', async () => {
+    const adapter = new OpenAICompatibleAdapter({ baseUrl: 'https://api.openai.com/v1', providerName: 'openai' });
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: 'hello' } }],
+      }),
+    });
+
+    await adapter.generateCompletion({
+      modelid: 'gpt-4o',
+      messages: [],
+      reasoningSupported: false,
+    }, 'test-api-key');
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.include_reasoning).toBeUndefined();
+    expect(body.reasoning_effort).toBeUndefined();
   });
 
   it('assert: generateCompletion handles fetch error and calls requestLog', async () => {

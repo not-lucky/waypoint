@@ -363,6 +363,51 @@ describe('AnthropicAdapter Tests', () => {
     );
   });
 
+  it('assert: reasoningSupported defaults to true and emits thinking block', async () => {
+    const adapter = new AnthropicAdapter({});
+    const req = {
+      model: 'anthropic/claude-3-5-sonnet',
+      modelid: 'claude-3-5-sonnet',
+      messages: [],
+    };
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: 'msg_default',
+        content: [{ type: 'text', text: 'hello' }],
+      }),
+    });
+
+    await adapter.generateCompletion(req, 'key');
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.thinking).toEqual({ type: 'enabled', budget_tokens: 2048 });
+  });
+
+  it('assert: reasoningSupported explicitly false omits thinking block', async () => {
+    const adapter = new AnthropicAdapter({});
+    const req = {
+      model: 'anthropic/claude-3-5-sonnet',
+      modelid: 'claude-3-5-sonnet',
+      messages: [],
+      reasoningSupported: false,
+    };
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: 'msg_no_thinking',
+        content: [{ type: 'text', text: 'hello' }],
+      }),
+    });
+
+    await adapter.generateCompletion(req, 'key');
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.thinking).toBeUndefined();
+  });
+
   it('assert: generateStream forwards thinking options and abortSignal correctly', async () => {
     const adapter = new AnthropicAdapter({});
     const req = {

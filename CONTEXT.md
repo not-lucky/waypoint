@@ -91,7 +91,7 @@ Waypoint is a single-binary local LLM proxy and gateway that provides a unified 
 
 ### Reasoning & Thinking
 - **Reasoning Content**: Special field for models that support thinking/reasoning capabilities
-- **Reasoning Supported**: Model capability flag indicating whether the model supports reasoning/thinking
+- **Reasoning Supported**: Model capability flag indicating whether the model supports reasoning/thinking; defaults to true unless explicitly disabled
 - **Reasoning Effort**: Unified reasoning level controlling thinking intensity (minimal, low, medium, high, xhigh, max)
 - **Extract Reasoning from Think Blocks**: Setting to split assistant content containing reasoning into reasoning_content field
 - **Reasoning Inheritance**: Provider-level reasoning settings that models inherit unless explicitly overridden

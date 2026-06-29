@@ -260,6 +260,22 @@ describe('Model-Level Defaults, Overrides, and Reasoning Unit Tests', () => {
       expect(secondReq.extractReasoningFromThinkBlocks).toBe(true);
       expect(secondReq.clientParams).toEqual({ model: 'custom-model' });
     });
+
+    it('defaults reasoningSupported to true when no explicit value is provided', () => {
+      const baseReq = { model: 'custom-model' };
+      const resolvedWithoutReasoning = {
+        provider: 'gemini',
+        modelConfig: {
+          modelid: 'custom-model',
+          temperature: 0.3,
+        },
+      };
+
+      const unifiedReq = transformRequest(baseReq, resolvedWithoutReasoning);
+
+      expect(unifiedReq.temperature).toBe(0.3);
+      expect(unifiedReq.reasoningSupported).toBe(true);
+    });
   });
 
   describe('Provider Adapter Unified Mappings', () => {

@@ -10,7 +10,7 @@ const resolveGeminiModelId = (req) => {
 };
 
 export const executeCompletion = async ( req, apiKey, signal, requestLog, adapter ) => {
-  const reasoningSupported = req.reasoningSupported || false;
+  const reasoningSupported = req.reasoningSupported !== false;
 
   let payload;
   let url;

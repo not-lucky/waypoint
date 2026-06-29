@@ -7,7 +7,6 @@
 
 import { sanitizeUrl, serializeHeaders, redactHeaders } from '../../utils/requestLoggerUtils.js';
 import { parseRetryAfter, UpstreamError, normalizeUpstreamError } from '../../domain/errors/upstream.js';
-import { mapGeminiStatusToType } from '../../domain/errors/geminiErrorTypes.js';
 
 /**
  * Abstract base class for all provider adapters.
@@ -35,10 +34,9 @@ export class BaseProvider {
    * forward the upstream's own message verbatim.
    *
    * @param {Response} response - Fetch response.
-   * @param {string} [providerName='unknown'] - Name of the provider.
    * @returns {Promise<UpstreamError>}
    */
-  static async parseUpstreamError(response, providerName = 'unknown') {
+  static async parseUpstreamError(response) {
     const errorText = await response.text();
     let errorJson;
     try {
@@ -68,14 +66,9 @@ export class BaseProvider {
     // lowercase key can ever resolve; the `Retry-After` fallback is dead code.
     const retryAfterSeconds = parseRetryAfter(headersObj['retry-after']);
 
-    const isGemini = providerName === 'gemini' || (response.url && response.url.includes('generativelanguage.googleapis.com'));
-    const errorType = (isGemini && errorObj?.status)
-      ? mapGeminiStatusToType(errorObj.status)
-      : errorObj?.type;
-
     const err = new UpstreamError(message, {
       statusCode: response.status,
-      errorType,
+      errorType: errorObj?.type,
       errorCode: errorObj?.code,
       upstreamBody: errorJson,
       provider: 'unknown', // Filled by normalization or adapter.
@@ -125,7 +118,7 @@ export class BaseProvider {
 
     if (!response.ok) {
       try {
-        const err = await BaseProvider.parseUpstreamError(response, this.providerName);
+        const err = await this.parseUpstreamError(response);
         throw err;
       } finally {
         cleanup();
@@ -182,6 +175,10 @@ export class BaseProvider {
 
   async generateStream() {
     throw new Error('BaseProvider.generateStream must be implemented by subclass');
+  }
+
+  parseUpstreamError(response) {
+    return BaseProvider.parseUpstreamError(response);
   }
 
   normalizeError(error) {

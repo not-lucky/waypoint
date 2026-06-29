@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { ProviderFactory } from '../../../src/adapters/outbound/factory.js';
+import { CloudflareAdapter } from '../../../src/adapters/outbound/cloudflare/index.js';
 import { OpenAICompatibleAdapter } from '../../../src/adapters/outbound/openai/index.js';
 import { AnthropicAdapter } from '../../../src/adapters/outbound/anthropic/index.js';
 
@@ -69,7 +70,7 @@ describe('ProviderFactory Tests', () => {
     expect(adapter.providerName).toBe('custom-anthropic');
   });
 
-  it("assert: 'cloudflare' -> OpenAICompatibleAdapter with provider-specific URL resolution", () => {
+  it("assert: 'cloudflare' -> CloudflareAdapter with provider-specific URL resolution", () => {
     const config = {
       providers: {
         cloudflare: {
@@ -82,7 +83,7 @@ describe('ProviderFactory Tests', () => {
     };
     const factory = new ProviderFactory(config);
     const adapter = factory.get('cloudflare');
-    expect(adapter).toBeInstanceOf(OpenAICompatibleAdapter);
+    expect(adapter).toBeInstanceOf(CloudflareAdapter);
     expect(adapter.baseUrl).toBeNull();
     expect(adapter.providerName).toBe('cloudflare');
   });

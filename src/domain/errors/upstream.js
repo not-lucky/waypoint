@@ -9,9 +9,6 @@
  * demand", the client receives exactly that.
  */
 
-
-import { mapGeminiStatusToType } from './geminiErrorTypes.js';
-
 /**
  * Classifies network/transport failures that have no HTTP status from the provider.
  *
@@ -198,7 +195,7 @@ export const normalizeUpstreamError = (error, providerName) => {
     message,
     statusCode: status,
     errorCode: errorObj?.code,
-    errorType: mapGeminiStatusToType(errorObj?.status) || errorObj?.type,
+    errorType: errorObj?.type,
     retryAfterSeconds,
     provider: providerName,
     upstreamBody: upstreamBody ?? null,
@@ -240,7 +237,7 @@ export const createStreamUpstreamError = (upstreamBody, statusCode, provider, he
   );
   return new UpstreamError(err?.message || 'Stream error', {
     statusCode,
-    errorType: mapGeminiStatusToType(err?.status) || err?.type,
+    errorType: err?.type,
     errorCode: err?.code,
     upstreamBody,
     provider,
@@ -261,5 +258,4 @@ export const throwIfStreamErrorPayload = (parsedData, provider, headers = {}) =>
   const statusCode = resolveStreamErrorStatus(parsedData);
   throw createStreamUpstreamError(parsedData, statusCode, provider, headers);
 };
-
 

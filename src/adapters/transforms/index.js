@@ -5,6 +5,7 @@ import { translateClaudeToOpenAIRequest } from './request/claudeToOpenai.js';
 import { translateClaudeToOpenAI, translateClaudeChunkToOpenAI } from './response/claudeToOpenai.js';
 import { translateGeminiToOpenAI, translateGeminiChunkToOpenAI } from './response/geminiToOpenai.js';
 import { translateOpenAIToClaudeResponse } from './response/openaiToClaude.js';
+import { mapGeminiStatusToType } from '../../domain/errors/geminiErrorTypes.js';
 
 export const FORMATS = {
   OPENAI: 'openai',
@@ -217,9 +218,12 @@ function normalizeErrorToHub(upstreamFormat, normalized) {
   if (upstreamFormat === FORMATS.GEMINI) {
     // Gemini shape: { error: { code, message, status } }
     const geminiErr = normalized.upstreamBody?.error || normalized.upstreamBody || {};
+    const geminiType = mapGeminiStatusToType(geminiErr.status || normalized.errorType)
+      || normalized.errorType
+      || 'api_error';
     return {
       errorCode: geminiErr.code || normalized.errorCode,
-      errorType: normalized.errorType || 'api_error',
+      errorType: geminiType,
       message: geminiErr.message || normalized.message,
       statusCode: normalized.statusCode,
       retryAfterSeconds: normalized.retryAfterSeconds,

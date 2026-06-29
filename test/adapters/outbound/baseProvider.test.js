@@ -70,25 +70,16 @@ describe('BaseProvider Tests', () => {
   });
 
   describe('parseUpstreamError', () => {
-    it('uses the upstream `status` field as errorType when `type` is absent (Gemini shape)', async () => {
+    it('preserves the upstream `type` field when present', async () => {
       const response = new Response(
-        JSON.stringify({ error: { code: 404, message: 'models/wrong_model is not found', status: 'NOT_FOUND' } }),
-        { status: 404, headers: { 'content-type': 'application/json' } },
+        JSON.stringify({ error: { code: 'rate_limit_exceeded', message: 'Too many requests', type: 'rate_limit_error' } }),
+        { status: 429, headers: { 'content-type': 'application/json' } },
       );
-      const err = await BaseProvider.parseUpstreamError(response, 'gemini');
-      expect(err.statusCode).toBe(404);
-      expect(err.errorType).toBe('not_found_error');
-      expect(err.errorCode).toBe(404);
-      expect(err.message).toBe('models/wrong_model is not found');
-    });
-
-    it('passes through unknown Gemini status strings verbatim', async () => {
-      const response = new Response(
-        JSON.stringify({ error: { code: 1, message: 'teapot', status: 'I_AM_A_TEAPOT' } }),
-        { status: 418, headers: { 'content-type': 'application/json' } },
-      );
-      const err = await BaseProvider.parseUpstreamError(response, 'gemini');
-      expect(err.errorType).toBe('I_AM_A_TEAPOT');
+      const err = await BaseProvider.parseUpstreamError(response, 'openai');
+      expect(err.statusCode).toBe(429);
+      expect(err.errorType).toBe('rate_limit_error');
+      expect(err.errorCode).toBe('rate_limit_exceeded');
+      expect(err.message).toBe('Too many requests');
     });
 
     it('extracts the first element when the error body is a JSON array', async () => {

@@ -211,17 +211,17 @@ describe('normalizeUpstreamError', () => {
     expect(res.retryAfterSeconds).toBe(45);
   });
 
-  it('uses the upstream `status` field as errorType when `type` is absent (Gemini shape)', () => {
+  it('does not translate provider-specific `status` fields in domain normalization', () => {
     const res = normalizeUpstreamError({
       statusCode: 404,
       upstreamBody: { error: { code: 404, message: 'models/wrong_model is not found', status: 'NOT_FOUND' } },
     }, 'gemini');
-    expect(res.errorType).toBe('not_found_error');
+    expect(res.errorType).toBeUndefined();
     expect(res.errorCode).toBe(404);
     expect(res.message).toBe('models/wrong_model is not found');
   });
 
-  it('prefers `status` over `type` when both are present (Gemini-style status is more specific)', () => {
+  it('preserves the upstream `type` field when both `status` and `type` are present', () => {
     const res = normalizeUpstreamError({
       statusCode: 400,
       upstreamBody: { error: { type: 'invalid_request_error', status: 'INVALID_ARGUMENT', message: 'bad input' } },
@@ -229,12 +229,12 @@ describe('normalizeUpstreamError', () => {
     expect(res.errorType).toBe('invalid_request_error');
   });
 
-  it('passes through unknown Gemini status strings verbatim', () => {
+  it('does not expose unknown Gemini status strings as errorType without an upstream type', () => {
     const res = normalizeUpstreamError({
       statusCode: 418,
       upstreamBody: { error: { code: 1, message: 'teapot', status: 'I_AM_A_TEAPOT' } },
     }, 'gemini');
-    expect(res.errorType).toBe('I_AM_A_TEAPOT');
+    expect(res.errorType).toBeUndefined();
   });
 
   it('returns an UpstreamError as-is with provider fallthrough', () => {
@@ -350,13 +350,13 @@ describe('throwIfStreamErrorPayload', () => {
     }, 'gemini')).toThrow(UpstreamError);
   });
 
-  it('uses the upstream `status` field as errorType when `type` is absent (Gemini stream shape)', () => {
+  it('does not translate Gemini stream `status` fields in the domain layer', () => {
     const err = createStreamUpstreamError(
       { error: { code: 404, message: 'models/wrong_model is not found', status: 'NOT_FOUND' } },
       404,
       'gemini',
     );
-    expect(err.errorType).toBe('not_found_error');
+    expect(err.errorType).toBeUndefined();
     expect(err.errorCode).toBe(404);
     expect(err.message).toBe('models/wrong_model is not found');
     expect(err.statusCode).toBe(404);

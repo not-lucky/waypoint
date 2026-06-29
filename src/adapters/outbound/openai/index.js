@@ -394,19 +394,8 @@ export class OpenAICompatibleAdapter extends BaseProvider {
       : apiCredential?.apiKey;
   }
 
-  resolveBaseUrl(apiCredential) {
-    if (this.providerName !== 'cloudflare') {
-      return this.baseUrl;
-    }
-
-    const accountId = apiCredential?.accountId;
-    if (!accountId) {
-      throw new Error(
-        'Cloudflare credentials require a non-empty \'accountId\'. '
-        + 'Check that the provider keys array includes both \'apiKey\' and \'accountId\'.',
-      );
-    }
-    return `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1`;
+  resolveBaseUrl() {
+    return this.baseUrl;
   }
 
   async generateCompletion(req, apiCredential, signal, requestLog = null) {

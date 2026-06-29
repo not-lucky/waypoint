@@ -7,6 +7,7 @@
 
 import { GeminiAdapter } from './gemini/index.js';
 import { AnthropicAdapter } from './anthropic/index.js';
+import { CloudflareAdapter } from './cloudflare/index.js';
 import { OpenAICompatibleAdapter } from './openai/index.js';
 
 /**
@@ -112,7 +113,7 @@ ProviderFactory.registerStrategy({
 
 ProviderFactory.registerStrategy({
   match: (name) => name === 'cloudflare',
-  create: (name, provider, timeouts) => new OpenAICompatibleAdapter({
+  create: (name, provider, timeouts) => new CloudflareAdapter({
     baseUrl: null,
     providerName: name,
     timeoutMs: timeouts.httpTimeoutMs,

@@ -103,7 +103,7 @@ describe('translateError cross-protocol error projection', () => {
         expect(translated.statusCode).toBe(404);
         expect(translated.provider).toBe('gemini');
         expect(translated.upstreamBody).toEqual(GEMINI_NORMALIZED.upstreamBody);
-        expect(translated.type).toBe('api_error');
+        expect(translated.type).toBe('not_found_error');
       },
     );
   });
@@ -152,7 +152,7 @@ describe('translateError cross-protocol error projection', () => {
       code: 'NOT_FOUND',
       message: 'Model not found: gemini-9',
       param: null,
-      type: 'api_error',
+      type: 'not_found_error',
     });
   });
 });

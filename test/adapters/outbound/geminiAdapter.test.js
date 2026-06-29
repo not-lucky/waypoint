@@ -204,6 +204,74 @@ describe('GeminiAdapter Tests', () => {
     });
   });
 
+  it('maps Gemini canonical status codes in parseUpstreamError', async () => {
+    const adapter = new GeminiAdapter({});
+    const response = new Response(
+      JSON.stringify({
+        error: {
+          code: 404,
+          message: 'models/wrong_model is not found',
+          status: 'NOT_FOUND',
+        },
+      }),
+      {
+        status: 404,
+        headers: { 'content-type': 'application/json' },
+      },
+    );
+
+    const err = await adapter.parseUpstreamError(response);
+
+    expect(err.statusCode).toBe(404);
+    expect(err.errorCode).toBe(404);
+    expect(err.message).toBe('models/wrong_model is not found');
+    expect(err.errorType).toBe('not_found_error');
+  });
+
+  it('maps Gemini canonical status codes in normalizeError from upstream bodies', () => {
+    const adapter = new GeminiAdapter({});
+
+    expect(adapter.normalizeError({
+      statusCode: 429,
+      upstreamBody: {
+        error: {
+          code: 429,
+          message: 'Quota exceeded',
+          status: 'RESOURCE_EXHAUSTED',
+        },
+      },
+    })).toEqual({
+      message: 'Quota exceeded',
+      statusCode: 429,
+      errorCode: 429,
+      errorType: 'rate_limit_error',
+      retryAfterSeconds: undefined,
+      provider: 'gemini',
+      upstreamBody: {
+        error: {
+          code: 429,
+          message: 'Quota exceeded',
+          status: 'RESOURCE_EXHAUSTED',
+        },
+      },
+      transportCode: undefined,
+    });
+  });
+
+  it('maps Gemini canonical status codes in normalizeError from errorType fallbacks', () => {
+    const adapter = new GeminiAdapter({});
+
+    const normalized = adapter.normalizeError({
+      message: 'Deadline exceeded',
+      statusCode: 504,
+      errorType: 'DEADLINE_EXCEEDED',
+    });
+
+    expect(normalized.errorType).toBe('timeout_error');
+    expect(normalized.message).toBe('Deadline exceeded');
+    expect(normalized.statusCode).toBe(504);
+  });
+
   it('assert: generateStream yields chunks correctly', async () => {
     const adapter = new GeminiAdapter({});
 

@@ -73,12 +73,25 @@ export const interpolateProviderKeyEntry = (entry, path, index, providerName) =>
 };
 
 /**
+ * Normalizes a model declaration into object form.
+ * @param {string|object} model - Model declaration
+ * @returns {object} Normalized model config
+ */
+export const normalizeModelDeclaration = (model) => {
+  if (typeof model === 'string') {
+    return { modelid: model };
+  }
+
+  return { ...model };
+};
+
+/**
  * Processes model numeric properties.
  * @param {object} model - Model configuration
  * @returns {object} Processed model config
  */
 export const processModel = (model) => {
-  let processed = { ...model };
+  let processed = normalizeModelDeclaration(model);
 
   processed = coerceToInt(processed, 'maxTokens');
 

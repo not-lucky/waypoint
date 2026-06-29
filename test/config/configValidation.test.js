@@ -164,6 +164,35 @@ describe('Configuration Validation Tests', () => {
     expect(() => validateConfig(selfReference)).toThrow('process.exit called');
   });
 
+  it('accepts shorthand string models and normalizes them in place during direct validation', () => {
+    const config = getBaseValidConfig();
+    config.providers.gemini.models = [
+      'gemini-2.5-pro',
+      { modelid: 'gemini-2.5-flash', temperature: 0.3 },
+    ];
+
+    expect(() => validateConfig(config, false)).not.toThrow();
+    expect(config.providers.gemini.models).toEqual([
+      { modelid: 'gemini-2.5-pro' },
+      { modelid: 'gemini-2.5-flash', temperature: 0.3 },
+    ]);
+  });
+
+  it('resolves fallbackModel references when the target provider uses shorthand strings later in the config', () => {
+    const config = getBaseValidConfig();
+    config.providers.gemini.models = [{
+      modelid: 'gemini-2.5-pro',
+      fallbackModel: 'openai/gpt-4o',
+    }];
+    config.providers.openai = {
+      keys: ['openai-key'],
+      models: ['gpt-4o'],
+    };
+
+    expect(() => validateConfig(config, false)).not.toThrow();
+    expect(config.providers.openai.models).toEqual([{ modelid: 'gpt-4o' }]);
+  });
+
   it('rejects invalid gateway retry and cooldown values', () => {
     const badRetry = getBaseValidConfig();
     badRetry.gateway.globalRetryLimit = 0;

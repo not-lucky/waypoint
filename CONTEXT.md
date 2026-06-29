@@ -15,7 +15,7 @@ Waypoint is a single-binary local LLM proxy and gateway that provides a unified 
 - **Reserved Provider**: Built-in provider with predefined configuration (gemini, anthropic, openai, cloudflare)
 - **Custom Provider**: User-defined provider configured with a baseUrl for OpenAI- or Anthropic-compatible endpoints
 - **Provider Type**: Optional field for custom providers specifying compatibility: "openai-compatible" (default) or "anthropic-compatible"
-- **Model**: A specific LLM instance within a provider (e.g., gemini-2.5-pro, gpt-4o)
+- **Model**: A specific LLM instance within a provider (e.g., gemini-2.5-pro, gpt-4o). A model may be declared as either an object (with optional fields such as `modelid`, `aliases`, `temperature`, `maxTokens`, `reasoningSupported`, `reasoningEffort`, `extractReasoningFromThinkBlocks`, `overrides`, `fallbackModel`) or as a shorthand string that is normalized to `{ modelid: "<string>" }` during config loading and validation.
 - **Fallback Model**: Alternate model to use when the primary provider's key pool is exhausted
 - **Actual Model ID**: The underlying model ID to call upstream, different from the exposed model ID
 - **Model Aliases**: Alternative IDs that can be used to reference a model

@@ -488,5 +488,31 @@ providers:
       expect( typeof config.clients[ 0 ].rateLimit.windowMs ).toBe( 'number' );
       expect( config.clients[ 0 ].rateLimit.windowMs ).toBe( 30000 );
     } );
+
+    it( 'should normalize shorthand string models into full model objects when loading config', () => {
+      writeTempConfig( `
+gateway:
+  port: 20128
+  routing:
+    strategy: "round-robin"
+providers:
+  gemini:
+    keys:
+      - "gemini-key"
+    models:
+      - "gemini-2.5-pro"
+      - "gemini-2.5-flash"
+      - modelid: "gemini-flash-lite-latest"
+        temperature: 0.3
+` );
+
+      const config = configLoader.loadConfig( tempConfigPath );
+
+      expect( config.providers.gemini.models ).toEqual( [
+        { modelid: 'gemini-2.5-pro' },
+        { modelid: 'gemini-2.5-flash' },
+        { modelid: 'gemini-flash-lite-latest', temperature: 0.3 },
+      ] );
+    } );
   } );
 } );

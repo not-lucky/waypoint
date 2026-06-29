@@ -8,6 +8,7 @@
 
 import { isPositiveInteger, isNonEmptyString, validateFallbackModel, logErrorAndExitOrThrow } from './validationHelpers.js';
 import { filterValidKeys, getProviderKeyCandidate, isCloudflareKeyEntry } from './configKeyUtils.js';
+import { normalizeModelDeclaration } from './configUtils.js';
 import { getAppLogger } from '../infrastructure/logging/logger.js';
 
 const logger = getAppLogger('config');
@@ -125,6 +126,12 @@ export class ProviderValidator {
 
     const processedProviders = structuredClone(providers);
     const originalProviders = new Set(Object.keys(processedProviders));
+
+    Object.values(processedProviders).forEach((providerConf) => {
+      if (Array.isArray(providerConf?.models)) {
+        providerConf.models = providerConf.models.map(normalizeModelDeclaration);
+      }
+    });
 
     Object.entries(processedProviders).forEach(([providerName, providerConf]) => {
       if (!providerConf || typeof providerConf !== 'object') {

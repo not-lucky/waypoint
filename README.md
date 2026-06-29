@@ -122,19 +122,53 @@ providers:
     keys:
       - "${GEMINI_API_KEY_1}"
     models:
-      - id: "gemini-2.5-pro"
+      # Shorthand: a plain string expands to { modelid: "..." }
+      - "gemini-2.5-pro"
+      # Long form for model options that need more than an id
+      - modelid: "gemini-flash-lite-latest"
+        temperature: 0.3
         fallbackModel: "openai/gpt-4o"
   local-ollama:
     baseUrl: "http://localhost:11434/v1"
     keys:
       - "dummy-key-required"
     models:
-      - id: "llama3"
+      - "llama3"
 ```
 
 Reserved provider names (`gemini`, `anthropic`, `openai`, `cloudflare`) MUST NOT carry a `type` field; custom providers MUST set `baseUrl`. Custom providers can optionally specify a `type` field:
 - Omitting `type` defaults to `openai-compatible`
 - The only other accepted value is `anthropic-compatible`
+
+### Shorthand Model Declarations
+
+Each entry under a provider's `models:` array may be either an object or a string. String entries are expanded to `{ modelid: "<string>" }` before validation, so they work for the simple case of declaring a model id without any extra settings:
+
+```yaml
+providers:
+  gemini:
+    keys:
+      - "${GEMINI_API_KEY_1}"
+    models:
+      - "gemini-2.5-pro"
+      - "gemini-2.5-flash"
+```
+
+Strings and objects may be mixed freely. Use the object form whenever you need any field other than `modelid` (for example `aliases`, `temperature`, `reasoningEffort`, `overrides`, or `fallbackModel`):
+
+```yaml
+providers:
+  gemini:
+    keys:
+      - "${GEMINI_API_KEY_1}"
+    models:
+      - "gemini-2.5-pro"                                  # shorthand
+      - modelid: "gemini-flash-lite-latest"               # long form
+        temperature: 0.3
+        fallbackModel: "openai/gpt-4o"
+```
+
+Shorthand entries are normalized before fallback validation runs, so a `fallbackModel` reference such as `openai/gpt-4o` resolves correctly even when the target provider's `gpt-4o` entry is declared later in the config and written as a string.
 
 See `config.example.yaml` for `logging.*` and the full provider schema.
 

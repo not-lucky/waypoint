@@ -124,9 +124,13 @@ providers:
     keys:
       - "${GEMINI_API_KEY_1}"
       - "${GEMINI_API_KEY_2}"
-    # Models array (required)
+    # Models array (required).
+    # Each entry may be either a string (the upstream model id) or an object.
+    # String entries are expanded to { modelid: "<string>" } during config loading
+    # and validation, so the two forms below are interchangeable for a simple id.
     models:
-      - modelid: "gemini-2.5-pro-preview-05-06"        # The model ID of the upstream model (required, string)
+      - "gemini-2.5-pro-preview-05-06"              # Shorthand: equivalent to { modelid: "gemini-2.5-pro-preview-05-06" }
+      - modelid: "gemini-2.5-pro"                   # Long form: required when you want any field other than modelid
         aliases: ["gemini-2.5-pro", "gemini-pro", "pro"] # Alternative IDs to match this model (optional, array of strings)
         reasoningSupported: true                       # Whether the model supports reasoning/thinking (optional, boolean)
         fallbackModel: "openai/gpt-4o"                 # Model to use if all keys for this provider fail (optional format: provider/model-id)

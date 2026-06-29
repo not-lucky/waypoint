@@ -34,20 +34,6 @@ Before making changes, read `CONTEXT.md` to understand the project's ubiquitous 
 - **Cooldown**: Temporary key unavailability based on HTTP status codes
 - **Error Envelope**: Unified error format projected to protocol-specific shapes
 
-## Agent Skills Configuration
-
-### Issue tracker
-
-GitLab Issues with external merge requests as a triage surface. See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-Default label vocabulary (needs-triage, needs-info, ready-for-agent, ready-for-human, wontfix). See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Single-context layout with CONTEXT.md at repo root and docs/adr/ for architectural decisions. See `docs/agents/domain.md`.
-
 ## Working with This Codebase
 
 ### Code Style

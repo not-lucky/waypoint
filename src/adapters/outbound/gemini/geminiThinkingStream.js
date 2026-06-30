@@ -3,6 +3,7 @@ import { throwIfStreamErrorPayload } from '../../../domain/errors/upstream.js';
 import { getThinkingLevel } from './geminiFormatter.js';
 import { mapUsage } from '../shared/openaiResponse.js';
 import { ThinkingBuffer } from '../../../utils/streaming/thinkingBuffer.js';
+import { applyExtraBody } from '../shared/extraBody.js';
 
 const resolveGeminiModelId = (req) => {
   if (typeof req?.modelid === 'string' && req.modelid.trim() !== '') {
@@ -41,6 +42,8 @@ export async function* executeThinkingStream(req, apiKey, signal, requestLog, ad
   };
   if (req.temperature !== undefined) payload.temperature = req.temperature;
   if (req.maxTokens !== undefined) payload.max_tokens = req.maxTokens;
+  // Deep-merges client extraBody parameters (e.g. google_search) with adapter thinking_config
+  applyExtraBody(payload, req.extraBody);
 
   const { response, fetchSignal, cleanup } = await adapter.performFetch(
     url,

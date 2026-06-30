@@ -10,6 +10,18 @@ const STOP_REASON_MAP = {
   tool_calls: 'tool_use',
 };
 
+const ANTHROPIC_REQUEST_KEYS = new Set([
+  'model',
+  'messages',
+  'max_tokens',
+  'system',
+  'tools',
+  'tool_choice',
+  'temperature',
+  'stream',
+  'extraBody',
+]);
+
 const writeSseEvent = (res, reqLog, eventType, data) => {
   const event = `event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`;
   reqLog.appendStreamEvent('client', event);
@@ -29,7 +41,24 @@ export class AnthropicController extends BaseController {
     return this.executeRequest(req, res, {
       protocolName: 'Anthropic',
       ingressFormat: FORMATS.ANTHROPIC,
-      translateReq: (body) => translateRequest(FORMATS.ANTHROPIC, FORMATS.OPENAI, body),
+      translateReq: (body) => {
+        const translated = {
+          ...translateRequest(FORMATS.ANTHROPIC, FORMATS.OPENAI, body),
+          // Preserve client-supplied provider-specific request parameters (extraBody)
+          // during translation from Anthropic layout into standard OpenAI format.
+          extraBody: body.extraBody,
+        };
+
+        // Carry forward unknown top-level request keys so the routing transformer
+        // can apply the same allowedExtraBody filtering used for OpenAI ingress.
+        for (const [key, value] of Object.entries(body)) {
+          if (!ANTHROPIC_REQUEST_KEYS.has(key)) {
+            translated[key] = value;
+          }
+        }
+
+        return translated;
+      },
       translateRes: (response, body) => translateResponse(FORMATS.ANTHROPIC, FORMATS.OPENAI, response, body),
       handleStream: (resp, response, unifiedReq, reqLog, body) => this.handleStreamingResponse(resp, response, unifiedReq, reqLog, body),
     });

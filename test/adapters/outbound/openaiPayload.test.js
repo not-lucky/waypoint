@@ -87,4 +87,89 @@ describe('buildOpenAIChatPayload', () => {
     expect(payload.include_reasoning).toBeUndefined();
     expect(payload.reasoning_effort).toBeUndefined();
   });
+
+  it('injects extraBody fields into the top-level outgoing payload', () => {
+    const payload = buildOpenAIChatPayload({
+      model: 'openrouter/deepseek/deepseek-r1',
+      modelid: 'deepseek/deepseek-r1',
+      messages: [{ role: 'user', content: 'hi' }],
+      extraBody: {
+        provider: { sort: 'throughput' },
+        plugins: [{ id: 'web-search' }],
+      },
+      clientParams: {
+        model: 'openrouter/deepseek/deepseek-r1',
+        extraBody: {
+          provider: { sort: 'latency' },
+        },
+      },
+    }, false);
+
+    expect(payload.provider).toEqual({ sort: 'throughput' });
+    expect(payload.plugins).toEqual([{ id: 'web-search' }]);
+    expect(payload.extraBody).toBeUndefined();
+  });
+
+  it('does not leak stripped root-level client params into the outgoing payload', () => {
+    const payload = buildOpenAIChatPayload({
+      model: 'openrouter/deepseek/deepseek-r1',
+      modelid: 'deepseek/deepseek-r1',
+      messages: [{ role: 'user', content: 'hi' }],
+      clientParams: {
+        model: 'openrouter/deepseek/deepseek-r1',
+        messages: [{ role: 'user', content: 'hi' }],
+        plugins: [{ id: 'web-search' }],
+      },
+    }, false);
+
+    expect(payload.plugins).toBeUndefined();
+  });
+
+  it('forwards only filtered passthrough keys into the final OpenAI-compatible payload', () => {
+    const payload = buildOpenAIChatPayload({
+      model: 'openrouter/deepseek/deepseek-r1',
+      modelid: 'deepseek/deepseek-r1',
+      messages: [{ role: 'user', content: 'hi' }],
+      extraBody: {
+        provider: { sort: 'throughput' },
+        metadata: { request_id: 'req-123' },
+      },
+      clientParams: {
+        model: 'openrouter/deepseek/deepseek-r1',
+        messages: [{ role: 'user', content: 'hi' }],
+        top_p: 0.9,
+        plugins: [{ id: 'blocked-root-plugin' }],
+        extraBody: {
+          provider: { sort: 'nested-should-not-win-here' },
+          metadata: { request_id: 'nested-should-not-win-here' },
+          model: 'bypass-model',
+          stream: true,
+          plugins: [{ id: 'blocked-nested-plugin' }],
+        },
+      },
+    }, false);
+
+    expect(payload.model).toBe('deepseek/deepseek-r1');
+    expect(payload.messages).toEqual([{ role: 'user', content: 'hi' }]);
+    expect(payload.top_p).toBe(0.9);
+    expect(payload.provider).toEqual({ sort: 'throughput' });
+    expect(payload.metadata).toEqual({ request_id: 'req-123' });
+    expect(payload.plugins).toBeUndefined();
+    expect(payload.extraBody).toBeUndefined();
+  });
+
+  it('skips empty extraBody values', () => {
+    const payload = buildOpenAIChatPayload({
+      model: 'openai/gpt-4o',
+      modelid: 'gpt-4o',
+      messages: [],
+      extraBody: undefined,
+      clientParams: {
+        model: 'openai/gpt-4o',
+      },
+    }, false);
+
+    expect(payload.extraBody).toBeUndefined();
+    expect(payload.provider).toBeUndefined();
+  });
 });

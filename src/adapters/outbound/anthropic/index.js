@@ -4,6 +4,7 @@ import {
   FORMATS, translateRequest, translateResponse, translateStreamChunk,
 } from '../../transforms/index.js';
 import { createStreamUpstreamError } from '../../../domain/errors/upstream.js';
+import { applyExtraBody } from '../shared/extraBody.js';
 
 /**
  * Provider adapter for Anthropic's Claude API endpoints.
@@ -192,6 +193,8 @@ export class AnthropicAdapter extends BaseProvider {
   async generateCompletion(req, apiKey, signal, requestLog = null) {
     const payload = translateRequest(FORMATS.OPENAI, FORMATS.ANTHROPIC, req);
     payload.stream = false;
+    // Inject whitelisted configuration or client-supplied extra request parameters (e.g. metadata)
+    applyExtraBody(payload, req.extraBody);
 
     const url = this.buildUrl();
     const headers = this.buildHeaders(apiKey);
@@ -216,6 +219,8 @@ export class AnthropicAdapter extends BaseProvider {
   async* generateStream(req, apiKey, signal, requestLog = null) {
     const payload = translateRequest(FORMATS.OPENAI, FORMATS.ANTHROPIC, req);
     payload.stream = true;
+    // Inject whitelisted configuration or client-supplied extra request parameters (e.g. metadata)
+    applyExtraBody(payload, req.extraBody);
 
     const url = this.buildUrl();
     const headers = this.buildHeaders(apiKey);

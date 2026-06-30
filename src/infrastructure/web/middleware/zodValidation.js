@@ -121,6 +121,7 @@ export const completionSchema = z.object({
   ], {
     invalid_type_error: 'tool_choice must be auto, none, required, or a function object',
   }).optional(),
+  extraBody: z.record(z.unknown()).optional(),
 }).passthrough();
 
 const anthropicToolSchema = z.object({
@@ -205,6 +206,10 @@ export const anthropicMessagesSchema = z.object({
   stream: z.boolean({
     invalid_type_error: 'stream must be a boolean',
   }).optional(),
+  // Explicitly validate extraBody as a plain object mapping string keys to unknown values.
+  // This provides validation parity with completionSchema and prevents invalid shapes
+  // (like a string or array) from bypassing validation via the .passthrough() directive.
+  extraBody: z.record(z.unknown()).optional(),
 }).passthrough();
 
 /**

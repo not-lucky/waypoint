@@ -50,6 +50,28 @@ describe('Model-Level Defaults, Overrides, and Reasoning Unit Tests', () => {
       expect(() => validator.validate(providers, false, null)).not.toThrow();
     });
 
+    it('should validate provider and model extraBody objects successfully', () => {
+      const providers = {
+        openrouter: {
+          baseUrl: 'https://openrouter.ai/api/v1',
+          keys: ['api-key'],
+          extraBody: {
+            provider: { sort: 'price' },
+          },
+          models: [
+            {
+              modelid: 'deepseek/deepseek-r1',
+              extraBody: {
+                plugins: [{ id: 'web-search' }],
+              },
+            },
+          ],
+        },
+      };
+
+      expect(() => validator.validate(providers, false, null)).not.toThrow();
+    });
+
     it('should reject invalid provider-level think block extraction type', () => {
       const providers = {
         tokenrouter: {
@@ -65,6 +87,92 @@ describe('Model-Level Defaults, Overrides, and Reasoning Unit Tests', () => {
       };
 
       expect(() => validator.validate(providers, false, null)).toThrow(/extractReasoningFromThinkBlocks/);
+    });
+
+    it('should reject invalid provider-level extraBody types', () => {
+      const providers = {
+        openrouter: {
+          baseUrl: 'https://openrouter.ai/api/v1',
+          keys: ['api-key'],
+          extraBody: ['invalid'],
+          models: [
+            {
+              modelid: 'deepseek/deepseek-r1',
+            },
+          ],
+        },
+      };
+
+      expect(() => validator.validate(providers, false, null)).toThrow(/extraBody/);
+    });
+
+    it('should reject invalid model-level extraBody types', () => {
+      const providers = {
+        openrouter: {
+          baseUrl: 'https://openrouter.ai/api/v1',
+          keys: ['api-key'],
+          models: [
+            {
+              modelid: 'deepseek/deepseek-r1',
+              extraBody: null,
+            },
+          ],
+        },
+      };
+
+      expect(() => validator.validate(providers, false, null)).toThrow(/extraBody/);
+    });
+
+    it('should validate allowedExtraBody configurations successfully', () => {
+      const providers = {
+        openrouter: {
+          baseUrl: 'https://openrouter.ai/api/v1',
+          keys: ['api-key'],
+          allowedExtraBody: '*',
+          models: [
+            {
+              modelid: 'deepseek/deepseek-r1',
+              allowedExtraBody: ['provider', 'plugins'],
+            },
+          ],
+        },
+      };
+
+      expect(() => validator.validate(providers, false, null)).not.toThrow();
+    });
+
+    it('should reject invalid provider-level allowedExtraBody types', () => {
+      const providers = {
+        openrouter: {
+          baseUrl: 'https://openrouter.ai/api/v1',
+          keys: ['api-key'],
+          allowedExtraBody: { invalid: true },
+          models: [
+            {
+              modelid: 'deepseek/deepseek-r1',
+            },
+          ],
+        },
+      };
+
+      expect(() => validator.validate(providers, false, null)).toThrow(/allowedExtraBody/);
+    });
+
+    it('should reject invalid model-level allowedExtraBody types', () => {
+      const providers = {
+        openrouter: {
+          baseUrl: 'https://openrouter.ai/api/v1',
+          keys: ['api-key'],
+          models: [
+            {
+              modelid: 'deepseek/deepseek-r1',
+              allowedExtraBody: [123],
+            },
+          ],
+        },
+      };
+
+      expect(() => validator.validate(providers, false, null)).toThrow(/allowedExtraBody/);
     });
 
     it('should reject invalid modelid type', () => {

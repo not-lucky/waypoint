@@ -194,16 +194,38 @@ Models support advanced configuration options:
 - **reasoningSupported**: Whether the model supports reasoning/thinking capabilities (optional, boolean, defaults to `true` unless explicitly set to `false`)
 - **reasoningEffort**: Unified reasoning level - one of "minimal", "low", "medium", "high", "xhigh", "max" (optional, string)
 - **extractReasoningFromThinkBlocks**: If true, splits assistant content containing thinking/reasoning into `reasoning_content` field (optional, boolean). Can be set at provider or model level
+- **extraBody**: Provider-specific parameters (e.g., OpenRouter's provider/plugins fields, Gemini's google_search, Anthropic's metadata) merged directly into outbound payloads (optional, object)
+- **allowedExtraBody**: Whitelist of client-supplied parameter keys that are allowed to pass through into `extraBody`. Can be a string `"*"`, an array of strings, or omitted/null (optional, default-deny)
 
 ### Provider-Level Settings
 
 Providers can define default settings that apply to all their models unless overridden:
 
 - **extractReasoningFromThinkBlocks**: Provider-level default that models inherit unless explicitly set
+- **extraBody**: Provider-level default extra parameters that models inherit unless overridden
+- **allowedExtraBody**: Provider-level whitelist that models inherit unless overridden
 
 ### Model Settings Inheritance
 
-Model settings can be defined at both provider and model level. Model-level settings override provider-level defaults. The `overrides` field provides locked settings that always take precedence over client-supplied values.
+Model settings can be defined at both provider and model level. Model-level settings override provider-level defaults. The `overrides` field provides locked settings that always take precedence over client-supplied values. Settings that support inheritance include `extractReasoningFromThinkBlocks`, `extraBody`, and `allowedExtraBody`.
+
+### extraBody Precedence and Resolution
+
+The final value of `extraBody` sent upstream is composed from three sources in this strict precedence order (highest priority last):
+
+1. **Provider-level `extraBody`** (config defaults) — applied first as a baseline.
+2. **Client-supplied `extraBody`** (request body) — overrides provider defaults per top-level key, but only for keys present in `allowedExtraBody`.
+3. **Client-supplied root-level non-standard keys** (e.g. `metadata`, `plugins`, `provider`) — when a key is not a standard routing/request key and is whitelisted, the root-level value is extracted and bundled into the merged `extraBody`, **overriding** any matching key supplied via the explicit `extraBody` object in the same request.
+
+Practical implications:
+
+- A client can send `extraBody.plugins` and a root-level `plugins` in the same request. The root-level value wins for that key.
+- Standard routing keys (`model`, `messages`, `stream`, `temperature`, `max_tokens`, `max_completion_tokens`, `tools`, `tool_choice`, `system`) are **never** accepted via `extraBody` even when `allowedExtraBody: '*'` is configured — this prevents clients from bypassing routing or authentication.
+- `provider` is whitelisted by default exemption so OpenRouter's `provider: { sort, allow_fallbacks, ... }` routing preferences can be passed through without explicit per-key listing.
+- When a key appears in both `allowedExtraBody` (config) and a client-supplied root-level field, the client's value wins.
+- If `allowedExtraBody` is `null`/`undefined`, **all** client-supplied extra fields (both root-level and via `extraBody`) are silently stripped.
+
+For nested containers (`extra_body` for Gemini, `metadata` for Anthropic), values are deep-merged so adapter-injected configurations (e.g. `google.thinking_config`) coexist with client-supplied parameters (e.g. `google.google_search`).
 
 ## Key Lifecycle & Cooldown
 

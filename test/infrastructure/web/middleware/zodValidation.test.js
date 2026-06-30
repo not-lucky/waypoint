@@ -47,6 +47,32 @@ describe('completionSchema tool calling', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts object-shaped extraBody values', () => {
+    const result = completionSchema.safeParse({
+      model: 'openrouter/deepseek/deepseek-r1',
+      messages: [{ role: 'user', content: 'hello' }],
+      extraBody: {
+        provider: {
+          sort: 'throughput',
+          allow_fallbacks: false,
+        },
+        plugins: [{ id: 'web-search' }],
+      },
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects non-object extraBody values', () => {
+    const result = completionSchema.safeParse({
+      model: 'openai/gpt-4o',
+      messages: [{ role: 'user', content: 'hello' }],
+      extraBody: ['not-an-object'],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it('rejects tool messages without tool_call_id', () => {
     const result = completionSchema.safeParse({
       model: 'openai/gpt-4o',
@@ -120,5 +146,31 @@ describe('anthropicMessagesSchema tool calling', () => {
     });
 
     expect(result.success).toBe(true);
+  });
+
+  it('allows nested extraBody passthrough for Anthropic requests', () => {
+    const result = anthropicMessagesSchema.safeParse({
+      model: 'claude-sonnet-4',
+      max_tokens: 1024,
+      extraBody: {
+        metadata: {
+          user_id: 'waypoint-gateway',
+        },
+      },
+      messages: [{ role: 'user', content: 'hello' }],
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects non-object extraBody values on Anthropic requests', () => {
+    const result = anthropicMessagesSchema.safeParse({
+      model: 'claude-sonnet-4',
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: 'hello' }],
+      extraBody: 'not-an-object',
+    });
+
+    expect(result.success).toBe(false);
   });
 });

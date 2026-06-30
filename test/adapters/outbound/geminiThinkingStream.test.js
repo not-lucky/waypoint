@@ -230,4 +230,48 @@ describe('executeThinkingStream', () => {
       30000,
     );
   });
+
+  it('injects extraBody into the thinking stream payload', async () => {
+    const controller = new AbortController();
+    const mockAdapter = {
+      baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+      timeoutMs: 30000,
+      streamTimeoutMs: null,
+      resolveStreamTimeoutMs() {
+        return this.streamTimeoutMs ?? this.timeoutMs ?? null;
+      },
+      performFetch: vi.fn().mockResolvedValue({
+        response: {
+          body: buildSseBody([
+            {
+              choices: [{
+                index: 0,
+                delta: { content: 'hello' },
+                finish_reason: 'stop',
+              }],
+            },
+          ]),
+        },
+        fetchSignal: new AbortController().signal,
+        cleanup: vi.fn(),
+      }),
+    };
+
+    const req = {
+      model: 'gemini/gemini-pro',
+      modelid: 'gemini-pro',
+      messages: [{ role: 'user', content: 'hi' }],
+      extraBody: {
+        metadata: { source: 'stream-test' },
+      },
+    };
+
+    for await (const chunk of executeThinkingStream(req, 'test-key', controller.signal, null, mockAdapter)) {
+      expect(chunk).toBeDefined();
+    }
+
+    expect(mockAdapter.performFetch.mock.calls[0][2]).toEqual(expect.objectContaining({
+      metadata: { source: 'stream-test' },
+    }));
+  });
 });

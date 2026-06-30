@@ -1,4 +1,86 @@
+import { isPlainObject } from '../../utils/objectUtils.js';
+
 const EMPTY_ENTRIES = Object.freeze([]);
+
+const STANDARD_REQUEST_KEYS = new Set([
+  'model',
+  'messages',
+  'temperature',
+  'max_tokens',
+  'max_completion_tokens',
+  'stream',
+  'tools',
+  'tool_choice',
+  'system',
+  'maxTokens',
+  'reasoningSupported',
+  'reasoningEffort',
+  'extractReasoningFromThinkBlocks',
+  'fallbackModel',
+  'isFallback',
+  'clientParams',
+  'provider',
+  'modelid',
+  'extraBody',
+]);
+
+const getFilteredExtraBody = (req, modelConfig) => {
+  const allowed = modelConfig?.allowedExtraBody;
+
+  const isKeyAllowed = (key) => {
+    // Explicitly reject standard request/routing parameters (like model, messages, stream)
+    // even if the whitelist allowedExtraBody is set to '*' (wildcard). This prevents clients
+    // from bypassing authorization or routing filters by passing parameters under extraBody.
+    //
+    // Note: 'provider' is in STANDARD_REQUEST_KEYS but is also a valid client-supplied OpenRouter
+    // routing preference parameter. Thus, we exclude 'provider' from this block to permit whitelisting.
+    if (STANDARD_REQUEST_KEYS.has(key) && key !== 'provider') {
+      return false;
+    }
+    if (allowed === undefined || allowed === null) {
+      return false;
+    }
+    if (allowed === '*' || (Array.isArray(allowed) && allowed.includes('*'))) {
+      return true;
+    }
+    if (Array.isArray(allowed)) {
+      return allowed.includes(key);
+    }
+    return false;
+  };
+
+  const extra = {};
+ 
+  // 1. Merge with config-specified extraBody (defaults).
+  // These represent default provider parameters configured statically in waypoint.yaml.
+  if (isPlainObject(modelConfig?.extraBody)) {
+    for (const [key, val] of Object.entries(modelConfig.extraBody)) {
+      extra[key] = val;
+    }
+  }
+ 
+  // 2. Extract from client extraBody (overrides config defaults).
+  // Client explicitly wraps custom parameters under the 'extraBody' property.
+  // Whitelists are checked (isKeyAllowed) and standard request parameters are rejected.
+  if (isPlainObject(req.extraBody)) {
+    for (const [key, val] of Object.entries(req.extraBody)) {
+      if (isKeyAllowed(key)) {
+        extra[key] = val;
+      }
+    }
+  }
+ 
+  // 3. Extract from client root level keys that are not standard keys.
+  // This supports integrations where clients cannot modify the payload structure to nest parameters.
+  // Non-standard root keys matching the whitelist are extracted and bundled into extraBody.
+  for (const [key, val] of Object.entries(req)) {
+    if (!STANDARD_REQUEST_KEYS.has(key) && isKeyAllowed(key)) {
+      extra[key] = val;
+    }
+  }
+ 
+  return Object.keys(extra).length > 0 ? extra : undefined;
+};
 
 const EMPTY_COMPILED_MODEL_CONFIG = Object.freeze({
   defaultEntries: EMPTY_ENTRIES,
@@ -39,6 +121,10 @@ const normalizeSettingEntries = (settingsObj) => {
 
   if (settingsObj.extractReasoningFromThinkBlocks !== undefined) {
     entries.push(['extractReasoningFromThinkBlocks', settingsObj.extractReasoningFromThinkBlocks]);
+  }
+
+  if (isPlainObject(settingsObj.extraBody)) {
+    entries.push(['extraBody', settingsObj.extraBody]);
   }
 
   return entries.length > 0 ? entries : EMPTY_ENTRIES;
@@ -101,6 +187,19 @@ export const applyModelConfigToRequest = (req, modelConfig) => {
     }
   });
 
+  const finalExtraBody = getFilteredExtraBody(finalReq, modelConfig);
+  if (finalExtraBody) {
+    finalReq.extraBody = finalExtraBody;
+  } else {
+    delete finalReq.extraBody;
+  }
+
+  for (const key of Object.keys(finalReq)) {
+    if (!STANDARD_REQUEST_KEYS.has(key)) {
+      delete finalReq[key];
+    }
+  }
+
   if (finalReq.reasoningSupported === undefined) {
     finalReq.reasoningSupported = true;
   }
@@ -126,6 +225,15 @@ export const transformRequest = (baseReq, resolved) => {
     const { modelConfig } = resolved;
     modelid = modelConfig.modelid;
     req = applyModelConfigToRequest(req, modelConfig);
+  } else {
+    const finalReq = { ...req };
+    delete finalReq.extraBody;
+    for (const key of Object.keys(finalReq)) {
+      if (!STANDARD_REQUEST_KEYS.has(key)) {
+        delete finalReq[key];
+      }
+    }
+    req = finalReq;
   }
 
   const transformedReq = { ...req, clientParams };

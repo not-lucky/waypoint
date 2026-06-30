@@ -10,6 +10,7 @@ import { isPositiveInteger, isNonEmptyString, validateFallbackModel, logErrorAnd
 import { filterValidKeys, getProviderKeyCandidate, isCloudflareKeyEntry } from './configKeyUtils.js';
 import { normalizeModelDeclaration } from './configUtils.js';
 import { getAppLogger } from '../infrastructure/logging/logger.js';
+import { isPlainObject } from '../utils/objectUtils.js';
 
 const logger = getAppLogger('config');
 
@@ -53,7 +54,34 @@ const VALID_MODEL_KEYS = [
   'reasoningSupported',
   'reasoningEffort',
   'extractReasoningFromThinkBlocks',
+  'extraBody',
+  'allowedExtraBody',
 ];
+
+// Helper function to validate that client-supplied default extraBody is a plain object.
+const validateExtraBody = (value, path, providerName, shouldExit) => {
+  if (!isPlainObject(value)) {
+    logErrorAndExitOrThrow(
+      `Setting 'extraBody' at '${path}' for provider '${providerName}' must be an object.`,
+      shouldExit,
+    );
+  }
+};
+
+// Helper function to validate that allowedExtraBody whitelist is either the string '*'
+// (which allows all fields) or a flat array of strings representing individual permitted keys.
+const validateAllowedExtraBody = (value, path, providerName, shouldExit) => {
+  const isValid =
+    value === '*' ||
+    (Array.isArray(value) && value.every((item) => typeof item === 'string'));
+
+  if (!isValid) {
+    logErrorAndExitOrThrow(
+      `Setting 'allowedExtraBody' at '${path}' for provider '${providerName}' must be the string '*' or an array of strings.`,
+      shouldExit,
+    );
+  }
+};
 
 const validateCloudflareKeyEntry = (entry, providerName, index, shouldExit) => {
   if (!isCloudflareKeyEntry(entry)) {
@@ -174,6 +202,16 @@ export class ProviderValidator {
         );
       }
 
+      // Validate provider-level extraBody default parameters
+      if (providerConf.extraBody !== undefined) {
+        validateExtraBody(providerConf.extraBody, 'provider', providerName, shouldExit);
+      }
+
+      // Validate provider-level allowedExtraBody whitelists
+      if (providerConf.allowedExtraBody !== undefined) {
+        validateAllowedExtraBody(providerConf.allowedExtraBody, 'provider', providerName, shouldExit);
+      }
+
       if (Array.isArray(providerConf.keys)) {
         const originalLength = providerConf.keys.length;
         const validKeys = filterValidKeys(
@@ -231,6 +269,12 @@ export class ProviderValidator {
               providerName,
               shouldExit,
             );
+          } else if (key === 'extraBody') {
+            // Validate model-level extraBody parameter overrides
+            validateExtraBody(val, `models[${j}]`, providerName, shouldExit);
+          } else if (key === 'allowedExtraBody') {
+            // Validate model-level allowedExtraBody whitelist overrides
+            validateAllowedExtraBody(val, `models[${j}]`, providerName, shouldExit);
           } else if (key === 'overrides') {
             ProviderValidator.validateSettings(val, `models[${j}].overrides`, providerName, shouldExit);
           }

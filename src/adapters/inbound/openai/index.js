@@ -18,6 +18,8 @@ export class OpenAIController extends BaseController {
       protocolName: 'OpenAI',
       ingressFormat: FORMATS.OPENAI,
       translateReq: (body) => ({
+        // Spread copies all client params, including extraBody.
+        // Explicit mapping is not needed here as no structure change is required.
         ...body,
         messages: body.messages || [],
         maxTokens: body.max_tokens ?? body.max_completion_tokens,

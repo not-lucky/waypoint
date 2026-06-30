@@ -224,3 +224,28 @@ providers:
       - modelid: "llama3:70b"
         aliases: ["llama3"]
         reasoningSupported: false
+
+  # # OpenRouter provider example, demonstrating extraBody (defaults) and allowedExtraBody (passthrough whitelisting)
+  # openrouter:
+  #   baseUrl: "https://openrouter.ai/api/v1"
+  #   keys:
+  #     - "${OPENROUTER_API_KEY}"
+  #   # Whitelist extra request parameters (either root-level or nested in extraBody) to pass through to the provider.
+  #   # Supported values:
+  #   #   - Omitted/Not specified: All client-supplied extra fields are ignored/stripped.
+  #   #   - "*": Wildcard that allows all client-supplied extra fields to pass through.
+  #   #   - Array of strings (e.g. ["provider"]): Only allows the specified fields to pass through.
+  #   allowedExtraBody: ["provider"]                 # Provider-level whitelist (inherited by models)
+  #   models:
+  #     - modelid: "openai/gpt-oss-20b:free"
+  #       aliases: ["open"]
+  #       # Merges provider-specific parameters directly into the outbound request payload.
+  #       extraBody:                                 # Configuration-defined default extra parameters
+  #         provider:
+  #           only: ["open-inference/int8"]
+  #     - modelid: "deepseek/deepseek-r1"
+  #       # Overrides the provider's allowed whitelist. Here, we allow both "provider" and "plugins"
+  #       # to pass through, and merge some default plugins if not specified by the client.
+  #       allowedExtraBody: ["provider", "plugins"]  # Model-level overrides
+  #       extraBody:
+  #         plugins: [{ id: "web-search" }]

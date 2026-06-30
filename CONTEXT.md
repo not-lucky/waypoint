@@ -15,7 +15,7 @@ Waypoint is a single-binary local LLM proxy and gateway that provides a unified 
 - **Reserved Provider**: Built-in provider with predefined configuration (gemini, anthropic, openai, cloudflare)
 - **Custom Provider**: User-defined provider configured with a baseUrl for OpenAI- or Anthropic-compatible endpoints
 - **Provider Type**: Optional field for custom providers specifying compatibility: "openai-compatible" (default) or "anthropic-compatible"
-- **Model**: A specific LLM instance within a provider (e.g., gemini-2.5-pro, gpt-4o). A model may be declared as either an object (with optional fields such as `modelid`, `aliases`, `temperature`, `maxTokens`, `reasoningSupported`, `reasoningEffort`, `extractReasoningFromThinkBlocks`, `overrides`, `fallbackModel`) or as a shorthand string that is normalized to `{ modelid: "<string>" }` during config loading and validation.
+- **Model**: A specific LLM instance within a provider (e.g., gemini-2.5-pro, gpt-4o). A model may be declared as either an object (with optional fields such as `modelid`, `aliases`, `temperature`, `maxTokens`, `reasoningSupported`, `reasoningEffort`, `extractReasoningFromThinkBlocks`, `extraBody`, `allowedExtraBody`, `overrides`, `fallbackModel`) or as a shorthand string that is normalized to `{ modelid: "<string>" }` during config loading and validation.
 - **Fallback Model**: Alternate model to use when the primary provider's key pool is exhausted
 - **Actual Model ID**: The underlying model ID to call upstream, different from the exposed model ID
 - **Model Aliases**: Alternative IDs that can be used to reference a model
@@ -86,8 +86,8 @@ Waypoint is a single-binary local LLM proxy and gateway that provides a unified 
 - **CORS**: Cross-Origin Resource Sharing configuration
 - **Validation**: Zod-based config validation with 10 validator files (validator.js, clientValidator.js, gatewayValidator.js, loggingValidator.js, providerValidator.js, configUtils.js, configKeyUtils.js, cooldownDefaults.js, validationHelpers.js, loader.js)
 - **Gateway Settings**: Configuration options like globalRetryLimit, httpTimeoutMs, streamTimeoutMs, maxPayloadSize, routing strategy
-- **Model Settings**: Per-model configuration including temperature, maxTokens, reasoningSupported, reasoningEffort, overrides
-- **Provider-Level Settings**: Default settings that apply to all models on a provider unless overridden at model level
+- **Model Configuration**: Per-model configuration including temperature, maxTokens, reasoningSupported, reasoningEffort, extraBody, allowedExtraBody, overrides
+- **Provider-Level Settings**: Default settings that apply to all models on a provider unless overridden at model level (e.g., extractReasoningFromThinkBlocks, allowedExtraBody, extraBody)
 
 ### Reasoning & Thinking
 - **Reasoning Content**: Special field for models that support thinking/reasoning capabilities
@@ -175,10 +175,10 @@ Upstream HTTP status codes drive key actions:
 - `cache.js`: Caching resolved model configurations for performance
 
 **Model Configuration Inheritance:**
-- Provider-level settings (e.g., extractReasoningFromThinkBlocks) apply to all models unless overridden
+- Provider-level settings (e.g., extractReasoningFromThinkBlocks, extraBody, allowedExtraBody) apply to all models unless overridden
 - Model-level settings take precedence over provider-level defaults
 - The `overrides` field provides locked settings that always override client-supplied values
-- Settings that support inheritance: extractReasoningFromThinkBlocks
+- Settings that support inheritance: extractReasoningFromThinkBlocks, extraBody, allowedExtraBody
 
 ### Infrastructure Details
 

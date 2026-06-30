@@ -1,6 +1,7 @@
 import { FORMATS, translateRequest, translateStreamChunk } from '../../transforms/index.js';
 import { parseSSEStream, parseSSEEventData } from '../../../utils/streaming/sseParser.js';
 import { throwIfStreamErrorPayload } from '../../../domain/errors/upstream.js';
+import { applyExtraBody } from '../shared/extraBody.js';
 
 const resolveGeminiModelId = (req) => {
   if (typeof req?.modelid === 'string' && req.modelid.trim() !== '') {
@@ -15,6 +16,8 @@ const resolveGeminiModelId = (req) => {
  */
 export async function* executeStandardStream(req, apiKey, signal, requestLog, adapter) {
   const payload = translateRequest(FORMATS.OPENAI, FORMATS.GEMINI, req);
+  // Merge whitelisted configuration or client-supplied extra request parameters
+  applyExtraBody(payload, req.extraBody);
   const base = adapter.baseUrl
     ? adapter.baseUrl
     : 'https://generativelanguage.googleapis.com/v1beta';

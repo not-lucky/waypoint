@@ -1,6 +1,10 @@
 
+import { isPlainObject } from '../../utils/objectUtils.js';
+
 const INHERITED_PROVIDER_MODEL_KEYS = [
   'extractReasoningFromThinkBlocks',
+  'extraBody',
+  'allowedExtraBody',
 ];
 
 const applyProviderModelInheritance = (providerConf, modelConfig) => {
@@ -8,6 +12,26 @@ const applyProviderModelInheritance = (providerConf, modelConfig) => {
 
   for (const key of INHERITED_PROVIDER_MODEL_KEYS) {
     if (
+      key === 'extraBody'
+      && isPlainObject(providerConf?.extraBody)
+    ) {
+      // Special inheritance merge for 'extraBody': instead of replacing the entire
+      // object, we merge model-level overrides on top of provider-level defaults.
+      if (isPlainObject(resolvedModelConfig.extraBody)) {
+        resolvedModelConfig.extraBody = {
+          ...providerConf.extraBody,
+          ...resolvedModelConfig.extraBody,
+        };
+      } else if (resolvedModelConfig.extraBody === undefined) {
+        resolvedModelConfig.extraBody = providerConf.extraBody;
+      }
+      continue;
+    }
+
+    if (
+      // For all other keys (like allowedExtraBody, extractReasoningFromThinkBlocks),
+      // apply simple fallback logic where the model inherits provider settings
+      // only if not explicitly overridden at the model level.
       resolvedModelConfig[key] === undefined
       && providerConf?.[key] !== undefined
     ) {

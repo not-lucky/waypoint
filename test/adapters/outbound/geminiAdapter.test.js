@@ -578,6 +578,42 @@ describe('GeminiAdapter Tests', () => {
     );
   });
 
+  it('injects extraBody into the Gemini OpenAI-compatible thinking payload', async () => {
+    const adapter = new GeminiAdapter({});
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: 'hello' } }],
+      }),
+    });
+
+    await adapter.generateCompletion({
+      model: 'gemini/gemini-2.5-pro',
+      modelid: 'gemini-2.5-pro',
+      messages: [],
+      reasoningSupported: true,
+      extraBody: {
+        extra_body: {
+          google: {
+            google_search: {},
+          },
+        },
+      },
+    }, 'gemini-key');
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.extra_body).toEqual({
+      google: {
+        thinking_config: {
+          thinking_level: 'medium',
+          include_thoughts: true,
+        },
+        google_search: {},
+      },
+    });
+  });
+
   it('assert: generateCompletion with reasoningSupported false uses the standard generateContent path', async () => {
     const adapter = new GeminiAdapter({});
 
@@ -680,5 +716,66 @@ describe('GeminiAdapter Tests', () => {
         method: 'POST',
       }),
     );
+  });
+
+  it('injects extraBody into the native Gemini streaming payload', async () => {
+    const adapter = new GeminiAdapter({});
+
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode('data: {"candidates": [{"finishReason": "STOP"}]}\n\n');
+      },
+    };
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: mockBody,
+    });
+
+    for await (const chunk of adapter.generateStream({
+      model: 'gemini/gemini-2.5-pro',
+      modelid: 'gemini-2.5-pro',
+      messages: [],
+      reasoningSupported: false,
+      extraBody: {
+        labels: { source: 'stream-test' },
+      },
+    }, 'gemini-key', new AbortController().signal)) {
+      expect(chunk).toBeDefined();
+    }
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.labels).toEqual({ source: 'stream-test' });
+  });
+
+  it('injects extraBody into the native Gemini payload', async () => {
+    const adapter = new GeminiAdapter({});
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        candidates: [
+          {
+            content: { parts: [{ text: 'native gemini response' }] },
+            finishReason: 'STOP',
+            index: 0,
+          },
+        ],
+      }),
+    });
+
+    await adapter.generateCompletion({
+      model: 'gemini/gemini-2.5-pro',
+      modelid: 'gemini-2.5-pro',
+      messages: [{ role: 'user', content: 'hello' }],
+      reasoningSupported: false,
+      extraBody: {
+        labels: { source: 'waypoint' },
+      },
+    }, 'gemini-key');
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.labels).toEqual({ source: 'waypoint' });
   });
 });

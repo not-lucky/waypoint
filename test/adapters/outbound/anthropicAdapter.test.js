@@ -500,6 +500,30 @@ describe('AnthropicAdapter Tests', () => {
     expect(requestLog.logProviderRequest).toHaveBeenCalled();
   });
 
+  it('injects extraBody into the Anthropic messages payload', async () => {
+    const adapter = new AnthropicAdapter({});
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: 'msg_extra_body',
+        content: [{ type: 'text', text: 'hello' }],
+      }),
+    });
+
+    await adapter.generateCompletion({
+      model: 'anthropic/claude-sonnet-4',
+      modelid: 'claude-sonnet-4',
+      messages: [{ role: 'user', content: 'hello' }],
+      extraBody: {
+        metadata: { user_id: 'waypoint-gateway' },
+      },
+    }, 'key');
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.metadata).toEqual({ user_id: 'waypoint-gateway' });
+  });
+
   it('assert: generateStream throws UpstreamError when an SSE error event is received', async () => {
     const adapter = new AnthropicAdapter({});
     const req = { model: 'claude-3', modelid: 'claude-3', messages: [] };
@@ -518,5 +542,32 @@ describe('AnthropicAdapter Tests', () => {
     const stream = adapter.generateStream(req, 'key');
     const iterator = stream[Symbol.asyncIterator]();
     await expect(iterator.next()).rejects.toThrow('Upstream overloaded');
+  });
+
+  it('injects extraBody into the Anthropic streaming payload', async () => {
+    const adapter = new AnthropicAdapter({});
+
+    const encoder = new TextEncoder();
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: (async function* () {
+        yield encoder.encode('event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}\n\n');
+      })(),
+      headers: new Headers(),
+    });
+
+    for await (const chunk of adapter.generateStream({
+      model: 'anthropic/claude-sonnet-4',
+      modelid: 'claude-sonnet-4',
+      messages: [],
+      extraBody: {
+        metadata: { source: 'stream-test' },
+      },
+    }, 'key', new AbortController().signal)) {
+      expect(chunk).toBeDefined();
+    }
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.metadata).toEqual({ source: 'stream-test' });
   });
 });

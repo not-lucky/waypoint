@@ -1,15 +1,32 @@
 import { resolveReasoningEffort } from './openaiResponse.js';
+import { applyExtraBody } from './extraBody.js';
 
-const INTERNAL_KEYS = new Set([
-  'clientParams',
-  'provider',
-  'modelid',
-  'maxTokens',
-  'reasoningSupported',
-  'reasoningEffort',
-  'extractReasoningFromThinkBlocks',
-  'fallbackModel',
-  'isFallback',
+const FORWARDED_CLIENT_KEYS = new Set([
+  'messages',
+  'temperature',
+  'max_tokens',
+  'max_completion_tokens',
+  'tools',
+  'tool_choice',
+  'top_p',
+  'presence_penalty',
+  'frequency_penalty',
+  'logit_bias',
+  'logprobs',
+  'top_logprobs',
+  'response_format',
+  'stop',
+  'n',
+  'user',
+  'seed',
+  'parallel_tool_calls',
+  'functions',
+  'function_call',
+  'metadata',
+  'modalities',
+  'audio',
+  'store',
+  'stream_options',
 ]);
 
 /**
@@ -18,10 +35,12 @@ const INTERNAL_KEYS = new Set([
  */
 export function buildOpenAIChatPayload(req, stream) {
   const client = req.clientParams || {};
-  const payload = { ...client };
+  const payload = {};
 
-  for (const key of INTERNAL_KEYS) {
-    delete payload[key];
+  for (const key of FORWARDED_CLIENT_KEYS) {
+    if (client[key] !== undefined) {
+      payload[key] = client[key];
+    }
   }
 
   payload.model = req.modelid || client.model || req.model;
@@ -57,5 +76,7 @@ export function buildOpenAIChatPayload(req, stream) {
     payload.include_reasoning = true;
   }
 
-  return payload;
+  // Merge any whitelisted configuration or client-supplied extra request parameters (extraBody)
+  // directly into the outgoing OpenAI-compatible payload.
+  return applyExtraBody(payload, req.extraBody);
 }

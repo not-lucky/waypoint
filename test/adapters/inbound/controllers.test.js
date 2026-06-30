@@ -12,6 +12,7 @@ const testConfig = {
   providers: {
     gemini: {
       keys: ['gemini-key-1'],
+      allowedExtraBody: '*',
       models: [{
         modelid: 'gemini-2.5-pro-preview-05-06',
         aliases: ['gemini-2.5-pro', 'pro'],
@@ -22,6 +23,7 @@ const testConfig = {
     },
     openai: {
       keys: ['openai-key-1'],
+      allowedExtraBody: '*',
       models: [{ modelid: 'gpt-4o', aliases: ['gpt4'] }],
     },
   },
@@ -144,6 +146,34 @@ describe('Protocol Controllers', () => {
       );
     });
 
+    it('preserves client extraBody fields on the unified request', async () => {
+      const controller = new OpenAIController(mockOrchestrator);
+
+      await controller.handleCompletion(
+        {
+          body: {
+            model: 'gpt-4o',
+            messages: [{ role: 'user', content: 'hello' }],
+            extraBody: {
+              provider: { sort: 'throughput' },
+            },
+          },
+          headers: {},
+        },
+        mockJsonRes(),
+      );
+
+      expect(mockOrchestrator.executeCompletion).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          extraBody: {
+            provider: { sort: 'throughput' },
+          },
+        }),
+        expect.any(Object),
+        expect.any(Object),
+      );
+    });
+
     it('streams OpenAI SSE chunks and survives mid-stream failures', async () => {
       mockOrchestrator.executeCompletion.mockResolvedValue({
         async* [Symbol.asyncIterator]() {
@@ -193,6 +223,105 @@ describe('Protocol Controllers', () => {
             { role: 'system', content: 'instruction 1\ninstruction 2' },
             { role: 'user', content: 'hi' },
           ],
+        }),
+        expect.any(Object),
+        expect.any(Object),
+      );
+    });
+
+    it('preserves extraBody when translating Anthropic requests into the unified format', async () => {
+      const controller = new AnthropicController(mockOrchestrator);
+
+      await controller.handleCompletion({
+        body: {
+          model: 'pro',
+          system: 'follow instructions',
+          extraBody: {
+            metadata: { user_id: 'waypoint-gateway' },
+          },
+          messages: [{ role: 'user', content: 'hi' }],
+        },
+        headers: {},
+      }, mockJsonRes());
+
+      expect(mockOrchestrator.executeCompletion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          extraBody: {
+            metadata: { user_id: 'waypoint-gateway' },
+          },
+        }),
+        expect.any(Object),
+        expect.any(Object),
+      );
+    });
+
+    it('preserves allowed root-level passthrough fields when translating Anthropic requests', async () => {
+      const controller = new AnthropicController(mockOrchestrator);
+
+      await controller.handleCompletion({
+        body: {
+          model: 'pro',
+          system: 'follow instructions',
+          messages: [{ role: 'user', content: 'hi' }],
+          metadata: { user_id: 'waypoint-gateway' },
+        },
+        headers: {},
+      }, mockJsonRes());
+
+      expect(mockOrchestrator.executeCompletion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          extraBody: {
+            metadata: { user_id: 'waypoint-gateway' },
+          },
+        }),
+        expect.any(Object),
+        expect.any(Object),
+      );
+    });
+
+    it('filters mixed Anthropic passthrough keys down to allowed provider fields', async () => {
+      mockOrchestrator.config = {
+        providers: {
+          gemini: {
+            ...testConfig.providers.gemini,
+            allowedExtraBody: ['provider', 'metadata'],
+          },
+          openai: testConfig.providers.openai,
+        },
+      };
+      const controller = new AnthropicController(mockOrchestrator);
+
+      await controller.handleCompletion({
+        body: {
+          model: 'pro',
+          system: 'follow instructions',
+          messages: [{ role: 'user', content: 'hi' }],
+          metadata: { user_id: 'root-user' },
+          provider: { sort: 'root-throughput' },
+          extraBody: {
+            metadata: { user_id: 'nested-user' },
+            provider: { sort: 'nested-throughput' },
+            stream: true,
+            model: 'bypass-model',
+            plugins: [{ id: 'blocked-plugin' }],
+          },
+          plugins: [{ id: 'also-blocked' }],
+        },
+        headers: {},
+      }, mockJsonRes());
+
+      expect(mockOrchestrator.executeCompletion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          extraBody: {
+            metadata: { user_id: 'root-user' },
+            provider: { sort: 'nested-throughput' },
+          },
+          model: 'pro',
+          messages: [
+            { role: 'system', content: 'follow instructions' },
+            { role: 'user', content: 'hi' },
+          ],
+          stream: false,
         }),
         expect.any(Object),
         expect.any(Object),

@@ -1,6 +1,7 @@
 import { FORMATS, translateRequest, translateResponse } from '../../transforms/index.js';
 import { getThinkingLevel } from './geminiFormatter.js';
 import { mapOpenAICompletionResponse } from '../shared/openaiResponse.js';
+import { applyExtraBody } from '../shared/extraBody.js';
 
 const resolveGeminiModelId = (req) => {
   if (typeof req?.modelid === 'string' && req.modelid.trim() !== '') {
@@ -41,8 +42,12 @@ export const executeCompletion = async ( req, apiKey, signal, requestLog, adapte
     };
     if ( req.temperature !== undefined ) payload.temperature = req.temperature;
     if ( req.maxTokens !== undefined ) payload.max_tokens = req.maxTokens;
+    // Deep-merges client extraBody parameters (e.g. google_search) with adapter thinking_config
+    applyExtraBody( payload, req.extraBody );
   } else {
     payload = translateRequest( FORMATS.OPENAI, FORMATS.GEMINI, req );
+    // Appends client extraBody parameters to the translated non-reasoning Gemini payload
+    applyExtraBody( payload, req.extraBody );
     const base = adapter.baseUrl
       ? adapter.baseUrl
       : 'https://generativelanguage.googleapis.com/v1beta';

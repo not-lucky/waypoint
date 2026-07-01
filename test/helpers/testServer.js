@@ -165,7 +165,17 @@ export async function createTestApp(opts = {}) {
   const { wireServices } = await import('../../src/infrastructure/web/wireServices.js');
   const { createApp } = await import('../../src/infrastructure/web/createApp.js');
 
-  const config = inlineConfig ?? new ConfigLoader().loadConfig();
+  const baseConfig = inlineConfig ?? new ConfigLoader().loadConfig();
+  // Force-disable file logging under tests so each test does not leave a
+  // Waypoint_<timestamp>.log artefact in the persistent ./logs/ directory.
+  // Tests that explicitly want file logging can opt-in by passing their own
+  // inlineConfig.logging object.
+  const config = inlineConfig
+    ? baseConfig
+    : {
+      ...baseConfig,
+      logging: { ...(baseConfig.logging || {}), enableFile: false },
+    };
   await configureLogging(config);
   const logger = getAppLogger('server');
   const services = wireServices(config);

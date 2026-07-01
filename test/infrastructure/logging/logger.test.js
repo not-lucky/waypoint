@@ -2,10 +2,13 @@ import {
   describe, it, expect, beforeEach, afterEach, vi,
 } from 'vitest';
 import fs from 'node:fs';
+import fsp from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import * as logtape from '@logtape/logtape';
 import {
   configureLogging, getAppLogger, flushLogs,
+  pruneLogFiles, DEFAULT_MAX_RETAINED_LOG_FILES,
 } from '../../../src/infrastructure/logging/logger.js';
 import { formatMessage } from '../../../src/infrastructure/logging/logFormatters.js';
 
@@ -215,5 +218,137 @@ describe('Structured Logger (LogTape)', () => {
     const stderrOutputs = stderrCalls.map((c) => c[0]).join('\n');
     expect(stderrOutputs).toContain('should print warning');
     expect(stderrOutputs).toContain('should print error');
+  });
+});
+
+describe('Log file rotation', () => {
+  it('exposes a positive default retention cap', () => {
+    expect(typeof DEFAULT_MAX_RETAINED_LOG_FILES).toBe('number');
+    expect(DEFAULT_MAX_RETAINED_LOG_FILES).toBeGreaterThan(0);
+  });
+
+  it('removes oldest session files when the cap is exceeded', async () => {
+    const basePath = await fsp.mkdtemp(path.join(os.tmpdir(), 'waypoint-log-rotate-'));
+    try {
+      const seeded = [
+        'waypoint_2026-06-26T08-00-00-000Z.log',
+        'waypoint_2026-06-26T08-01-00-000Z.log',
+        'waypoint_2026-06-26T08-02-00-000Z.log',
+        'waypoint_2026-06-26T08-03-00-000Z.log',
+        'waypoint_2026-06-26T08-04-00-000Z.log',
+      ];
+      for (const name of seeded) {
+        await fsp.writeFile(path.join(basePath, name), 'log\n');
+      }
+
+      const removed = await pruneLogFiles(basePath, 'waypoint', '.log', 3);
+      expect(removed).toBe(2);
+
+      const remaining = (await fsp.readdir(basePath)).sort();
+      expect(remaining).toEqual([
+        'waypoint_2026-06-26T08-02-00-000Z.log',
+        'waypoint_2026-06-26T08-03-00-000Z.log',
+        'waypoint_2026-06-26T08-04-00-000Z.log',
+      ]);
+    } finally {
+      await fsp.rm(basePath, { recursive: true, force: true });
+    }
+  });
+
+  it('is a no-op when below the cap', async () => {
+    const basePath = await fsp.mkdtemp(path.join(os.tmpdir(), 'waypoint-log-noop-'));
+    try {
+      await fsp.writeFile(path.join(basePath, 'waypoint_2026-06-26T08-00-00-000Z.log'), 'log\n');
+      const removed = await pruneLogFiles(basePath, 'waypoint', '.log', 5);
+      expect(removed).toBe(0);
+      const remaining = await fsp.readdir(basePath);
+      expect(remaining).toHaveLength(1);
+    } finally {
+      await fsp.rm(basePath, { recursive: true, force: true });
+    }
+  });
+
+  it('treats maxRetained <= 0 as an explicit opt-out', async () => {
+    const basePath = await fsp.mkdtemp(path.join(os.tmpdir(), 'waypoint-log-disabled-'));
+    try {
+      for (const name of [
+        'waypoint_2026-06-26T08-00-00-000Z.log',
+        'waypoint_2026-06-26T08-01-00-000Z.log',
+      ]) {
+        await fsp.writeFile(path.join(basePath, name), 'log\n');
+      }
+      const removed = await pruneLogFiles(basePath, 'waypoint', '.log', 0);
+      expect(removed).toBe(0);
+      const remaining = (await fsp.readdir(basePath)).sort();
+      expect(remaining).toEqual([
+        'waypoint_2026-06-26T08-00-00-000Z.log',
+        'waypoint_2026-06-26T08-01-00-000Z.log',
+      ]);
+    } finally {
+      await fsp.rm(basePath, { recursive: true, force: true });
+    }
+  });
+
+  it('returns 0 when the directory does not exist', async () => {
+    const basePath = path.join(os.tmpdir(), `waypoint-log-missing-${Date.now()}`);
+    const removed = await pruneLogFiles(basePath, 'waypoint', '.log', 5);
+    expect(removed).toBe(0);
+  });
+
+  it('preserves files that do not match the session pattern', async () => {
+    const basePath = await fsp.mkdtemp(path.join(os.tmpdir(), 'waypoint-log-mixed-'));
+    try {
+      await fsp.writeFile(path.join(basePath, 'waypoint_2026-06-26T08-00-00-000Z.log'), 'log\n');
+      await fsp.writeFile(path.join(basePath, 'operator-notes.log'), 'notes\n');
+      await fsp.writeFile(path.join(basePath, 'README.md'), 'manual\n');
+
+      const removed = await pruneLogFiles(basePath, 'waypoint', '.log', 0); // disabled -> noop
+      expect(removed).toBe(0);
+      const after = (await fsp.readdir(basePath)).sort();
+      expect(after).toEqual([
+        'README.md',
+        'operator-notes.log',
+        'waypoint_2026-06-26T08-00-00-000Z.log',
+      ]);
+    } finally {
+      await fsp.rm(basePath, { recursive: true, force: true });
+    }
+  });
+
+  it('configureLogging prunes old session files before opening the new sink', async () => {
+    const basePath = await fsp.mkdtemp(path.join(os.tmpdir(), 'waypoint-log-configure-'));
+    try {
+      // Seed three older session files; keep the newest two plus the active one.
+      const seeded = [
+        'waypoint_2026-06-26T08-00-00-000Z.log',
+        'waypoint_2026-06-26T08-01-00-000Z.log',
+        'waypoint_2026-06-26T08-02-00-000Z.log',
+      ];
+      for (const name of seeded) {
+        await fsp.writeFile(path.join(basePath, name), 'log\n');
+      }
+
+      const filePath = path.join(basePath, 'waypoint.log');
+      await configureLogging({
+        logging: {
+          enableConsole: false,
+          enableFile: true,
+          filePath,
+          format: 'json',
+          maxRetainedLogFiles: 2,
+        },
+      }, { skipTimestamp: false });
+      await flushLogs();
+
+      const remaining = (await fsp.readdir(basePath)).sort();
+      // The cap is 2, so only the two newest seeded files survive (the new
+      // session's file is created with a fresh timestamp, distinct from the
+      // seeded ones, so 2 + 1 = 3 total in this case).
+      expect(remaining).not.toContain('waypoint_2026-06-26T08-00-00-000Z.log');
+      expect(remaining).toContain('waypoint_2026-06-26T08-01-00-000Z.log');
+      expect(remaining).toContain('waypoint_2026-06-26T08-02-00-000Z.log');
+    } finally {
+      await fsp.rm(basePath, { recursive: true, force: true });
+    }
   });
 });

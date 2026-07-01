@@ -12,7 +12,9 @@ logging:
   enableFile: false
   format: "json"
   logRequests: true
-  requestLogPath: "./logs/dryrun-requests"
+  # Routed under test/.tmp so the fixture never writes into the persistent
+  # ./logs/ directory and is auto-cleaned by test/globalTeardown.js.
+  requestLogPath: "./test/.tmp/dryrun-requests"
 
 clients:
   - name: "open-webui"

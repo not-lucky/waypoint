@@ -45,4 +45,24 @@ export const validateLogging = (logging, shouldExit) => {
       shouldExit,
     );
   }
+
+  if (logging.maxRetainedRequestLogs !== undefined) {
+    const value = logging.maxRetainedRequestLogs;
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+      logErrorAndExitOrThrow(
+        "Invalid 'logging.maxRetainedRequestLogs'. Must be a non-negative integer (0 disables rotation).",
+        shouldExit,
+      );
+    }
+  }
+
+  if (logging.maxRetainedLogFiles !== undefined) {
+    const value = logging.maxRetainedLogFiles;
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+      logErrorAndExitOrThrow(
+        "Invalid 'logging.maxRetainedLogFiles'. Must be a non-negative integer (0 disables rotation).",
+        shouldExit,
+      );
+    }
+  }
 };

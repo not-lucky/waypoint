@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import path from 'node:path';
 import {
   configure, configureSync, getConsoleSink, getLogger, reset,
@@ -7,6 +8,76 @@ import { getFileSink } from '@logtape/file';
 import { customJsonFormatter, customTextFormatter, formatMessage } from './logFormatters.js';
 
 const sessionTimestamp = new Date().toISOString().replace( /[:.]/g, '-' );
+
+/**
+ * Default retention cap for Waypoint session log files.
+ * Applied by configureLogging() at startup: when the log directory exceeds
+ * this count, the oldest matching session files are pruned before the new
+ * sink is opened. Keeps disk usage bounded across process restarts.
+ */
+export const DEFAULT_MAX_RETAINED_LOG_FILES = 1000;
+
+/**
+ * Escapes a string for safe use inside a RegExp.
+ * @param {string} value
+ * @returns {string}
+ */
+const escapeForRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Prunes oldest Waypoint session log files when the directory exceeds
+ * `maxRetained`. Only files matching `${baseName}_<timestamp>${ext}` are
+ * considered for deletion; any other entries (operator notes, manual
+ * uploads, unrelated `*.log` files) are preserved.
+ *
+ * Filenames are sorted lexically, which matches the ISO-derived timestamp
+ * ordering used by `configureLogging()` so the oldest entries are removed
+ * first. Falls back to mtime when two files share a timestamp prefix.
+ *
+ * @param {string} basePath - Absolute path to the log directory.
+ * @param {string} baseName - Log base name (e.g. "waypoint").
+ * @param {string} ext - File extension, including the leading dot (e.g. ".log").
+ * @param {number} maxRetained - Maximum files to keep. Values <= 0 disable pruning.
+ * @returns {Promise<number>} Number of files removed.
+ */
+export const pruneLogFiles = async (basePath, baseName, ext, maxRetained) => {
+  if (!maxRetained || maxRetained <= 0) return 0;
+  let entries;
+  try {
+    entries = await fsp.readdir(basePath);
+  } catch (err) {
+    if (err.code === 'ENOENT') return 0;
+    return 0;
+  }
+  const pattern = new RegExp(`^${escapeForRegex(baseName)}_[^_]+${escapeForRegex(ext)}$`);
+  const matched = [];
+  for (const name of entries) {
+    if (!pattern.test(name)) continue;
+    try {
+      const stat = await fsp.stat(path.join(basePath, name));
+      if (stat.isFile()) matched.push({ name, mtime: stat.mtimeMs });
+    } catch {
+      // Race with concurrent cleanup or operator removal; skip.
+    }
+  }
+  if (matched.length <= maxRetained) return 0;
+  matched.sort((a, b) => {
+    if (a.name < b.name) return -1;
+    if (a.name > b.name) return 1;
+    return a.mtime - b.mtime;
+  });
+  const toRemove = matched.slice(0, matched.length - maxRetained);
+  let removed = 0;
+  for (const entry of toRemove) {
+    try {
+      await fsp.rm(path.join(basePath, entry.name));
+      removed += 1;
+    } catch {
+      // Best-effort; skip files that cannot be removed.
+    }
+  }
+  return removed;
+};
 
 /**
  * Early-boot logger initialization using synchronous configuration.
@@ -56,7 +127,8 @@ export const configureLogging = async ( config, testConfig = {} ) => {
   const loggingConfig = config?.logging || {};
   const enableConsole = loggingConfig.enableConsole !== false;
   let enableFile = !!loggingConfig.enableFile;
-  let filePath = testConfig.filePath || loggingConfig.filePath || '';
+  const originalFilePath = testConfig.filePath || loggingConfig.filePath || '';
+  let filePath = originalFilePath;
   const format = loggingConfig.format || 'json';
   const level = loggingConfig.level || 'info';
 
@@ -86,6 +158,16 @@ export const configureLogging = async ( config, testConfig = {} ) => {
     // parent directory causes fatal startup crashes. Explicitly guarantee the directory tree
     // exists before attempting to write.
     fs.mkdirSync( directory, { recursive: true } );
+
+    // Apply retention before opening the new sink so the cap includes the
+    // session file about to be created. The original (pre-timestamp) base
+    // name and extension are reused so the regex matcher lines up exactly
+    // with the filenames actually produced by previous sessions.
+    const parsedOriginal = path.parse( originalFilePath );
+    const maxRetainedLogFiles = typeof loggingConfig.maxRetainedLogFiles === 'number'
+      ? loggingConfig.maxRetainedLogFiles
+      : DEFAULT_MAX_RETAINED_LOG_FILES;
+    await pruneLogFiles( directory, parsedOriginal.name, parsedOriginal.ext, maxRetainedLogFiles );
 
     sinks.file = getFileSink( absolutePath, { formatter } );
     activeSinks.push( 'file' );

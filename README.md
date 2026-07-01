@@ -9,7 +9,7 @@ Waypoint is a single-binary local LLM proxy and gateway. It fronts Google Gemini
 - **OpenAI and Anthropic ingress.** Tools, multimodal messages, SSE streaming, and `reasoning_content` are normalized through OpenAI as the hub. On OpenAI ingress, `max_tokens` wins over `max_completion_tokens` when both are present.
 - **Cross-protocol egress.** Gemini, Anthropic, OpenAI, Cloudflare Workers AI, and any custom OpenAI- or Anthropic-compatible endpoint (configured with `baseUrl`; e.g. OpenRouter, Requesty, local Ollama).
 - **Dry-run.** `/dryrun/...` and `/dryrun/v1/...` mirror the live routes and return what would have been sent upstream, without making the call. Requires `logging.logRequests: true`.
-- **Per-request audit logs.** When `logging.logRequests: true`, five files per request land under `logging.requestLogPath`: `01_client_request.json`, `02_provider_request.json`, `03_provider_response.json`, `04_client_response.json`, and `05_event_stream.jsonl` (for streaming).
+- **Per-request audit logs.** When `logging.logRequests: true`, five files per request land under `logging.requestLogPath`: `01_client_request.json`, `02_provider_request.json`, `03_provider_response.json`, `04_client_response.json`, and `05_event_stream.jsonl` (for streaming). Old folders are pruned automatically — see [Logging Retention](#logging-retention).
 - **Operational telemetry.** `GET /health` returns pool and routing state; `GET /metrics` returns Prometheus text. Both are behind the same bearer-token auth as the protocol routes.
 - **Single binary, single config.** One process, one YAML, no DB, no daemon.
 
@@ -226,6 +226,26 @@ Practical implications:
 - If `allowedExtraBody` is `null`/`undefined`, **all** client-supplied extra fields (both root-level and via `extraBody`) are silently stripped.
 
 For nested containers (`extra_body` for Gemini, `metadata` for Anthropic), values are deep-merged so adapter-injected configurations (e.g. `google.thinking_config`) coexist with client-supplied parameters (e.g. `google.google_search`).
+
+## Logging Retention
+
+Two retention caps keep disk usage bounded for long-running deployments. Both are non-negative integers; set either to `0` to disable rotation entirely. Defaults are tuned for production.
+
+### `logging.maxRetainedRequestLogs` (default: 1000)
+
+Caps the number of per-request audit-log folders kept under `logging.requestLogPath`. Folders follow the `<ISO-timestamp>_<id>` pattern; entries that don't match (e.g. operator-uploaded files) are never touched. Pruning runs on the next request: once the count exceeds the cap, the oldest folders (sorted by their ISO prefix) are removed before the new request's folder is created. Below the cap, the prune is a single `readdir` no-op.
+
+### `logging.maxRetainedLogFiles` (default: 1000)
+
+Caps the number of Waypoint session log files kept next to `logging.filePath`. At startup, `configureLogging` opens a fresh per-process file named `<filePath-base>_<session-timestamp><ext>` (e.g. `Waypoint_2026-06-26T15-14-02-123Z.log`). Before opening it, the directory is scanned for matching `<base>_<timestamp><ext>` files and the oldest are removed down to the cap. Non-matching entries (operator notes, manual uploads, unrelated `*.log`) are preserved.
+
+### When to change the defaults
+
+- Raise `maxRetainedRequestLogs` if you need a longer audit window for incident investigation.
+- Raise `maxRetainedLogFiles` if you need to compare behaviour across many process restarts.
+- Set either to `0` only when an external log shipper is responsible for retention — otherwise disk usage is unbounded.
+
+Full field annotations live in `config.example.yaml`.
 
 ## Key Lifecycle & Cooldown
 

@@ -224,4 +224,38 @@ describe('Configuration Validation Tests', () => {
     expect(() => validateConfig(config, false)).toThrow("Missing or invalid 'gateway.port'");
     expect(exitSpy).not.toHaveBeenCalled();
   });
+
+  describe('logging retention fields', () => {
+    it('accepts positive integers for maxRetainedRequestLogs and maxRetainedLogFiles', () => {
+      const config = getBaseValidConfig();
+      config.logging.maxRetainedRequestLogs = 1000;
+      config.logging.maxRetainedLogFiles = 50;
+      expect(() => validateConfig(config)).not.toThrow();
+      expect(exitSpy).not.toHaveBeenCalled();
+    });
+
+    it('accepts 0 as an explicit opt-out for both retention fields', () => {
+      const config = getBaseValidConfig();
+      config.logging.maxRetainedRequestLogs = 0;
+      config.logging.maxRetainedLogFiles = 0;
+      expect(() => validateConfig(config)).not.toThrow();
+      expect(exitSpy).not.toHaveBeenCalled();
+    });
+
+    it('rejects negative, fractional, NaN, and non-numeric values for maxRetainedRequestLogs', () => {
+      for (const bad of [-1, 1.5, Number.NaN, '100', null, true]) {
+        const config = getBaseValidConfig();
+        config.logging.maxRetainedRequestLogs = bad;
+        expect(() => validateConfig(config), `should reject ${String(bad)}`).toThrow('process.exit called');
+      }
+    });
+
+    it('rejects negative, fractional, NaN, and non-numeric values for maxRetainedLogFiles', () => {
+      for (const bad of [-1, 1.5, Number.NaN, '50', null, true]) {
+        const config = getBaseValidConfig();
+        config.logging.maxRetainedLogFiles = bad;
+        expect(() => validateConfig(config), `should reject ${String(bad)}`).toThrow('process.exit called');
+      }
+    });
+  });
 });

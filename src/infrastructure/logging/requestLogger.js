@@ -254,6 +254,72 @@ export class RequestLog {
 }
 
 /**
+ * Default retention cap for per-request log folders.
+ * When the request-log directory exceeds this count, the oldest folders are
+ * pruned on the next createRequestLog() call. Keeps disk usage bounded for
+ * long-running gateway deployments and prevents test runs from accumulating
+ * unbounded artefacts when request logging is enabled.
+ */
+export const DEFAULT_MAX_RETAINED_REQUEST_LOGS = 1000;
+
+/**
+ * Prunes oldest request-log folders when the directory exceeds `maxRetained`.
+ * Folders are sorted by their ISO-derived prefix (`YYYY-MM-DDTHH-MM-SS.mmmZ_…`)
+ * which is also the lexical sort order, so the oldest entries come first.
+ *
+ * @param {string} basePath - Absolute path to the request-log directory.
+ * @param {number} maxRetained - Maximum folders to keep. Values <= 0 disable pruning.
+ * @returns {Promise<number>} Number of folders removed.
+ */
+export const pruneRequestLogFolders = async (basePath, maxRetained) => {
+  if (!maxRetained || maxRetained <= 0) return 0;
+  let entries;
+  try {
+    entries = await fsp.readdir(basePath);
+  } catch (err) {
+    if (err.code === 'ENOENT') return 0;
+    logger.error('Failed to enumerate request log directory', { basePath, error: err.message });
+    return 0;
+  }
+  // Request folders follow the `${safeTimestamp}_${id}` pattern. Filter out
+  // anything else (e.g. manual operator uploads) so we never delete unrelated files.
+  const folderEntries = [];
+  for (const name of entries) {
+    if (!name.includes('_')) continue;
+    try {
+      const stat = await fsp.stat(path.join(basePath, name));
+      if (stat.isDirectory()) folderEntries.push({ name, mtime: stat.mtimeMs });
+    } catch (err) {
+      // Race with concurrent cleanup; skip and continue.
+      if (err.code !== 'ENOENT') {
+        logger.debug('Skipping non-folder entry during prune', { name, error: err.message });
+      }
+    }
+  }
+  if (folderEntries.length <= maxRetained) return 0;
+  // Oldest first; falls back to mtime when two folders share a timestamp prefix.
+  folderEntries.sort((a, b) => {
+    if (a.name < b.name) return -1;
+    if (a.name > b.name) return 1;
+    return a.mtime - b.mtime;
+  });
+  const toRemove = folderEntries.slice(0, folderEntries.length - maxRetained);
+  let removed = 0;
+  for (const entry of toRemove) {
+    try {
+      await fsp.rm(path.join(basePath, entry.name), { recursive: true, force: true });
+      removed += 1;
+    } catch (err) {
+      logger.error('Failed to prune old request log folder', { dir: entry.name, error: err.message });
+    }
+  }
+  if (removed > 0) {
+    logger.info('Pruned old request log folders', { removed, retained: maxRetained });
+  }
+  return removed;
+};
+
+/**
  * Helper to ensure the request log directory exists.
  * @param {string} dir
  * @returns {Promise<boolean>}
@@ -297,18 +363,30 @@ export const createRequestLog = async (req, config, testLogPath) => {
   const folderName = `${safeTimestamp(now.toISOString())}_${id}`;
   const dir = path.join(basePath, folderName);
 
-  const dirReady = await ensureLogDirectory(dir);
+  const dirReady = ensureLogDirectory(dir).then(async (ok) => {
+    // Apply retention policy only once the parent directory is confirmed writable.
+    if (ok) {
+      const maxRetained = typeof loggingConfig.maxRetainedRequestLogs === 'number'
+        ? loggingConfig.maxRetainedRequestLogs
+        : DEFAULT_MAX_RETAINED_REQUEST_LOGS;
+      await pruneRequestLogFolders(basePath, maxRetained);
+    }
+    return ok;
+  });
 
-  const reqLog = new RequestLog(dir, id, Date.now(), Promise.resolve(dirReady));
-  if (!dirReady) {
-    reqLog.dirFailed = true;
-  }
+  const reqLog = new RequestLog(dir, id, Date.now(), dirReady);
+  // Track the mkdir result asynchronously so canWrite() short-circuits future writes.
+  dirReady.then((ok) => {
+    if (!ok) reqLog.dirFailed = true;
+  });
   if (req?.isDryRun) {
     reqLog.isDryRun = true;
   }
 
-  // Write stage 1: client raw request
-  if (dirReady) {
+  // Write stage 1: client raw request. Defer until mkdir resolves so we never
+  // attempt to write into a directory that failed to create.
+  dirReady.then((ok) => {
+    if (!ok) return;
     const clientReqData = {
       timestamp: now.toISOString(),
       endpoint: req.originalUrl || req.url,
@@ -318,7 +396,7 @@ export const createRequestLog = async (req, config, testLogPath) => {
     };
     const p = writeJsonFile(path.join(dir, '01_client_request.json'), clientReqData, logger);
     reqLog.pendingWrites.push(p);
-  }
+  });
 
   logger.debug('Request log created', { dir, id });
   return reqLog;

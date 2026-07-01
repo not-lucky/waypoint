@@ -66,7 +66,18 @@ logging:
   enableFile: true
 
   # File path to output logs (required if enableFile is true)
+  # At startup, a fresh file is created per process with the session timestamp
+  # appended, e.g. "./logs/Waypoint_2026-06-26T15-14-02-123Z.log". The file
+  # grows for the lifetime of the process and is not rotated mid-session.
   filePath: "./logs/Waypoint.log"
+
+  # Maximum number of Waypoint session log files retained on disk
+  # (optional, non-negative integer, default: 1000). On startup, if the log
+  # directory contains more matching files (pattern: "<filePath-name>_<ISO>.<ext>"),
+  # the oldest entries are removed before the new session file is opened.
+  # Set to 0 to keep all session files indefinitely (not recommended for
+  # long-running deployments).
+  maxRetainedLogFiles: 1000
 
   # Log format structure: "json" | "text" (required)
   format: "json"
@@ -86,6 +97,14 @@ logging:
 
   # Directory for per-request debug folders (optional, default: "./logs/requests")
   requestLogPath: "./logs/requests"
+
+  # Maximum number of per-request debug folders retained on disk
+  # (optional, non-negative integer, default: 1000). When the count exceeds
+  # this value, the oldest folders (lexically oldest ISO timestamp prefix)
+  # are removed on the next request. Set to 0 to disable rotation entirely.
+  # Non-folder entries in requestLogPath (e.g. operator-uploaded files) are
+  # never touched by retention.
+  maxRetainedRequestLogs: 1000
 
 clients:
   # At least one client is required

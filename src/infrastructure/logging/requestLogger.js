@@ -100,7 +100,7 @@ export class RequestLog {
     if (isStream) {
       data.note = 'Streaming response — see 05_event_stream.jsonl for chunks';
     } else {
-      data.response = response;
+      data.response = (response && response._rawResponse) ? response._rawResponse : response;
     }
 
     const p = writeJsonFile(path.join(this.dir, '03_provider_response.json'), data, logger);
@@ -111,7 +111,8 @@ export class RequestLog {
    * Logs the provider response summary at the end of a streaming request.
    * Overwrites the initial stream stub file with the final counts and event summary.
    *
-   * @param {Object} data - Streaming log data including _format, _eventCount, and summary.
+   * @param {Object} data - Streaming log data including _format, _eventCount, summary,
+   *   and optional firstChunk/lastChunk for debug fidelity.
    */
   async logProviderStreamSummary(data) {
     if (this.isDryRun || !(await this.canWrite())) return;
@@ -122,6 +123,17 @@ export class RequestLog {
       _eventCount: data._eventCount || 0,
       summary: data.summary || {},
     };
+    // Surface the first and last raw upstream SSE chunks (after SSE parsing)
+    // so operators can inspect the provider-native shape that arrived on the
+    // wire. The full chunk-by-chunk log lives in 05_event_stream.jsonl; these
+    // two slices are a quick first/last bookmark for debugging stream failures
+    // (e.g. a finish_reason the orchestrator didn't recognise).
+    if (data.firstChunk !== undefined && data.firstChunk !== null) {
+      logData.firstChunk = data.firstChunk;
+    }
+    if (data.lastChunk !== undefined && data.lastChunk !== null) {
+      logData.lastChunk = data.lastChunk;
+    }
     const p = writeJsonFile(path.join(this.dir, '03_provider_response.json'), logData, logger);
     this.pendingWrites.push(p);
   }

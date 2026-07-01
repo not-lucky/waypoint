@@ -336,6 +336,48 @@ describe('AnthropicAdapter Tests', () => {
     expect(chunks[2].choices[0].finish_reason).toBe('stop');
   });
 
+  it('assert: generateStream forwards first and last raw SSE chunks to logProviderStreamSummary', async () => {
+    const adapter = new AnthropicAdapter({});
+    const firstChunk = {
+      type: 'message_start',
+      message: { id: 'msg_raw', role: 'assistant' },
+      provider_only_field: 'first',
+    };
+    const lastChunk = {
+      type: 'message_delta',
+      delta: { stop_reason: 'end_turn' },
+      provider_only_field: 'last',
+    };
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode(`event: message_start\ndata: ${JSON.stringify(firstChunk)}\n\n`);
+        yield encoder.encode('event: content_block_delta\ndata: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "hi"}}\n\n');
+        yield encoder.encode(`event: message_delta\ndata: ${JSON.stringify(lastChunk)}\n\n`);
+      },
+    };
+    mockFetch.mockResolvedValue({ ok: true, body: mockBody });
+
+    const requestLog = {
+      logProviderRequest: vi.fn(),
+      logProviderStreamSummary: vi.fn(),
+      appendStreamEvent: vi.fn(),
+    };
+
+    const stream = adapter.generateStream(
+      { model: 'anthropic/claude-3-5-sonnet', modelid: 'claude-3-5-sonnet', messages: [] },
+      'key',
+      new AbortController().signal,
+      requestLog,
+    );
+    for await (const chunk of stream) { /* drain */ }
+
+    expect(requestLog.logProviderStreamSummary).toHaveBeenCalledTimes(1);
+    const summaryArg = requestLog.logProviderStreamSummary.mock.calls[0][0];
+    expect(summaryArg.firstChunk).toEqual(firstChunk);
+    expect(summaryArg.lastChunk).toEqual(lastChunk);
+  });
+
   it('assert: reasoningSupported true without reasoningEffort uses default budget 2048', async () => {
     const adapter = new AnthropicAdapter({});
     const req = {
@@ -551,7 +593,7 @@ describe('AnthropicAdapter Tests', () => {
     mockFetch.mockResolvedValue({
       ok: true,
       body: (async function* () {
-        yield encoder.encode('event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}\n\n');
+        yield encoder.encode('event: message_delta\ndata: {"type": "message_delta", "delta": {"stop_reason": "end_turn"}}\n\n');
       })(),
       headers: new Headers(),
     });
@@ -569,5 +611,39 @@ describe('AnthropicAdapter Tests', () => {
 
     const body = JSON.parse(mockFetch.mock.calls[0][1].body);
     expect(body.metadata).toEqual({ source: 'stream-test' });
+  });
+
+  it('attaches the raw upstream body as a non-enumerable _rawResponse on the mapped response', async () => {
+    const adapter = new AnthropicAdapter({});
+    const rawBody = {
+      id: 'msg_raw_123',
+      content: [{ type: 'text', text: 'hello' }],
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 7, output_tokens: 11 },
+      provider_only_field: 'must-not-leak-to-client',
+    };
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => rawBody,
+    });
+
+    const response = await adapter.generateCompletion({
+      model: 'anthropic/claude-3-5-sonnet',
+      modelid: 'claude-3-5-sonnet',
+      messages: [{ role: 'user', content: 'hi' }],
+    }, 'anthropic-key');
+
+    // Producer-side contract: the raw upstream body is reachable.
+    expect(response._rawResponse).toEqual(rawBody);
+    // Non-enumerability: must not appear in key enumeration or spread.
+    expect(Object.keys(response)).not.toContain('_rawResponse');
+    expect('_rawResponse' in response).toBe(true);
+    const spread = { ...response };
+    expect('_rawResponse' in spread).toBe(false);
+    // No-leak guarantee: must not be serialized into the client-bound JSON.
+    const serialized = JSON.stringify(response);
+    expect(serialized).not.toContain('_rawResponse');
+    expect(serialized).not.toContain('provider_only_field');
   });
 });

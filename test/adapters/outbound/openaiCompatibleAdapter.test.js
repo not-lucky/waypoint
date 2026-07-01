@@ -909,4 +909,145 @@ describe('OpenAICompatibleAdapter Tests', () => {
     }
     expect(performFetchSpy.mock.calls[1][5]).toBe(300000);
   });
+
+  it('attaches the raw upstream body as a non-enumerable _rawResponse on the mapped response', async () => {
+    const adapter = new OpenAICompatibleAdapter({
+      baseUrl: 'https://api.openai.com/v1',
+      providerName: 'openai',
+    });
+    const rawBody = {
+      id: 'chatcmpl-raw-1',
+      choices: [{
+        index: 0,
+        message: { role: 'assistant', content: 'hello' },
+        finish_reason: 'stop',
+      }],
+      usage: { prompt_tokens: 3, completion_tokens: 5, total_tokens: 8 },
+      provider_only_field: 'must-not-leak-to-client',
+    };
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => rawBody,
+    });
+
+    const response = await adapter.generateCompletion({
+      model: 'openai/gpt-4o',
+      modelid: 'gpt-4o',
+      messages: [{ role: 'user', content: 'hi' }],
+    }, 'test-api-key');
+
+    // Producer-side contract: the raw upstream body is reachable.
+    expect(response._rawResponse).toEqual(rawBody);
+    // Non-enumerability: must not appear in key enumeration or spread.
+    expect(Object.keys(response)).not.toContain('_rawResponse');
+    expect('_rawResponse' in response).toBe(true);
+    const spread = { ...response };
+    expect('_rawResponse' in spread).toBe(false);
+    // No-leak guarantee: must not be serialized into the client-bound JSON.
+    const serialized = JSON.stringify(response);
+    expect(serialized).not.toContain('_rawResponse');
+    expect(serialized).not.toContain('provider_only_field');
+  });
+
+  it('passes the first and last raw SSE chunks to logProviderStreamSummary', async () => {
+    const adapter = new OpenAICompatibleAdapter({
+      baseUrl: 'https://api.openai.com/v1',
+      providerName: 'openai',
+    });
+    const firstChunk = {
+      id: 'chatcmpl-stream',
+      object: 'chat.completion.chunk',
+      choices: [{ index: 0, delta: { role: 'assistant' }, finish_reason: null }],
+      provider_only_field: 'first',
+    };
+    const middleChunk = {
+      id: 'chatcmpl-stream',
+      object: 'chat.completion.chunk',
+      choices: [{ index: 0, delta: { content: 'mid' }, finish_reason: null }],
+    };
+    const lastChunk = {
+      id: 'chatcmpl-stream',
+      object: 'chat.completion.chunk',
+      choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+      provider_only_field: 'last',
+    };
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode(`data: ${JSON.stringify(firstChunk)}\n\n`);
+        yield encoder.encode(`data: ${JSON.stringify(middleChunk)}\n\n`);
+        yield encoder.encode(`data: ${JSON.stringify(lastChunk)}\n\n`);
+        yield encoder.encode('data: [DONE]\n\n');
+      },
+    };
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: new Map(),
+      body: mockBody,
+    });
+
+    const requestLog = {
+      logProviderRequest: vi.fn(),
+      appendStreamEvent: vi.fn(),
+      logProviderStreamSummary: vi.fn(),
+    };
+
+    const stream = adapter.generateStream(
+      { modelid: 'gpt-4o', messages: [{ role: 'user', content: 'hi' }] },
+      'api-key',
+      new AbortController().signal,
+      requestLog,
+    );
+    // Drain the stream to drive the finally-block summary call.
+    for await (const chunk of stream) { /* drain */ }
+
+    expect(requestLog.logProviderStreamSummary).toHaveBeenCalledTimes(1);
+    const summaryArg = requestLog.logProviderStreamSummary.mock.calls[0][0];
+    expect(summaryArg.firstChunk).toEqual(firstChunk);
+    expect(summaryArg.lastChunk).toEqual(lastChunk);
+    // 3 JSON data lines + the [DONE] sentinel; the sentinel is counted as an
+    // event but produces no parsedData, so firstChunk/lastChunk reflect the
+    // three real payloads.
+    expect(summaryArg._eventCount).toBe(4);
+  });
+
+  it('passes null first/last chunks when the stream produces no parseable events', async () => {
+    const adapter = new OpenAICompatibleAdapter({
+      baseUrl: 'https://api.openai.com/v1',
+      providerName: 'openai',
+    });
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        // Only heartbeats / DONE markers — no JSON payloads to capture.
+        yield encoder.encode(': heartbeat\n\n');
+        yield encoder.encode('data: [DONE]\n\n');
+      },
+    };
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: new Map(),
+      body: mockBody,
+    });
+
+    const requestLog = {
+      logProviderRequest: vi.fn(),
+      appendStreamEvent: vi.fn(),
+      logProviderStreamSummary: vi.fn(),
+    };
+
+    const stream = adapter.generateStream(
+      { modelid: 'gpt-4o', messages: [] },
+      'api-key',
+      new AbortController().signal,
+      requestLog,
+    );
+    for await (const chunk of stream) { /* drain */ }
+
+    expect(requestLog.logProviderStreamSummary).toHaveBeenCalledTimes(1);
+    const summaryArg = requestLog.logProviderStreamSummary.mock.calls[0][0];
+    expect(summaryArg.firstChunk).toBeNull();
+    expect(summaryArg.lastChunk).toBeNull();
+  });
 });

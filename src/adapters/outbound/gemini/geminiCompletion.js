@@ -2,6 +2,7 @@ import { FORMATS, translateRequest, translateResponse } from '../../transforms/i
 import { getThinkingLevel } from './geminiFormatter.js';
 import { mapOpenAICompletionResponse } from '../shared/openaiResponse.js';
 import { applyExtraBody } from '../shared/extraBody.js';
+import { attachRawResponse } from '../shared/attachRawResponse.js';
 
 const resolveGeminiModelId = (req) => {
   if (typeof req?.modelid === 'string' && req.modelid.trim() !== '') {
@@ -74,18 +75,24 @@ export const executeCompletion = async ( req, apiKey, signal, requestLog, adapte
   try {
     const resultJson = await response.json();
 
+    let mapped;
     if ( reasoningSupported ) {
       // Gemini embeds reasoning in <thought>...</thought> tags within content.
       // Extract them into reasoning_content when reasoning is supported.
-      return mapOpenAICompletionResponse( req, resultJson, {
+      mapped = mapOpenAICompletionResponse( req, resultJson, {
         taggedReasoning: {
           startTag: '<thought>',
           endTag: '</thought>',
         },
       } );
+    } else {
+      mapped = translateResponse( FORMATS.OPENAI, FORMATS.GEMINI, resultJson, req );
     }
 
-    return translateResponse( FORMATS.OPENAI, FORMATS.GEMINI, resultJson, req );
+    // Stash the raw upstream body for the request logger; non-enumerable so it
+    // never leaks into the client-bound JSON serialization.
+    attachRawResponse(mapped, resultJson);
+    return mapped;
   } finally {
     cleanup();
   }

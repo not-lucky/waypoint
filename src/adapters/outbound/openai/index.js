@@ -9,6 +9,7 @@ import {
   mapOpenAIStreamChunk,
 } from '../shared/openaiResponse.js';
 import { throwIfStreamErrorPayload } from '../../../domain/errors/upstream.js';
+import { attachRawResponse } from '../shared/attachRawResponse.js';
 
 const THINK_BLOCK_TAGS = Object.freeze({
   startTag: '<think>',
@@ -423,7 +424,11 @@ export class OpenAICompatibleAdapter extends BaseProvider {
 
     try {
       const resultJson = await response.json();
-      return mapOpenAICompletionResponse(req, resultJson, { taggedReasoning });
+      const mapped = mapOpenAICompletionResponse(req, resultJson, { taggedReasoning });
+      // Stash the raw upstream body for the request logger; non-enumerable so it
+      // never leaks into the client-bound JSON serialization.
+      attachRawResponse(mapped, resultJson);
+      return mapped;
     } finally {
       cleanup();
     }
@@ -460,6 +465,8 @@ export class OpenAICompatibleAdapter extends BaseProvider {
     const choiceStates = new Map();
 
     let eventCount = 0;
+    let firstRawChunk = null;
+    let lastRawChunk = null;
     try {
       for await (const sseEvent of stream) {
         if (fetchSignal?.aborted) throw new Error('Stream aborted');
@@ -467,6 +474,13 @@ export class OpenAICompatibleAdapter extends BaseProvider {
 
         const parsedData = parseSSEEventData(sseEvent.data);
         if (!parsedData) continue;
+
+        // Capture the first and last raw upstream SSE chunks for the debug
+        // log (03_provider_response.json). The full sequence lives in
+        // 05_event_stream.jsonl; these two slices give operators a quick
+        // first/last bookmark when debugging stream failures.
+        if (firstRawChunk === null) firstRawChunk = parsedData;
+        lastRawChunk = parsedData;
 
         if (requestLog && typeof requestLog.appendStreamEvent === 'function') {
           requestLog.appendStreamEvent('provider', parsedData);
@@ -513,6 +527,8 @@ export class OpenAICompatibleAdapter extends BaseProvider {
           _format: 'sse-json',
           _eventCount: eventCount,
           summary: accumulator.buildNormalizedResponse(),
+          firstChunk: firstRawChunk,
+          lastChunk: lastRawChunk,
         });
       }
     }

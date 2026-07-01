@@ -119,6 +119,12 @@ Past architectural decisions are documented in `docs/adr/`:
 
 When proposing architectural changes, consider creating a new ADR to document the decision.
 
+> **Debug-log fidelity improvements** (e.g. surfacing the raw upstream body or
+> the first/last SSE chunks in `03_provider_response.json`) do **not** require
+> a new ADR. They fall under ADR 0004's audit-log umbrella ("Audit logs
+> capture full upstream responses for debugging") and evolve naturally as the
+> request logger (`src/infrastructure/logging/requestLogger.js`) is updated.
+
 ## Development Workflow
 
 1. **Read CONTEXT.md** to understand domain language

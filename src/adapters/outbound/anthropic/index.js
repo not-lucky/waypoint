@@ -5,6 +5,7 @@ import {
 } from '../../transforms/index.js';
 import { createStreamUpstreamError } from '../../../domain/errors/upstream.js';
 import { applyExtraBody } from '../shared/extraBody.js';
+import { attachRawResponse } from '../shared/attachRawResponse.js';
 
 /**
  * Provider adapter for Anthropic's Claude API endpoints.
@@ -168,7 +169,7 @@ export class AnthropicAdapter extends BaseProvider {
   /**
    * Logs the stream summary.
    */
-  logStreamSummary(requestLog, state, chunkId, req) {
+  logStreamSummary(requestLog, state, chunkId, req, firstRawChunk = null, lastRawChunk = null) {
     if (requestLog && typeof requestLog.logProviderStreamSummary === 'function') {
       requestLog.logProviderStreamSummary({
         _format: 'anthropic-sse',
@@ -186,6 +187,8 @@ export class AnthropicAdapter extends BaseProvider {
             output_tokens: state.outputTokens,
           },
         },
+        firstChunk: firstRawChunk,
+        lastChunk: lastRawChunk,
       });
     }
   }
@@ -210,7 +213,11 @@ export class AnthropicAdapter extends BaseProvider {
 
     try {
       const resultJson = await response.json();
-      return translateResponse(FORMATS.OPENAI, FORMATS.ANTHROPIC, resultJson, req);
+      const mapped = translateResponse(FORMATS.OPENAI, FORMATS.ANTHROPIC, resultJson, req);
+      // Stash the raw upstream body for the request logger; non-enumerable so it
+      // never leaks into the client-bound JSON serialization.
+      attachRawResponse(mapped, resultJson);
+      return mapped;
     } finally {
       cleanup();
     }
@@ -248,6 +255,9 @@ export class AnthropicAdapter extends BaseProvider {
       contentBlocks: [],
     };
 
+    let firstRawChunk = null;
+    let lastRawChunk = null;
+
     try {
       for await (const sseEvent of stream) {
         if (fetchSignal?.aborted) throw new Error('Stream aborted');
@@ -258,6 +268,14 @@ export class AnthropicAdapter extends BaseProvider {
           dataJson = JSON.parse(sseEvent.data);
         } catch (_err) {
           // ignore
+        }
+
+        // Capture the first and last raw upstream SSE chunks for the debug
+        // log (03_provider_response.json). Skips unparseable payloads; the
+        // full sequence lives in 05_event_stream.jsonl.
+        if (dataJson !== null) {
+          if (firstRawChunk === null) firstRawChunk = dataJson;
+          lastRawChunk = dataJson;
         }
 
         if (sseEvent.event === 'error' || dataJson?.type === 'error') {
@@ -277,7 +295,7 @@ export class AnthropicAdapter extends BaseProvider {
       }
     } finally {
       cleanup();
-      this.logStreamSummary(requestLog, state, chunkId, req);
+      this.logStreamSummary(requestLog, state, chunkId, req, firstRawChunk, lastRawChunk);
     }
   }
 }

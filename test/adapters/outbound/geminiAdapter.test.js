@@ -778,4 +778,121 @@ describe('GeminiAdapter Tests', () => {
     const body = JSON.parse(mockFetch.mock.calls[0][1].body);
     expect(body.labels).toEqual({ source: 'waypoint' });
   });
+
+  it('assert: generateStream forwards first and last raw SSE chunks to logProviderStreamSummary (thinking path)', async () => {
+    const adapter = new GeminiAdapter({});
+    const firstChunk = {
+      id: 'chatcmpl-gem',
+      object: 'chat.completion.chunk',
+      choices: [{ index: 0, delta: { role: 'assistant' }, finish_reason: null }],
+      provider_only_field: 'first',
+    };
+    const lastChunk = {
+      id: 'chatcmpl-gem',
+      object: 'chat.completion.chunk',
+      choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 },
+    };
+    const mockBody = {
+      async* [Symbol.asyncIterator]() {
+        const encoder = new TextEncoder();
+        yield encoder.encode(`data: ${JSON.stringify(firstChunk)}\n\n`);
+        yield encoder.encode('data: {"id":"chatcmpl-gem","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"hi"}}]}\n\n');
+        yield encoder.encode(`data: ${JSON.stringify(lastChunk)}\n\n`);
+        yield encoder.encode('data: [DONE]\n\n');
+      },
+    };
+    mockFetch.mockResolvedValue({ ok: true, body: mockBody });
+
+    const requestLog = {
+      logProviderRequest: vi.fn(),
+      logProviderStreamSummary: vi.fn(),
+      appendStreamEvent: vi.fn(),
+    };
+
+    const stream = adapter.generateStream(
+      {
+        model: 'gemini/gemini-2.5-pro',
+        modelid: 'gemini-2.5-pro',
+        messages: [],
+        reasoningSupported: true,
+      },
+      'gemini-key',
+      new AbortController().signal,
+      requestLog,
+    );
+    for await (const chunk of stream) { /* drain */ }
+
+    expect(requestLog.logProviderStreamSummary).toHaveBeenCalledTimes(1);
+    const summaryArg = requestLog.logProviderStreamSummary.mock.calls[0][0];
+    expect(summaryArg.firstChunk).toEqual(firstChunk);
+    expect(summaryArg.lastChunk).toEqual(lastChunk);
+  });
+
+  it('attaches the raw upstream body as a non-enumerable _rawResponse (reasoning-supported path)', async () => {
+    const adapter = new GeminiAdapter({});
+    const rawBody = {
+      choices: [{
+        index: 0,
+        message: { role: 'assistant', content: 'final answer', reasoning_content: 'thinking' },
+        finish_reason: 'stop',
+      }],
+      usage: { prompt_tokens: 2, completion_tokens: 4, total_tokens: 6 },
+      provider_only_field: 'must-not-leak-to-client',
+    };
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => rawBody,
+    });
+
+    const response = await adapter.generateCompletion({
+      model: 'gemini/gemini-2.5-pro',
+      modelid: 'gemini-2.5-pro',
+      messages: [{ role: 'user', content: 'hi' }],
+      reasoningSupported: true,
+    }, 'gemini-key');
+
+    expect(response._rawResponse).toEqual(rawBody);
+    expect(Object.keys(response)).not.toContain('_rawResponse');
+    expect('_rawResponse' in response).toBe(true);
+    const spread = { ...response };
+    expect('_rawResponse' in spread).toBe(false);
+    const serialized = JSON.stringify(response);
+    expect(serialized).not.toContain('_rawResponse');
+    expect(serialized).not.toContain('provider_only_field');
+  });
+
+  it('attaches the raw upstream body as a non-enumerable _rawResponse (non-reasoning path)', async () => {
+    const adapter = new GeminiAdapter({});
+    const rawBody = {
+      candidates: [{
+        content: { parts: [{ text: 'native gemini response' }] },
+        finishReason: 'STOP',
+        index: 0,
+      }],
+      provider_only_field: 'must-not-leak-to-client',
+    };
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => rawBody,
+    });
+
+    const response = await adapter.generateCompletion({
+      model: 'gemini/gemini-2.5-pro',
+      modelid: 'gemini-2.5-pro',
+      messages: [{ role: 'user', content: 'hi' }],
+      reasoningSupported: false,
+    }, 'gemini-key');
+
+    expect(response._rawResponse).toEqual(rawBody);
+    expect(Object.keys(response)).not.toContain('_rawResponse');
+    expect('_rawResponse' in response).toBe(true);
+    const spread = { ...response };
+    expect('_rawResponse' in spread).toBe(false);
+    const serialized = JSON.stringify(response);
+    expect(serialized).not.toContain('_rawResponse');
+    expect(serialized).not.toContain('provider_only_field');
+  });
 });

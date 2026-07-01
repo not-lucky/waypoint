@@ -65,6 +65,8 @@ export async function* executeThinkingStream(req, apiKey, signal, requestLog, ad
   let accumulatedContent = '';
   let accumulatedReasoningContent = '';
   let finalUsage = null;
+  let firstRawChunk = null;
+  let lastRawChunk = null;
 
   try {
     for await (const sseEvent of stream) {
@@ -72,6 +74,12 @@ export async function* executeThinkingStream(req, apiKey, signal, requestLog, ad
 
       const parsedData = parseSSEEventData(sseEvent.data);
       if (!parsedData) continue;
+
+      // Capture the first and last raw upstream SSE chunks for the debug
+      // log (03_provider_response.json). The full sequence lives in
+      // 05_event_stream.jsonl.
+      if (firstRawChunk === null) firstRawChunk = parsedData;
+      lastRawChunk = parsedData;
 
       if (requestLog && typeof requestLog.appendStreamEvent === 'function') {
         requestLog.appendStreamEvent('provider', parsedData);
@@ -182,6 +190,8 @@ export async function* executeThinkingStream(req, apiKey, signal, requestLog, ad
         _format: 'sse-json',
         _eventCount: eventCount,
         summary,
+        firstChunk: firstRawChunk,
+        lastChunk: lastRawChunk,
       });
     }
   }

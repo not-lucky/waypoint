@@ -49,6 +49,12 @@ const CONNECTIONS_PER_ORIGIN = 32;
  */
 const PIPELINING = 1;
 
+/**
+ * Cached instance of the undici keep-alive Agent.
+ *
+ * @private
+ * @type {Agent|null}
+ */
 let sharedAgent = null;
 
 /**

@@ -1,3 +1,14 @@
+/**
+ * @fileoverview Express application factory.
+ *
+ * Assembles the Express middleware chain and mounts the protocol routers
+ * (OpenAI + Anthropic + models + health + metrics). The factory takes
+ * the already-wired service graph so callers can substitute services in
+ * tests without re-implementing the middleware chain.
+ *
+ * Middleware order matters and is documented per-mount below.
+ */
+
 import express from 'express';
 import cors from 'cors';
 import { sendHttpError } from './middleware/errorHelper.js';
@@ -13,15 +24,23 @@ import {
 } from './routes.js';
 
 /**
- * Mounts protocol-specific routes (OpenAI and Anthropic) to the Express app.
+ * Mounts protocol-specific and model-list routers.
  *
- * @param {Object} app - Express application instance.
- * @param {Object} logger - Logger instance for debug output.
- * @param {Object} dependencies - Route dependencies.
- * @param {Object} dependencies.auth - Authentication middleware.
- * @param {Object} dependencies.openAIController - OpenAI controller instance.
- * @param {Object} dependencies.anthropicController - Anthropic controller instance.
- * @param {Object} dependencies.modelCache - Model cache instance.
+ * Routes are mounted at BOTH `/v1` and `/` so the gateway accepts the
+ * canonical OpenAI-style prefixed paths (`/v1/chat/completions`) AND
+ * unprefixed paths (`/chat/completions`). Each protocol has a parallel
+ * `/dryrun` mount that injects the dry-run middleware, which is used by
+ * the integration test suite to assert request shape without burning
+ * upstream quota.
+ *
+ * @param {import('express').Express} app - Express application instance.
+ * @param {Object} logger - Logger instance for debug breadcrumbs.
+ * @param {Object} dependencies - Routed dependencies.
+ * @param {Function} dependencies.auth - The auth middleware factory (already bound to `config`).
+ * @param {Object} dependencies.openAIController - OpenAI ingress controller.
+ * @param {Object} dependencies.anthropicController - Anthropic ingress controller.
+ * @param {Object} dependencies.modelCache - Cached list of configured models.
+ * @returns {void}
  */
 const mountProtocolRoutes = (app, logger, {
   auth, openAIController, anthropicController, modelCache,
@@ -52,10 +71,21 @@ const mountProtocolRoutes = (app, logger, {
 };
 
 /**
- * Creates an Express error handler middleware.
+ * Builds the Express error-handler middleware.
  *
- * @param {Object} logger - Logger instance for error reporting.
- * @returns {Function} Express error handler middleware function.
+ * This is the LAST middleware in the chain. It catches anything that
+ * bubbled out of a route handler — typically uncaught synchronous throws
+ * from a controller. It maps common HTTP statuses to canonical Waypoint
+ * error codes (`payloadTooLarge`, `badRequest`, `internalServerError`) and
+ * delegates the actual response shape to `sendHttpError`, which respects
+ * the ingress protocol format (OpenAI vs Anthropic).
+ *
+ * Note: the four-argument signature `(err, req, res, next)` is required
+ * by Express to recognize a function as an error handler. `next` is
+ * unused but must remain in the signature.
+ *
+ * @param {Object} logger - Logger instance for unhandled error reporting.
+ * @returns {import('express').ErrorRequestHandler} Express error middleware.
  */
 const errorHandler = (logger) => {
   // eslint-disable-next-line no-unused-vars
@@ -72,17 +102,31 @@ const errorHandler = (logger) => {
 /**
  * Creates and configures the Express application for the Waypoint gateway.
  *
+ * Middleware chain (order matters):
+ *
+ * 1. CORS — applied only when `gateway.cors.allowedOrigins` is set.
+ * 2. JSON body parser — limits payload size to `gateway.maxPayloadSize`.
+ * 3. Metrics — increments counters / observes histograms on response finish.
+ * 4. Routers — `/health`, `/metrics`, `/v1` (and unprefixed mirror), `/dryrun`.
+ * 5. Error handler — terminal middleware that shapes uncaught throws into
+ *    the protocol-specific error envelope.
+ *
  * @param {Object} config - Application configuration object.
- * @param {Object} config.gateway - Gateway-specific configuration.
- * @param {Array} [config.gateway.cors.allowedOrigins=['*']] - CORS allowed origins.
- * @param {string} [config.gateway.maxPayloadSize='10mb'] - Maximum request body size.
- * @param {Object} services - Service instances.
- * @param {Object} services.openAIController - OpenAI controller instance.
- * @param {Object} services.anthropicController - Anthropic controller instance.
- * @param {Object} services.modelCache - Model cache instance.
- * @param {Object} services.metricsCollector - Metrics collector instance.
+ * @param {Object} config.gateway - Gateway-specific configuration block.
+ * @param {Array<string>} [config.gateway.cors.allowedOrigins=['*']] - CORS
+ *   allowed origins. The wildcard `*` is passed through verbatim; any
+ *   other value becomes the literal `Access-Control-Allow-Origin` header.
+ * @param {string|number} [config.gateway.maxPayloadSize='10mb'] - Maximum
+ *   request body size accepted by the JSON parser. Accepts any value
+ *   supported by `bytes` (raw integer or `kb`/`mb`/`gb` shorthand).
+ * @param {Object} services - Wired service instances.
+ * @param {Object} services.openAIController - OpenAI ingress controller.
+ * @param {Object} services.anthropicController - Anthropic ingress controller.
+ * @param {Object} services.modelCache - Cached model-list provider.
+ * @param {Object} services.metricsCollector - Prometheus-format metrics
+ *   collector (exposed via `/metrics`).
  * @param {Object} logger - Logger instance.
- * @returns {Object} Configured Express application.
+ * @returns {import('express').Express} Configured Express application.
  */
 export const createApp = (config, services, logger) => {
   const app = express();

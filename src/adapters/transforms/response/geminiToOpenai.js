@@ -1,15 +1,40 @@
+/**
+ * @fileoverview Response translator module from Google Gemini generateContent format to OpenAI format.
+ *
+ * This module translates outgoing response payloads and SSE streaming chunks from
+ * the Google Gemini API into the gateway's canonical OpenAI-compatible (hub) formats.
+ * It handles the flattening of candidate turn parts, parses interleaved thoughts into
+ * reasoning deltas, translates finish reasons, and maps token usage stats.
+ *
+ * @module adapters/transforms/response/geminiToOpenai
+ */
+
 import { mapFinishReason, synthesizeMetadata } from '../utils.js';
 
 /**
- * Translates a complete Google Gemini generateContent API response into an OpenAI-shaped NormalizedResponse.
+ * Translates a complete, non-streaming Google Gemini generateContent API response into
+ * a standardized, OpenAI-shaped NormalizedResponse.
  *
- * Architectural Intent: Acts as an anti-corruption layer, isolating the rest of the application
+ * Architectural Intent:
+ * Acts as an anti-corruption layer, isolating the rest of the gateway application
  * from Gemini's distinct schema constraints (e.g., the `candidates` array and nested `parts`).
  * This enables the aggregator/orchestrator to function uniformly using OpenAI interfaces.
  *
- * @param {Object} geminiRes - Gemini API JSON response.
- * @param {Object} req - The original request.
- * @returns {Object} OpenAI-shaped NormalizedResponse.
+ * Details of the translation:
+ * 1. **Content Mapping**: Iterates through Gemini's response `parts`. Thought block parts (`part.thought`)
+ *    are isolated and concatenated into `reasoning_content` (mimicking OpenAI's o1/o3 reasoning model outputs),
+ *    while standard text blocks are combined into the main choice `content`.
+ * 2. **Metadata & Usage Mapping**: Converts Gemini's `usageMetadata` (promptTokenCount, candidatesTokenCount)
+ *    into standard OpenAI `usage` field details (prompt_tokens, completion_tokens, total_tokens).
+ * 3. **Stop Classification**: Translates finish reasons using the `mapFinishReason` helper.
+ *
+ * @param {Object} geminiRes - The raw JSON response returned from the Gemini API.
+ * @param {Array<Object>} [geminiRes.candidates] - Array of generation candidate choices.
+ * @param {string} [geminiRes.model] - The name of the upstream model used.
+ * @param {Object} [geminiRes.usageMetadata] - Token usage telemetry data from Gemini.
+ * @param {Object} [req={}] - The original client request metadata block.
+ * @param {string} [req.model] - Target model name request parameter.
+ * @returns {Object} OpenAI-compatible NormalizedResponse.
  */
 export const translateGeminiToOpenAI = (geminiRes, req = {}) => {
   // Safe navigation is used heavily here to prevent unhandled TypeErrors.
@@ -62,16 +87,18 @@ export const translateGeminiToOpenAI = (geminiRes, req = {}) => {
 };
 
 /**
- * Translates a Google Gemini API stream JSON chunk to an OpenAI-shaped StreamChunk.
+ * Translates a Google Gemini API stream JSON chunk into a standardized, OpenAI-compatible StreamChunk.
  *
  * Rationale: Translating streaming events is highly sensitive to timing and chunk boundaries.
  * This function converts granular Gemini SSE payloads into OpenAI `delta` format,
  * maintaining the persistent session ID across chunks to ensure client-side assembly logic works.
  *
- * @param {Object} chunkJson - The parsed Gemini JSON stream chunk.
+ * It filters out empty deltas that lack content and finish reasons to prevent client-side crashes,
+ * and passes through usage metadata on the final chunk when present.
+ *
+ * @param {Object} chunkJson - The parsed Gemini JSON stream chunk object.
  * @param {string} chunkId - A persistent ID for the stream session, linking this delta to previous ones.
- * @param {Object} _req - The original request.
- * @returns {Object|null} Mapped OpenAI chunk or null if empty/metadata only.
+ * @returns {Object|null} Mapped OpenAI-compatible chunk or null if empty/metadata only.
  */
 export const translateGeminiChunkToOpenAI = (chunkJson, chunkId) => {
   const candidate = chunkJson.candidates?.[0] || {};

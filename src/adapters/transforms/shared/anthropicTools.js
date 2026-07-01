@@ -1,5 +1,13 @@
 import { safeJsonParse } from '../utils.js';
 
+/**
+ * Translates Anthropic tool declarations into the OpenAI tools schema representation.
+ *
+ * Maps Anthropic's `input_schema` to OpenAI's function `parameters`.
+ *
+ * @param {Array<Object>|null|undefined} tools - Array of Anthropic tools.
+ * @returns {Array<Object>|undefined} Array of OpenAI-compatible tools or undefined.
+ */
 export const anthropicToolsToOpenAI = (tools) => {
   if (!tools?.length) return undefined;
   return tools.map((tool) => ({
@@ -12,6 +20,15 @@ export const anthropicToolsToOpenAI = (tools) => {
   }));
 };
 
+/**
+ * Translates OpenAI tool definitions to the Anthropic tool representation.
+ *
+ * Handles unpacking of standard OpenAI `{ type: 'function', function: { name, description, parameters } }`
+ * structures down to Anthropic's tool properties.
+ *
+ * @param {Array<Object>|null|undefined} tools - Array of OpenAI tool definitions.
+ * @returns {Array<Object>|undefined} Array of Anthropic-compatible tool definitions or undefined.
+ */
 export const openAIToolsToAnthropic = (tools) => {
   if (!tools?.length) return undefined;
   return tools.map((tool) => {
@@ -24,6 +41,15 @@ export const openAIToolsToAnthropic = (tools) => {
   });
 };
 
+/**
+ * Translates Anthropic's tool choice settings into standard OpenAI configurations.
+ *
+ * Maps Anthropic's `auto` to `'auto'`, `any` to `'required'`, and named tool choice
+ * objects to the OpenAI function tool choice format.
+ *
+ * @param {Object|string|null|undefined} toolChoice - Anthropic tool choice setting.
+ * @returns {Object|string|undefined} The equivalent OpenAI tool choice representation.
+ */
 export const anthropicToolChoiceToOpenAI = (toolChoice) => {
   if (!toolChoice) return undefined;
   if (toolChoice.type === 'auto') return 'auto';
@@ -34,6 +60,14 @@ export const anthropicToolChoiceToOpenAI = (toolChoice) => {
   return undefined;
 };
 
+/**
+ * Translates OpenAI's tool choice parameter configuration into the equivalent Anthropic shape.
+ *
+ * Maps OpenAI's `'auto'`, `'required'`, `'none'`, or specific function selection objects.
+ *
+ * @param {Object|string|null|undefined} toolChoice - OpenAI tool choice configuration.
+ * @returns {Object|undefined} The equivalent Anthropic tool choice descriptor.
+ */
 export const openAIToolChoiceToAnthropic = (toolChoice) => {
   if (!toolChoice) return undefined;
   if (toolChoice === 'auto') return { type: 'auto' };
@@ -46,6 +80,15 @@ export const openAIToolChoiceToAnthropic = (toolChoice) => {
   return undefined;
 };
 
+/**
+ * Resolves the string content of a tool execution result block.
+ *
+ * Handles unpacking of string results, text blocks, and objects (serialized to JSON strings).
+ *
+ * @private
+ * @param {*} content - The raw content parameter from a tool result message.
+ * @returns {string} The string representation of the tool output content.
+ */
 const toolResultContentToString = (content) => {
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
@@ -58,6 +101,20 @@ const toolResultContentToString = (content) => {
   return JSON.stringify(content ?? '');
 };
 
+/**
+ * Translates an Anthropic chat message structure to the corresponding OpenAI-compatible message representation.
+ *
+ * Since Anthropic has a strict alternate-turn message structure and aggregates tools and multi-modal
+ * assets in content blocks, this method splits them out into separate OpenAI-compatible messages:
+ * - Assistant text & tool calls are split.
+ * - User/tool results are normalized to distinct `{ role: 'tool', ... }` entries.
+ * - Base64 image blocks are mapped to OpenAI's image URL format.
+ *
+ * @param {Object} message - The Anthropic message object.
+ * @param {string} message.role - The message author's role ('user' or 'assistant').
+ * @param {string|Array<Object>} message.content - Text or block array content.
+ * @returns {Array<Object>} An array of normalized OpenAI-compatible message structures.
+ */
 export const anthropicMessageToOpenAI = (message) => {
   const { role } = message;
   const { content } = message;
@@ -132,6 +189,18 @@ export const anthropicMessageToOpenAI = (message) => {
   return [{ role, content }];
 };
 
+/**
+ * Translates an array of OpenAI messages into standard Anthropic messages format.
+ *
+ * Enforces Anthropic's constraints:
+ * 1. System messages are stripped (caller must extract them separately).
+ * 2. Consecutive 'tool' response messages are aggregated into a single user message containing a list of tool result content blocks.
+ * 3. Formats image URLs back to Anthropic's Base64 representation.
+ * 4. Resolves tool call declarations as assistant content blocks of type `tool_use`.
+ *
+ * @param {Array<Object>} messages - Array of OpenAI-compatible messages.
+ * @returns {Array<Object>} Array of Anthropic-compatible message objects.
+ */
 export const openAIMessagesToAnthropic = (messages) => {
   const anthropicMessages = [];
   let pendingToolResults = [];
@@ -220,6 +289,14 @@ export const openAIMessagesToAnthropic = (messages) => {
   return anthropicMessages;
 };
 
+/**
+ * Converts a content block array returned by Anthropic's assistant into a standard OpenAI assistant message.
+ *
+ * Accumulates text strings, maps reasoning blocks, and projects tool calls.
+ *
+ * @param {Array<Object>} contentArray - Anthropic message content blocks.
+ * @returns {Object} OpenAI assistant message object containing optional tool_calls and reasoning_content.
+ */
 export const anthropicContentToOpenAIMessage = (contentArray) => {
   let textContent = '';
   let reasoningContent = null;
@@ -251,6 +328,17 @@ export const anthropicContentToOpenAIMessage = (contentArray) => {
   return message;
 };
 
+/**
+ * Translates an OpenAI assistant response message back into Anthropic's content blocks array representation.
+ *
+ * Parses reasoning tags, thinking fields, text content, and tool calls.
+ *
+ * @param {Object} message - OpenAI assistant message.
+ * @param {string|null} [message.content] - The text content generated by the model.
+ * @param {string|null} [message.reasoning_content] - The raw reasoning/CoT content.
+ * @param {Array<Object>} [message.tool_calls] - Declared tool execution payloads.
+ * @returns {Array<Object>} Anthropic-compatible content blocks array.
+ */
 export const openAIMessageToAnthropicContent = (message) => {
   const content = [];
   let contentText = message.content || '';
@@ -294,3 +382,4 @@ export const openAIMessageToAnthropicContent = (message) => {
 
   return content;
 };
+

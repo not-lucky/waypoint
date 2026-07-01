@@ -11,18 +11,43 @@
  * - No HTTP status (transport / network failure): retry with no cooldown.
  */
 
+/**
+ * Set of HTTP status codes indicating that the key itself is permanently invalid and should be retired.
+ *
+ * @type {Set<number>}
+ */
 const RETIRE_STATUSES = new Set([401, 403]);
+
+/**
+ * Set of HTTP status codes indicating transient/cooldown scenarios (e.g. rate limits or timeouts).
+ *
+ * @type {Set<number>}
+ */
 const COOLDOWN_STATUSES = new Set([402, 408, 429]);
+
+/**
+ * The lower boundary of standard HTTP server error status codes (inclusive).
+ *
+ * @type {number}
+ */
 const SERVER_ERROR_MIN = 500;
+
+/**
+ * The upper boundary of standard HTTP server error status codes (exclusive).
+ *
+ * @type {number}
+ */
 const SERVER_ERROR_MAX = 600;
 
 /**
  * Classifies an upstream status code into a lifecycle action bucket.
- * `undefined` (transport failure) maps to `'transport'` — retryable but with
- * no key-state change. Other unrecognised codes fall through to `'none'`.
  *
- * @param {number|undefined} statusCode
- * @returns {'retire' | 'cooldown' | 'transport' | 'none'}
+ * `undefined` (transport failure) maps to `'transport'` — retryable but with
+ * no key-state change. Other unrecognized codes fall through to `'none'`.
+ *
+ * @private
+ * @param {number|undefined} statusCode - The HTTP status code from the upstream, or undefined for transport issues.
+ * @returns {'retire' | 'cooldown' | 'transport' | 'none'} The resolved lifecycle action bucket.
  */
 const classifyStatus = (statusCode) => {
   if (statusCode === undefined) return 'transport';

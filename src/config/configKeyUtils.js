@@ -23,6 +23,14 @@ export function filterValidKeys(keys, providerName, logger, getCandidate = (key)
   });
 }
 
+/**
+ * Checks whether the given configuration key entry matches the structured Cloudflare format.
+ *
+ * Cloudflare credentials require an object structure containing both a non-empty `apiKey` and a non-empty `accountId`.
+ *
+ * @param {*} entry - The key configuration entry under inspection.
+ * @returns {boolean} True if the entry is a valid Cloudflare credential structure; otherwise false.
+ */
 export function isCloudflareKeyEntry(entry) {
   if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
     return false;
@@ -33,6 +41,15 @@ export function isCloudflareKeyEntry(entry) {
     && typeof accountId === 'string' && accountId !== '';
 }
 
+/**
+ * Extracts a comparable candidate string for provider key validation.
+ *
+ * For standard providers, the entry itself is the key string. For Cloudflare,
+ * the key string is nested within `entry.apiKey`.
+ *
+ * @param {*} entry - The raw key pool credential entry.
+ * @returns {*} The extracted raw API key string or the original entry.
+ */
 export function getProviderKeyCandidate(entry) {
   if (isCloudflareKeyEntry(entry)) {
     return entry.apiKey;
@@ -40,3 +57,4 @@ export function getProviderKeyCandidate(entry) {
 
   return entry;
 }
+

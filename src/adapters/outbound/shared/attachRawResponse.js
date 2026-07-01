@@ -1,4 +1,15 @@
 /**
+ * @fileoverview Utility to attach raw upstream responses to translated responses.
+ *
+ * This module facilitates attaching the raw provider-native JSON response structure
+ * as a non-enumerable property on the gateway's canonical response. This ensures
+ * downstream debug loggers can capture exact upstream responses without leaking them
+ * to API client responses.
+ *
+ * @module adapters/outbound/shared/attachRawResponse
+ */
+
+/**
  * Attaches the raw upstream JSON body to a mapped response as a non-enumerable
  * `_rawResponse` property.
  *

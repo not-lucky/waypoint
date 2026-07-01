@@ -23,14 +23,22 @@ const logger = getAppLogger('config');
  * of configuration files.
  */
 export class ConfigLoader {
+  /**
+   * Initializes a new ConfigLoader instance.
+   */
   constructor() {
     this.currentConfig = null;
     this.currentConfigPath = null;
   }
 
   /**
-   * Loads the YAML configuration file, parses it, and interpolates env variables.
+   * Loads the YAML configuration file, parses it, and interpolates environment variables.
    * Fails fast and terminates process if configuration is invalid at startup.
+   *
+   * @param {string} [configPath] - The filepath to read config from.
+   * @param {Set<string>} [reservedProviders] - Reserved provider names.
+   * @returns {Object} The parsed, interpolated, and validated configuration object.
+   * @throws {Error} Throws an error if reading, parsing, or validating fails.
    */
   loadConfig(
     configPath = process.env.WAYPOINT_CONFIG_PATH || 'config/config.yaml',
@@ -55,7 +63,9 @@ export class ConfigLoader {
   }
 
   /**
-   * Resets the loader module state.
+   * Resets the internal cached configuration state.
+   *
+   * Useful for testing configurations or hot-reloading configurations.
    */
   resetConfig() {
     this.currentConfig = null;
@@ -65,6 +75,11 @@ export class ConfigLoader {
   /**
    * Performs configuration validation, validates provider specifications,
    * handles environment variable interpolation, and coerces types.
+   *
+   * @param {Object} parsedYaml - Raw parsed YAML configuration.
+   * @param {Set<string>} [reservedProviders] - Reserved provider names.
+   * @returns {Object} The interpolated and validated configuration.
+   * @throws {Error} Throws if configuration is invalid or missing required values.
    */
   interpolateAndValidate(parsedYaml, reservedProviders = RESERVED_PROVIDERS) {
     if (!parsedYaml || typeof parsedYaml !== 'object') {
@@ -84,6 +99,8 @@ export class ConfigLoader {
   /**
    * Coerces numeric configuration properties from string to integer immutably.
    * Handles nested numeric properties across gateway, clients, and providers.
+   *
+   * @static
    * @param {object} config - The configuration object to process
    * @returns {object} A new configuration object with numeric properties coerced
    */
@@ -108,8 +125,13 @@ export class ConfigLoader {
   }
 
   /**
-   * Recursively traverses a configuration node to interpolate env variables.
+   * Recursively traverses a configuration node to interpolate environment variables.
    * Filters invalid keys (empty string, missing env vars, null, undefined) in provider keys.
+   *
+   * @param {*} val - Config node to process.
+   * @param {Array<string|number>} [path=[]] - Breadcrumb path for trace logging/validation context.
+   * @returns {*} The interpolated config node.
+   * @throws {Error} Throws an error if any non-optional environment variable is missing.
    */
   interpolate(val, path = []) {
     if (Array.isArray(val)) {

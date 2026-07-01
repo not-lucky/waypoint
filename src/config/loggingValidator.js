@@ -1,18 +1,30 @@
 /**
- * @fileoverview Validator for the logging section of configuration.
- * Validates console/file switches, formats (json/text), level ranges, and file paths.
+ * @fileoverview Validator for the 'logging' section of the application configuration.
+ *
+ * This module exports the validation logic for logging features, ensuring console/file
+ * logger destinations, format styles ('json'/'text'), filter levels, request logging directories,
+ * and retention limits/file rotations are properly configured.
+ *
  * @module config/LoggingValidator
  */
 
 import { isNonEmptyString, logErrorAndExitOrThrow } from './validationHelpers.js';
 
 /**
- * Validates the logging configuration block.
+ * Validates the properties and constraints of the logging configuration block.
  *
- * @param {Object} logging - The logging configuration block from config file.
- * @param {boolean} shouldExit - Whether the process should exit on validation failure.
- * @param {Object|null} customLogger - Logger instance for warning/error reporting.
- * @throws {Error} Throws validation errors if shouldExit is false.
+ * Verifies parameters including:
+ * 1. `enableConsole` & `enableFile` switches.
+ * 2. File output path (`filePath`) when logging to files is enabled.
+ * 3. Log formatting (`format`) matching 'json' or 'text'.
+ * 4. Request logging properties (`logRequests` and `requestLogPath`).
+ * 5. Diagnostic message verbosity (`level`).
+ * 6. Retention schedules (`maxRetainedRequestLogs` and `maxRetainedLogFiles`).
+ *
+ * @param {Object} logging - The logging configuration object from the config file.
+ * @param {boolean} shouldExit - Whether to terminate the process via process.exit(1) on failure.
+ * @throws {Error} Throws validation errors if validation fails and shouldExit is false.
+ * @returns {void}
  */
 export const validateLogging = (logging, shouldExit) => {
   if (!logging || typeof logging !== 'object') {

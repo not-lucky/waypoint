@@ -8,25 +8,41 @@ import { getAppLogger } from '../../logging/logger.js';
 import { sendHttpError } from './errorHelper.js';
 
 /**
+ * Module-level logger for the auth middleware.
+ *
  * @type {Object}
  */
 const logger = getAppLogger('auth');
 
 /**
- * WeakMap resolution cache to hold resolved token maps. Keyed by the clients configuration
- * array reference. WeakMap allows the cached maps to be garbage collected when the
- * config reference is discarded, preventing long-term memory leaks.
+ * WeakMap resolution cache mapping a `clients` configuration array to its
+ * pre-built token→client map.
+ *
+ * Keyed by the clients configuration array reference so multiple test setups
+ * that mutate the clients list do not interfere with each other. The
+ * WeakMap allows the cached maps to be garbage-collected once the config
+ * reference is dropped, preventing long-term memory leaks in long-running
+ * gateway deployments that periodically reload config.
  *
  * @type {WeakMap<Array<Object>, Map<string, Object>>}
  */
 const clientCache = new WeakMap();
 
 /**
- * Extracts authentication token from request headers.
- * Supports both Authorization: Bearer <token> and x-api-key header formats.
+ * Extracts the authentication token from request headers.
  *
- * @param {Object} headers - Express request headers.
- * @returns {{token: string|null, error: Object|null}} Extraction result.
+ * Supports both:
+ * - `Authorization: Bearer <token>` — the standard OpenAI-style header.
+ * - `x-api-key: <token>` — the Anthropic-style header.
+ *
+ * Empty or malformed headers produce a structured `error` payload that the
+ * caller can use to emit a 401 response without an additional branching.
+ *
+ * @param {Object} headers - Express request headers (already lowercased by
+ *   Express when accessed via bracket notation).
+ * @returns {{ token: string|null, error: Object|null }} Either a valid
+ *   `token` plus a null error, or a null token plus a structured `error`
+ *   with `code`, `message`, and `httpStatus`.
  */
 const extractAuthToken = (headers) => {
   const authHeader = headers.authorization;
@@ -73,12 +89,18 @@ const extractAuthToken = (headers) => {
 };
 
 /**
- * Authentication middleware creator for Express.
- * Returns a middleware function that populates `req.client` with the client configuration
- * on successful token validation, or terminates the request with a 401 response on failure.
+ * Creates the Express authentication middleware bound to the supplied config.
+ *
+ * On success, the resolved client profile is attached to `req.client` so
+ * downstream middleware (notably the rate limiter) can key off `client.name`
+ * and `client.rateLimit`. On failure, the response is terminated with a
+ * 401 error envelope via `sendHttpError` and `next()` is NOT called.
  *
  * @param {Object} config - The application configuration object.
- * @returns {Function} Express middleware function: (req, res, next) => void.
+ * @param {Array<Object>} [config.clients] - List of authorized client
+ *   profiles, each with at least `{ name, token, rateLimit }`.
+ * @returns {import('express').RequestHandler} Express middleware function
+ *   with signature `(req, res, next) => void`.
  */
 export const authMiddleware = (config) => (req, res, next) => {
   logger.debug('Auth attempt: checking credentials');

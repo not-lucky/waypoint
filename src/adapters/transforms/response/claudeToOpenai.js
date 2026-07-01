@@ -1,14 +1,38 @@
+/**
+ * @fileoverview Response translator module from Anthropic/Claude Messages format to OpenAI format.
+ *
+ * This module contains translators that transform outbound responses from the Anthropic
+ * Messages API back into the gateway's canonical OpenAI-compatible (hub) formats.
+ * It handles both full, non-streaming unary JSON responses and incoming SSE stream events
+ * (such as translating tool usage, thinking blocks, and message delta finalizers).
+ *
+ * @module adapters/transforms/response/claudeToOpenai
+ */
+
 import { anthropicContentToOpenAIMessage } from '../shared/anthropicTools.js';
 import { mapFinishReason, synthesizeMetadata } from '../utils.js';
 
 /**
- * Translates a complete Anthropic Messages API response into an OpenAI-shaped NormalizedResponse.
- * Maps Anthropic's `content` array blocks into OpenAI's `choices[0].message.content`
- * and handles metadata like token usage and finish reasons.
+ * Translates a complete, non-streaming Anthropic Messages API response into a standardized,
+ * OpenAI-compatible NormalizedResponse shape.
  *
- * @param {Object} claudeRes - Anthropic API JSON response.
- * @param {Object} req - The original request info to preserve parameters like model.
- * @returns {Object} OpenAI-shaped NormalizedResponse.
+ * This method performs mappings for:
+ * 1. **Content Mapping**: Maps Anthropic's `content` blocks array into a standard OpenAI choice message.
+ * 2. **Metadata Generation**: Synthesizes request and session tracking metadata.
+ * 3. **Stop Reason Mapping**: Translates Anthropic's `stop_reason` into the canonical `finish_reason`.
+ * 4. **Token Usage normalization**: Maps `input_tokens` and `output_tokens` into prompt and completion usage.
+ *
+ * @param {Object} claudeRes - The raw Anthropic Messages API JSON response body.
+ * @param {string} claudeRes.id - Anthropic message ID.
+ * @param {string} claudeRes.model - Target model name.
+ * @param {Array<Object>} [claudeRes.content] - Array of content blocks returned by Claude.
+ * @param {string} [claudeRes.stop_reason] - Stop condition indicating why generation halted.
+ * @param {Object} [claudeRes.usage] - Usage statistics object.
+ * @param {number} [claudeRes.usage.input_tokens] - Prompt input token count.
+ * @param {number} [claudeRes.usage.output_tokens] - Generation output token count.
+ * @param {Object} [req={}] - The original request configuration.
+ * @param {string} [req.model] - The target model requested by client.
+ * @returns {Object} Standardized OpenAI-compatible NormalizedResponse.
  */
 export const translateClaudeToOpenAI = (claudeRes, req = {}) => {
   const message = anthropicContentToOpenAIMessage(claudeRes.content || []);
@@ -36,14 +60,22 @@ export const translateClaudeToOpenAI = (claudeRes, req = {}) => {
 };
 
 /**
- * Translates an Anthropic SSE event chunk into an OpenAI-shaped StreamChunk.
- * Discards Anthropic lifecycle events that have no OpenAI equivalent, isolating only
- * delta mutations (text or stop reasons) to emit standard OpenAI chunks.
+ * Translates an Anthropic/Claude SSE event chunk into a standardized, OpenAI-compatible StreamChunk.
  *
- * @param {Object} eventObj - The parsed SSE event object ({ event, data }).
- * @param {string} chunkId - A persistent ID for the stream session.
- * @param {Object} _req - The original request.
- * @returns {Object|null} Mapped OpenAI chunk or null if the event should be swallowed.
+ * This translator discards Anthropic-specific lifecycle events (such as 'ping', 'message_start',
+ * etc.) that do not translate to content deltas in OpenAI. It handles the following event types:
+ * - `content_block_start` (type tool_use): Translates tool execution initiation metadata.
+ * - `content_block_delta` (type text_delta or input_json_delta): Transforms partial text completions
+ *   or partial tool JSON arguments chunk-by-chunk.
+ * - `content_block_delta` (type thinking_delta): Extracts Claude-specific model reasoning/thinking thoughts
+ *   and maps them as standard reasoning deltas (`choices[0].delta.reasoning_content`).
+ * - `message_delta`: Captures stop conditions (mapping finish reasons) and final token usage counts.
+ *
+ * @param {Object} eventObj - The SSE event block containing event payload.
+ * @param {string} eventObj.event - The type name of the SSE event.
+ * @param {string} eventObj.data - Raw JSON string content of the SSE event block.
+ * @param {string} chunkId - A persistent chunk/session identifier to assign to the translated chunk.
+ * @returns {Object|null} Standardized OpenAI-compatible stream chunk object, or null if the event was ignored or skipped.
  */
 export const translateClaudeChunkToOpenAI = (eventObj, chunkId) => {
   const { data } = eventObj;

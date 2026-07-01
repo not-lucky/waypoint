@@ -13,7 +13,29 @@ import { statusToErrorType } from '../../domain/errors/httpErrorTypes.js';
 import { normalizeUpstreamError, UpstreamError } from '../../domain/errors/upstream.js';
 import { buildUpstreamErrorLogFields } from '../../infrastructure/logging/upstreamErrorLogMeta.js';
 
+/**
+ * Base class for all protocol controllers.
+ *
+ * Provides shared logic for request lifecycle management, logging, and
+ * error handling across the OpenAI and Anthropic ingress controllers.
+ *
+ * Subclasses supply protocol-specific bits (request body translation,
+ * response translation, stream handling) via `executeRequest`'s `options`
+ * bag. Everything else — request log creation, error envelope shaping,
+ * dry-run handling, and SSE error emission — lives here.
+ */
+
+/**
+ * @class
+ * @classdesc Shared base class for ingress controllers.
+ */
 export class BaseController {
+  /**
+   * @param {import('../../application/orchestrator.js').UnifiedOrchestrator} orchestrator -
+   *   The shared orchestrator.
+   * @param {string} protocolName - The protocol name (used as logger category and
+   *   default target format).
+   */
   constructor(orchestrator, protocolName) {
     this.orchestrator = orchestrator;
     this.protocolName = protocolName;
@@ -26,11 +48,21 @@ export class BaseController {
    * ingress protocol's native shape and writes the resulting envelope to the
    * per-request debug folder before sending it to the client.
    *
-   * @param {Object} res - Express response object.
-   * @param {Object} reqLog - Per-request logger.
+   * Status code resolution precedence:
+   * 1. Explicit `statusCode` argument.
+   * 2. `error.httpStatus` (set by `buildFinalError`/`buildCancelledError`).
+   * 3. `error.statusCode` (set by normalized upstream errors).
+   * 4. `500` (catch-all).
+   *
+   * Side effects: writes the error envelope to the request log via
+   * `reqLog.logClientResponse` and finalizes the log file via `reqLog.finalize`.
+   *
+   * @async
+   * @param {import('express').Response} res - Express response object.
+   * @param {Object|null} reqLog - Per-request logger.
    * @param {Object} error - The error envelope to send (from buildFinalError / buildCancelledError / etc).
    * @param {number} [statusCode=null] - Optional override HTTP status.
-   * @returns {Object} Express response.
+   * @returns {Promise<import('express').Response>} Express response.
    */
   async handleError(res, reqLog, error, statusCode = null) {
     const finalStatus = statusCode
@@ -70,13 +102,22 @@ export class BaseController {
   /**
    * Emits a translated SSE error envelope before closing the stream.
    *
-   * @param {Object} res
-   * @param {Object} reqLog
-   * @param {any} err
-   * @param {Function} formatSseError - Provider-specific SSE formatter.
+   * Normalizes the supplied error (which may be a raw `UpstreamError` or
+   * any thrown value), translates it from the upstream's protocol shape
+   * to the ingress protocol shape via `translateError`, builds the
+   * client-facing envelope, and writes one or more SSE frames to the
+   * response. The frame text is also appended to the request log so
+   * post-mortem analysis can replay exactly what reached the client.
+   *
+   * @param {import('express').Response} res - Express response.
+   * @param {Object} reqLog - Per-request logger.
+   * @param {any} err - The caught stream error.
+   * @param {Function} formatSseError - Provider-specific SSE formatter
+   *   (e.g. `formatOpenAiSseError` or `formatAnthropicSseError`).
    * @param {string} upstreamFormat - Upstream provider format (FORMATS.OPENAI / ANTHROPIC / GEMINI).
    * @param {string} ingressFormat - Ingress protocol format (FORMATS.OPENAI / ANTHROPIC).
-   * @param {number} chunkCount
+   * @param {number} chunkCount - Number of chunks yielded before the error.
+   * @returns {void}
    */
   emitStreamError(res, reqLog, err, formatSseError, upstreamFormat, ingressFormat, chunkCount) {
     const providerFallback = upstreamFormat === FORMATS.GEMINI ? 'gemini'
@@ -126,15 +167,29 @@ export class BaseController {
   /**
    * Core request execution logic shared across controllers.
    *
-   * @param {Object} req - Express request.
-   * @param {Object} res - Express response.
-   * @param {Object} options
+   * The function:
+   * 1. Creates a per-request debug logger.
+   * 2. Translates the ingress-protocol body to the internal hub format.
+   * 3. Resolves the model via the routing layer.
+   * 4. Invokes the orchestrator and routes the result to:
+   *    - `handleError` on error envelopes.
+   *    - `handleStream` on async iterables.
+   *    - `res.json` on plain objects (with optional response translation).
+   * 5. Catches thrown errors (dry-run, upstream, unexpected) and routes
+   *    them through `handleError`.
+   *
+   * Side effects: writes the per-request debug folder via `reqLog`.
+   *
+   * @async
+   * @param {import('express').Request} req - Express request.
+   * @param {import('express').Response} res - Express response.
+   * @param {Object} options - Options bag.
    * @param {string} options.protocolName - 'OpenAI' or 'Anthropic'.
    * @param {string} options.ingressFormat - FORMATS.OPENAI or FORMATS.ANTHROPIC.
-   * @param {Function} [options.translateReq]
-   * @param {Function} [options.translateRes]
-   * @param {Function} options.handleStream
-   * @returns {Promise<Object>}
+   * @param {Function} [options.translateReq] - Body translation to hub format.
+   * @param {Function} [options.translateRes] - Hub-to-ingress response translation.
+   * @param {Function} options.handleStream - Streaming response handler.
+   * @returns {Promise<import('express').Response>}
    */
   async executeRequest(req, res, options) {
     const {

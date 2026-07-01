@@ -45,11 +45,32 @@ export class KeyRegistry {
     );
   }
 
+  /**
+   * Picks an API key from the provider's pool using the configured
+   * routing strategy (round-robin by default).
+   *
+   * @param {string} provider - Provider name.
+   * @returns {Object|string|undefined} The selected key object (when
+   *   structured credentials are used) or the raw API key string, or
+   *   `undefined` when the pool is empty.
+   */
   getKey(provider) {
     const pool = this.pools[provider];
     return getKeyFromPool(pool, this.strategy);
   }
 
+  /**
+   * Looks up a key by its raw string identifier.
+   *
+   * Used by the retry engine to re-find a key object after the adapter has
+   * returned a raw string from `pool.getKey()`. Structured credentials
+   * (e.g. Cloudflare `{ apiKey, accountId }`) are matched by their inner
+   * `apiKey` string.
+   *
+   * @param {string} provider - Provider name.
+   * @param {string|Object} keyStr - The raw API key string or full credential.
+   * @returns {Object|undefined} The matching key record, or undefined.
+   */
   findKey(provider, keyStr) {
     const pool = this.pools[provider];
     return findKeyInPool(pool, keyStr);
@@ -84,13 +105,25 @@ export class KeyRegistry {
     return action;
   }
 
+  /**
+   * Flags a key as successfully used.
+   *
+   * @param {string} provider - Provider name.
+   * @param {string|Object} keyRef - Raw key string or provider credential that succeeded.
+   * @returns {void}
+   */
   flagSuccess(provider, keyRef) {
     const key = this.findKey(provider, keyRef);
     handleKeySuccess(key);
   }
 
   /**
+   * Computes the aggregate health snapshot for all pools.
+   *
    * @private
+   * @param {Object} pool - The pool to summarize.
+   * @param {number} now - Reference epoch (ms) for cooldown comparisons.
+   * @returns {{ stats: { status: 'ok'|'degraded'|'unhealthy', totalKeys: number, activeKeys: number, exhaustedKeys: number, coolingKeys: number, coolingUntil: number|null }, isDegraded: boolean }}
    */
   static getProviderStats(pool, now) {
     const { keys } = pool;
@@ -131,7 +164,14 @@ export class KeyRegistry {
   }
 
   /**
-   * @returns {Object}
+   * Builds the full health snapshot consumed by `/health` and `/metrics`.
+   *
+   * @returns {{
+   *   status: 'ok' | 'degraded' | 'unhealthy',
+   *   providers: Object,
+   *   keyPool: { active: number, cooldown: number, exhausted: number, total: number },
+   *   routing: { strategy: string, currentPointer: Object }
+   * }} Aggregate health view.
    */
   getHealthStats() {
     const providers = {};
@@ -162,8 +202,11 @@ export class KeyRegistry {
   }
 
   /**
-   * @param {number} [now=Date.now()]
-   * @returns {{active: number, cooldown: number, exhausted: number, total: number}}
+   * Aggregates key-pool counts across every provider into a single object.
+   *
+   * @param {number} [now=Date.now()] - Reference epoch (ms) for cooldown comparisons.
+   * @returns {{ active: number, cooldown: number, exhausted: number, total: number }}
+   *   Aggregate counts.
    */
   getAggregateKeyPoolStats(now = Date.now()) {
     const allKeys = Object.values(this.pools).flatMap((pool) => pool.keys);
@@ -188,6 +231,14 @@ export class KeyRegistry {
     };
   }
 
+  /**
+   * Clears every pending cooldown timer.
+   *
+   * Called from the lifecycle teardown sequence so that the process can exit
+   * cleanly without leaving dangling handles in the event loop.
+   *
+   * @returns {void}
+   */
   cleanup() {
     this.timers.forEach(clearTimeout);
     this.timers.clear();

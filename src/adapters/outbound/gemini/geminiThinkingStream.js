@@ -5,6 +5,16 @@ import { mapUsage } from '../shared/openaiResponse.js';
 import { ThinkingBuffer } from '../../../utils/streaming/thinkingBuffer.js';
 import { applyExtraBody } from '../shared/extraBody.js';
 
+/**
+ * Resolves the model ID to pass to the Gemini API endpoint.
+ *
+ * Extracts the model ID either from the explicitly configured `modelid` field
+ * or extracts the final segment of a slash-delimited model identifier.
+ *
+ * @private
+ * @param {Object} req - The unified request payload.
+ * @returns {string} The resolved Gemini-specific model identifier.
+ */
 const resolveGeminiModelId = (req) => {
   if (typeof req?.modelid === 'string' && req.modelid.trim() !== '') {
     return req.modelid;
@@ -13,8 +23,25 @@ const resolveGeminiModelId = (req) => {
 };
 
 /**
- * Executes a streaming completion for Gemini models with thinking/reasoning enabled.
- * Uses the OpenAI-compatible endpoint with thinking configuration.
+ * Executes a streaming chat completion request against the Gemini OpenAI-compatible endpoint with thinking enabled.
+ *
+ * This generator performs:
+ * 1. Resolving the target model ID and building a request payload with Google-specific `thinking_config`.
+ * 2. Deep-merging config or custom `extraBody` parameters.
+ * 3. Fetching the SSE stream using a stateful `ThinkingBuffer` to parse, reconstruct, and isolate reasoning/CoT
+ *    tokens from standard content.
+ * 4. Yielding normalized OpenAI-compatible stream chunk deltas (separating `content` and `reasoning_content`).
+ * 5. Aggregating final usage metrics, capturing the first/last raw chunks, and saving the final execution summary to audit logs.
+ *
+ * @async
+ * @generator
+ * @param {Object} req - The normalized chat completion request payload.
+ * @param {string} apiKey - The Google Gemini API key.
+ * @param {AbortSignal} signal - Abort signal to cancel the stream.
+ * @param {Object|null} requestLog - Optional request/response audit logger.
+ * @param {Object} adapter - The Gemini adapter instance.
+ * @yields {Object} OpenAI-compatible stream chunk deltas.
+ * @throws {Error} Throws if the fetch fails, times out, or receives a fatal stream error response.
  */
 export async function* executeThinkingStream(req, apiKey, signal, requestLog, adapter) {
   const url = adapter.baseUrl

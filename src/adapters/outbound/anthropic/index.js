@@ -9,8 +9,22 @@ import { attachRawResponse } from '../shared/attachRawResponse.js';
 
 /**
  * Provider adapter for Anthropic's Claude API endpoints.
+ *
+ * Implements the BaseProvider contract for communicating with the Anthropic Messages API.
+ * Manages HTTP request construction, credential injection, response translation, and SSE stream parsing.
+ *
+ * @extends BaseProvider
  */
 export class AnthropicAdapter extends BaseProvider {
+  /**
+   * Initializes a new AnthropicAdapter instance.
+   *
+   * @param {Object} [options={}] - Configuration options.
+   * @param {string|null} [options.baseUrl=null] - Overridden base URL; defaults to Anthropic standard endpoint.
+   * @param {number|null} [options.timeoutMs=null] - Unary request timeout in milliseconds.
+   * @param {number|null} [options.streamTimeoutMs=null] - Stream idle timeout in milliseconds.
+   * @param {string} [options.providerName='anthropic'] - Provider identifier.
+   */
   constructor({
     baseUrl = null,
     timeoutMs = null,
@@ -26,7 +40,9 @@ export class AnthropicAdapter extends BaseProvider {
   }
 
   /**
-   * Builds the API endpoint URL.
+   * Builds the API endpoint URL for Claude Messages request.
+   *
+   * @returns {string} The fully formed endpoint URL.
    */
   buildUrl() {
     return this.baseUrl
@@ -35,7 +51,12 @@ export class AnthropicAdapter extends BaseProvider {
   }
 
   /**
-   * Builds the request headers.
+   * Builds the request headers for Anthropic's API.
+   *
+   * Includes authorization x-api-key, strict anthropic-version header, and content-type.
+   *
+   * @param {string} apiKey - The Anthropic API key.
+   * @returns {Object} Key-value map of HTTP headers.
    */
   buildHeaders(apiKey) {
     return {
@@ -46,7 +67,18 @@ export class AnthropicAdapter extends BaseProvider {
   }
 
   /**
-   * Processes a single SSE event to update stream state.
+   * Processes a single SSE event to update progressive stream state.
+   *
+   * Handles various Anthropic event types:
+   * - `message_start`: Extracts the response ID, model name, and prompt tokens.
+   * - `content_block_start`: Initializes a new content block (text, thinking, or tool).
+   * - `content_block_delta`: Appends text/thinking increments, or aggregates JSON segments.
+   * - `message_delta`: Captures stop reason and final token usage counts.
+   *
+   * @param {Object} sseEvent - The SSE parser event structure containing event type and data string.
+   * @param {Object} state - The accumulator stream state.
+   * @param {Object|null} [requestLog] - Optional logger to save raw provider events.
+   * @returns {Object} The updated stream state.
    */
   processSSEEvent(sseEvent, state, requestLog) {
     let newState = { ...state };
@@ -87,7 +119,13 @@ export class AnthropicAdapter extends BaseProvider {
   }
 
   /**
-   * Handles content_block_start events.
+   * Handles content_block_start events, initializing a new item in the blocks array.
+   *
+   * Supports text blocks, thinking blocks, and tool use descriptors.
+   *
+   * @param {Object} contentBlock - Raw block descriptor from the API.
+   * @param {Array<Object>} contentBlocks - The current array of accumulated content blocks.
+   * @returns {Array<Object>} The updated array of content blocks.
    */
   handleContentBlockStart(contentBlock, contentBlocks) {
     const newContentBlocks = [...contentBlocks];
@@ -108,7 +146,12 @@ export class AnthropicAdapter extends BaseProvider {
   }
 
   /**
-   * Handles content_block_delta events.
+   * Handles content_block_delta events, mutating or appending text/thinking contents
+   * or progressively parsing tool call inputs.
+   *
+   * @param {Object} data - The event delta object containing index and block delta data.
+   * @param {Array<Object>} contentBlocks - The current array of accumulated content blocks.
+   * @returns {Array<Object>} The updated array of content blocks.
    */
   handleContentBlockDelta(data, contentBlocks) {
     const index = data.index ?? 0;
@@ -156,7 +199,11 @@ export class AnthropicAdapter extends BaseProvider {
   }
 
   /**
-   * Handles message_delta events.
+   * Handles message_delta events, updating the top-level message state properties (e.g. stop reason, token counts).
+   *
+   * @param {Object} data - The message delta event.
+   * @param {Object} state - The current stream state.
+   * @returns {Object} The updated state.
    */
   handleMessageDelta(data, state) {
     const newState = { ...state };
@@ -167,7 +214,14 @@ export class AnthropicAdapter extends BaseProvider {
   }
 
   /**
-   * Logs the stream summary.
+   * Logs a debug stream summary to the audit logs upon completion of a streaming turn.
+   *
+   * @param {Object|null} requestLog - The request logger instance.
+   * @param {Object} state - The final accumulated stream state.
+   * @param {string} chunkId - The unique session ID for the stream.
+   * @param {Object} req - The original client request parameters.
+   * @param {Object|null} [firstRawChunk=null] - The first JSON chunk received from the provider.
+   * @param {Object|null} [lastRawChunk=null] - The last JSON chunk received from the provider.
    */
   logStreamSummary(requestLog, state, chunkId, req, firstRawChunk = null, lastRawChunk = null) {
     if (requestLog && typeof requestLog.logProviderStreamSummary === 'function') {
@@ -193,6 +247,21 @@ export class AnthropicAdapter extends BaseProvider {
     }
   }
 
+  /**
+   * Generates a non-streaming chat completion from Anthropic's Messages endpoint.
+   *
+   * Translates OpenAI request parameter shapes into Claude Messages format, submits it,
+   * normalizes the response back to OpenAI layout, attaches the raw response for logging,
+   * and disposes of resources safely.
+   *
+   * @async
+   * @param {Object} req - The normalized completion request payload.
+   * @param {string} apiKey - The Anthropic API key.
+   * @param {AbortSignal} signal - Abort signal to cancel the request.
+   * @param {Object|null} [requestLog=null] - Per-request debug logger.
+   * @returns {Promise<Object>} The normalized OpenAI-compatible completion response.
+   * @throws {Error} Throws if the fetch fails, times out, or returns a non-200 status code.
+   */
   async generateCompletion(req, apiKey, signal, requestLog = null) {
     const payload = translateRequest(FORMATS.OPENAI, FORMATS.ANTHROPIC, req);
     payload.stream = false;
@@ -223,6 +292,22 @@ export class AnthropicAdapter extends BaseProvider {
     }
   }
 
+  /**
+   * Generates a streaming completion via Anthropic's Server-Sent Events (SSE).
+   *
+   * Translates the incoming request parameters to Anthropic, queries the streaming Messages endpoint,
+   * parses the event stream sequentially, translates block events to OpenAI-compatible deltas,
+   * and yields them in real-time. Also manages state tracking to generate log diagnostics at stream end.
+   *
+   * @async
+   * @generator
+   * @param {Object} req - The normalized chat completion request payload.
+   * @param {string} apiKey - The Anthropic API key.
+   * @param {AbortSignal} signal - Abort signal to cancel the stream.
+   * @param {Object|null} [requestLog=null] - Per-request debug logger.
+   * @yields {Object} OpenAI-compatible stream chunk deltas.
+   * @throws {Error} Throws if the stream encounters a network failure or a mapped upstream API error.
+   */
   async* generateStream(req, apiKey, signal, requestLog = null) {
     const payload = translateRequest(FORMATS.OPENAI, FORMATS.ANTHROPIC, req);
     payload.stream = true;

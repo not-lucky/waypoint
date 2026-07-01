@@ -4,12 +4,30 @@ import { StreamAccumulator } from '../../../utils/streaming/streamAccumulator.js
 import { startSSEStream } from '../../../utils/streaming/sseSetup.js';
 import { BaseController } from '../base.js';
 
+/**
+ * Maps OpenAI `finish_reason` values to Anthropic `stop_reason` values.
+ *
+ * OpenAI uses `tool_calls` to indicate a tool invocation; Anthropic uses
+ * `tool_use`. Both use `length` and `stop` for token-limit and natural
+ * completion respectively.
+ *
+ * @const {Object<string, string>}
+ */
 const STOP_REASON_MAP = {
   stop: 'end_turn',
   length: 'max_tokens',
   tool_calls: 'tool_use',
 };
 
+/**
+ * The set of top-level request keys the Anthropic ingress understands.
+ *
+ * Any key outside this set is treated as a provider-specific extension
+ * (`extraBody`-style) and is passed through to the routing transformer
+ * for allowedExtraBody filtering, then forwarded to the upstream.
+ *
+ * @type {Set<string>}
+ */
 const ANTHROPIC_REQUEST_KEYS = new Set([
   'model',
   'messages',
@@ -22,6 +40,19 @@ const ANTHROPIC_REQUEST_KEYS = new Set([
   'extraBody',
 ]);
 
+/**
+ * Writes a single Anthropic SSE event frame to the response.
+ *
+ * Anthropic's protocol uses two-line framing per event (`event: ...` then
+ * `data: ...`), separated by a blank line. Both lines are recorded in the
+ * per-request debug log.
+ *
+ * @param {import('express').Response} res - Express response.
+ * @param {Object} reqLog - Per-request debug logger.
+ * @param {string} eventType - SSE event type (e.g. `'message_start'`).
+ * @param {Object} data - JSON-serializable event payload.
+ * @returns {void}
+ */
 const writeSseEvent = (res, reqLog, eventType, data) => {
   const event = `event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`;
   reqLog.appendStreamEvent('client', event);
@@ -30,13 +61,32 @@ const writeSseEvent = (res, reqLog, eventType, data) => {
 
 /**
  * Protocol controller for the Anthropic Messages ingress.
+ *
  * Upstream may be OpenAI/Anthropic/Gemini; ingress is Anthropic-shape.
+ * Request bodies are translated to the OpenAI hub format (which is the
+ * gateway's internal canonical representation), and responses are
+ * translated back to the Anthropic shape.
+ *
+ * @extends BaseController
  */
 export class AnthropicController extends BaseController {
+  /**
+   * @param {import('../../../application/orchestrator.js').UnifiedOrchestrator} orchestrator -
+   *   The shared orchestrator.
+   */
   constructor(orchestrator) {
     super(orchestrator, 'anthropic');
   }
 
+  /**
+   * Entry point for the `/messages` route. Delegates to `executeRequest`
+   * with Anthropic ingress format and the protocol-specific translators.
+   *
+   * @async
+   * @param {import('express').Request} req - Express request.
+   * @param {import('express').Response} res - Express response.
+   * @returns {Promise<import('express').Response>}
+   */
   async handleCompletion(req, res) {
     return this.executeRequest(req, res, {
       protocolName: 'Anthropic',
@@ -64,6 +114,28 @@ export class AnthropicController extends BaseController {
     });
   }
 
+  /**
+   * Streams the upstream response to the client as Anthropic SSE events.
+   *
+   * Implements a small state machine that tracks the active content block
+   * (`text`, `thinking`, or `tool_use`) and emits the appropriate
+   * `content_block_start` / `content_block_delta` / `content_block_stop`
+   * event sequence. Also emits the `message_start`, `ping`,
+   * `message_delta`, and `message_stop` envelope events required by
+   * Anthropic's protocol.
+   *
+   * Side effects: writes SSE events to the response, maintains a
+   * per-request accumulator for the debug log, and emits an SSE error
+   * frame on stream failure.
+   *
+   * @async
+   * @param {import('express').Response} res - Express response.
+   * @param {AsyncIterable<Object>} response - Async iterable of OpenAI-shaped chunks.
+   * @param {Object} unifiedReq - Normalized request (for model id in message_start).
+   * @param {Object} reqLog - Per-request debug logger.
+   * @param {Object} body - The original ingress request body.
+   * @returns {Promise<import('express').Response>}
+   */
   async handleStreamingResponse(res, response, unifiedReq, reqLog, body) {
     this.logger.debug('Starting Anthropic SSE response stream');
 

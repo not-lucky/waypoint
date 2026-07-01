@@ -1,14 +1,25 @@
 import { extractTaggedText } from '../../../utils/streaming/thinkingBuffer.js';
 
+/**
+ * Unpacks the raw text content from a structured reasoning details object.
+ *
+ * @private
+ * @param {*} detail - The reasoning details parameter.
+ * @returns {string} The text content of the reasoning details.
+ */
 const reasoningDetailText = (detail) => {
   if (!detail || typeof detail !== 'object') return '';
   return detail.text ?? detail.summary ?? detail.content ?? '';
 };
 
 /**
- * Extracts reasoning text from an OpenAI-compatible message or stream delta.
- * OpenRouter mirrors the same incremental token in both `reasoning` and
- * `reasoning_details`, so only one source is used per chunk (not concatenated).
+ * Extracts raw reasoning text from a standard or extended OpenAI message/delta.
+ *
+ * Checks reasoning details array, native `reasoning_content` field, and custom `reasoning` keys.
+ * Handles OpenRouter specific duplicates safely by prioritizing `reasoning_details` then `reasoning_content`.
+ *
+ * @param {Object|null|undefined} source - The delta/choice source object to check.
+ * @returns {string|null} The reasoning string if found; otherwise null.
  */
 export const extractReasoningText = (source) => {
   if (!source) return null;
@@ -31,6 +42,11 @@ export const extractReasoningText = (source) => {
 
 /**
  * Maps unified reasoning settings to OpenAI reasoning_effort values.
+ *
+ * Translates Waypoint settings (e.g. 'minimal', 'xhigh') to standard OpenAI `reasoning_effort` strings.
+ *
+ * @param {Object} req - The unified request payload.
+ * @returns {string|undefined} The resolved reasoning effort string, or undefined.
  */
 export const resolveReasoningEffort = (req) => {
   let effort = req.reasoningEffort;
@@ -47,7 +63,10 @@ export const resolveReasoningEffort = (req) => {
 };
 
 /**
- * Normalizes OpenAI-style usage metrics.
+ * Normalizes OpenAI-compatible usage tokens object.
+ *
+ * @param {Object|null|undefined} usage - Raw usage metadata object from provider.
+ * @returns {Object|undefined} The mapped usage tokens object containing prompt_tokens, completion_tokens, and total_tokens.
  */
 export const mapUsage = (usage) => {
   if (!usage) return undefined;
@@ -58,6 +77,13 @@ export const mapUsage = (usage) => {
   };
 };
 
+/**
+ * Normalizes a stream chunk delta object by resolving raw reasoning keys down to standard `reasoning_content`.
+ *
+ * @private
+ * @param {Object|null|undefined} delta - The raw delta chunk choices item.
+ * @returns {Object} A copy of the delta containing normalized keys.
+ */
 const normalizeStreamDelta = (delta) => {
   if (!delta) return {};
 
@@ -140,6 +166,14 @@ const resolveTaggedCompletionContent = (content, reasoningContent, taggedReasoni
   return extractTrailingTaggedReasoning(content, reasoningContent, taggedReasoning);
 };
 
+/**
+ * Maps an OpenAI choice item to a normalized choice structure, extracting tagged reasoning blocks.
+ *
+ * @private
+ * @param {Object} c - The raw choice object from the API response.
+ * @param {Object|null} [taggedReasoning=null] - Configuration for reasoning tags.
+ * @returns {Object} Normalized choice object.
+ */
 const mapCompletionChoice = (c, taggedReasoning = null) => {
   const rawMessage = c.message || {};
   let content = rawMessage.content ?? '';
@@ -168,6 +202,14 @@ const mapCompletionChoice = (c, taggedReasoning = null) => {
 
 /**
  * Maps an OpenAI-compatible chat completion JSON body to a NormalizedResponse.
+ *
+ * Re-namespaces IDs with a "waypoint-" prefix and formats choices & usage metrics consistently.
+ *
+ * @param {Object} req - The original request context.
+ * @param {Object} resultJson - The raw JSON response body from the upstream provider.
+ * @param {Object} [options={}] - Options object.
+ * @param {Object|null} [options.taggedReasoning=null] - Tag settings for reasoning extraction.
+ * @returns {Object} The normalized chat completion response object.
  */
 export const mapOpenAICompletionResponse = (
   req,
@@ -194,7 +236,13 @@ export const mapOpenAICompletionResponse = (
 };
 
 /**
- * Maps an OpenAI-compatible streaming chunk to a StreamChunk.
+ * Translates an OpenAI streaming chunk into a normalized StreamChunk format.
+ *
+ * Normalizes reasoning fields inside choices deltas and forwards usage records if present.
+ *
+ * @param {Object} parsedData - The raw parsed JSON data of the chunk.
+ * @param {string} chunkId - The fallback session chunk ID.
+ * @returns {Object} The normalized StreamChunk object.
  */
 export const mapOpenAIStreamChunk = (parsedData, chunkId) => ({
   id: parsedData.id || chunkId,
@@ -209,3 +257,4 @@ export const mapOpenAIStreamChunk = (parsedData, chunkId) => ({
   })),
   usage: mapUsage(parsedData.usage),
 });
+

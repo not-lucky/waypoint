@@ -373,8 +373,22 @@ const flushTaggedReasoningBuffers = (chunkId, mappedChunk, choiceStates) => {
 
 /**
  * Adapter for natively OpenAI-compatible APIs.
+ *
+ * Implements the standard `/v1/chat/completions` shape with both unary and
+ * SSE streaming responses. Supports opt-in tag-based reasoning extraction
+ * (`<think>...</think>` → `reasoning_content`) per request, plus native
+ * `reasoning_content` pass-through when the upstream emits it directly.
+ *
+ * @extends BaseProvider
  */
 export class OpenAICompatibleAdapter extends BaseProvider {
+  /**
+   * @param {Object} [options={}] - Adapter configuration.
+   * @param {string} options.baseUrl - Base URL of the upstream API (no trailing slash).
+   * @param {string} options.providerName - The provider name used for logging and metrics labels.
+   * @param {number|null} [options.timeoutMs=null] - Non-streaming fetch timeout in milliseconds.
+   * @param {number|null} [options.streamTimeoutMs=null] - Streaming fetch timeout (idle); `null` disables.
+   */
   constructor({
     baseUrl,
     providerName,
@@ -389,16 +403,52 @@ export class OpenAICompatibleAdapter extends BaseProvider {
     });
   }
 
+  /**
+   * Extracts the API key string from a raw or structured credential.
+   *
+   * Plain string credentials are returned verbatim. Object credentials
+   * (Cloudflare's `{ apiKey, accountId }` shape) are flattened down to
+   * their `apiKey` string so the Authorization header can be set with the
+   * standard `Bearer` prefix.
+   *
+   * @param {string|Object} apiCredential - The raw key or credential object.
+   * @returns {string|undefined} The API key string, or undefined.
+   */
   resolveCredentialApiKey(apiCredential) {
     return typeof apiCredential === 'string'
       ? apiCredential
       : apiCredential?.apiKey;
   }
 
+  /**
+   * Returns the base URL to dispatch requests to.
+   *
+   * The `apiCredential` parameter is unused for OpenAI-compatible
+   * adapters because the base URL does not depend on the credential
+   * (Cloudflare routes per-account at the URL level, but that adapter
+   * overrides this method).
+   *
+   * @param {string|Object} [_apiCredential] - Credential reference (unused).
+   * @returns {string} The base URL configured at construction.
+   */
   resolveBaseUrl() {
     return this.baseUrl;
   }
 
+  /**
+   * Generates a non-streaming completion via the OpenAI chat-completions endpoint.
+   *
+   * The response body is mapped through `mapOpenAICompletionResponse` to
+   * produce a normalized OpenAI-shaped object, and the raw upstream body
+   * is attached as a non-enumerable property for the request logger.
+   *
+   * @async
+   * @param {Object} req - Normalized request (model, messages, etc.).
+   * @param {string|Object} apiCredential - Raw key or structured credential.
+   * @param {AbortSignal} signal - Abort signal propagated from the orchestrator.
+   * @param {Object} [requestLog=null] - Per-request debug logger.
+   * @returns {Promise<Object>} The provider's normalized JSON response.
+   */
   async generateCompletion(req, apiCredential, signal, requestLog = null) {
     const payload = buildOpenAIChatPayload(req, false);
     const apiKey = this.resolveCredentialApiKey(apiCredential);
@@ -434,6 +484,23 @@ export class OpenAICompatibleAdapter extends BaseProvider {
     }
   }
 
+  /**
+   * Generates a streaming completion via the OpenAI chat-completions endpoint.
+   *
+   * Reads the upstream SSE stream, parses each `data:` frame, runs the
+   * tag-based reasoning extraction pipeline (when enabled), and yields
+   * OpenAI-shaped chunk objects. Captures the first and last raw chunks
+   * for the debug log; the full event sequence is written to the per-request
+   * debug folder as `05_event_stream.jsonl`.
+   *
+   * @async
+   * @param {Object} req - Normalized request.
+   * @param {string|Object} apiCredential - Raw key or structured credential.
+   * @param {AbortSignal} signal - Abort signal propagated from the orchestrator.
+   * @param {Object} [requestLog=null] - Per-request debug logger.
+   * @yields {Object} OpenAI-shaped chunk objects.
+   * @returns {AsyncGenerator<Object>} Stream of normalized chunks.
+   */
   async* generateStream(req, apiCredential, signal, requestLog = null) {
     const payload = buildOpenAIChatPayload(req, true);
     const apiKey = this.resolveCredentialApiKey(apiCredential);

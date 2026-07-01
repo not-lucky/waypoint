@@ -9,6 +9,7 @@
  *
  * The active cooldown auto-reactivates the key when the timer expires. Retired keys
  * are never reactivated.
+ * @module domain/keys/cooldownTracker
  */
 
 import { resolveCooldownSeconds } from '../errors/policy.js';
@@ -16,9 +17,18 @@ import { resolveCooldownSeconds } from '../errors/policy.js';
 /**
  * Sets a cooldown timer on a key with automatic cleanup.
  *
+ * The function:
+ * 1. Records `cooldownUntil` (epoch ms) on the key so callers can check
+ *    expiry without inspecting the timer set.
+ * 2. Schedules a `setTimeout` that clears `cooldownUntil` and re-activates
+ *    the key.
+ * 3. Tracks the timer handle in `timers` so `KeyRegistry.cleanup()` can
+ *    cancel it on shutdown.
+ *
  * @param {Object} key - The KeyObject instance to put on cooldown.
  * @param {number} durationMs - Cooldown duration in milliseconds.
  * @param {Set<NodeJS.Timeout>} timers - Timer set for cleanup tracking.
+ * @returns {void}
  */
 export function setCooldown(key, durationMs, timers) {
   key.cooldownUntil = Date.now() + durationMs;
@@ -33,9 +43,13 @@ export function setCooldown(key, durationMs, timers) {
 /**
  * Applies a cooldown period to a key and deactivates it.
  *
+ * Negative or zero durations are treated as a no-op so the caller does not
+ * need to filter them out before invoking.
+ *
  * @param {Object} key - The KeyObject instance.
  * @param {number} seconds - Cooldown duration in seconds.
  * @param {Set<NodeJS.Timeout>} timers - Timer set for cleanup tracking.
+ * @returns {void}
  */
 export function applyCooldown(key, seconds, timers) {
   if (!seconds || seconds <= 0) return;
@@ -66,6 +80,11 @@ export function computeRateLimitBackoff(consecutiveFailures, retryAfterSeconds, 
 
 /**
  * Flags a key as failed and applies HTTP-status-based lifecycle policy.
+ *
+ * Side effects:
+ * - On `retire` (`401/403`), `key.exhausted` is set true; `key.active` false.
+ * - On `cooldown` (`5xx`, `402`, `408`, `429`), `key.active` becomes false
+ *   and a `setTimeout` is registered to clear the cooldown.
  *
  * @param {Object} key - The KeyObject instance that failed.
  * @param {Object} descriptor
@@ -121,7 +140,11 @@ export function handleKeyFailure(key, descriptor, cooldownConfig, timers) {
 /**
  * Resets the failure streak and cooldown state when a key successfully services a request.
  *
+ * Note: also clears `cooldownUntil` directly so the cooldown sweeper doesn't
+ * have to run to re-activate the key.
+ *
  * @param {Object} key - The KeyObject instance that succeeded.
+ * @returns {void}
  */
 export function handleKeySuccess(key) {
   if (!key) return;

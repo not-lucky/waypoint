@@ -6,6 +6,7 @@ const DEFAULT_END_TAG = '</thought>';
  * This is useful during stream parsing to detect and handle tags that may be split across multiple
  * stream chunk boundaries (e.g., `<thought>` or `</thought>`).
  *
+ * @private
  * @param {string} str - The source string whose suffix is checked.
  * @param {string} target - The target string whose prefix is checked.
  * @returns {string} The overlapping substring, or an empty string if no overlap is found.

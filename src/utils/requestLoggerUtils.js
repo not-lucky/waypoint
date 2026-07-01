@@ -1,11 +1,24 @@
+/**
+ * @fileoverview Utility functions for request loggers and auditing infrastructure.
+ *
+ * This module provides helper routines for generating random IDs, formatting
+ * filesystem-safe timestamps, writing diagnostic JSON files asynchronously,
+ * sanitizing query parameters (such as API keys) from URLs, and serializing or
+ * redacting sensitive HTTP headers.
+ *
+ * @module utils/requestLoggerUtils
+ */
+
 import crypto from 'node:crypto';
 import fsp from 'node:fs/promises';
 
 /**
- * Generates a short random ID for request folder naming.
- * Uses `crypto.randomBytes` (cryptographically secure RNG) and emits a fixed
- * 6-char lowercase hex string.
- * @returns {string} 6-character hex string.
+ * Generates a short, cryptographically secure random ID suitable for naming request log folders.
+ *
+ * Uses `crypto.randomBytes` to generate 3 random bytes and encodes them as a 6-character
+ * lowercase hexadecimal string.
+ *
+ * @returns {string} A fixed 6-character lowercase hex string.
  */
 export const shortId = () => crypto.randomBytes(3).toString('hex');
 

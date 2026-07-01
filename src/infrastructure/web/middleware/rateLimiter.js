@@ -25,6 +25,7 @@ const WINDOW_HEAD_INDEX = Symbol('windowHeadIndex');
 const WINDOW_COMPACT_THRESHOLD = 64;
 
 /**
+ * Module-level logger for the rate limiter.
  * @type {Object}
  */
 const logger = getAppLogger('rate-limiter');
@@ -88,7 +89,7 @@ const setWindowHeadIndex = (timestamps, headIndex) => {
     });
     return;
   }
-   
+
   timestamps[WINDOW_HEAD_INDEX] = headIndex;
 };
 
@@ -156,9 +157,25 @@ export function getClientWindowActiveTimestamps(clientName) {
   return headIndex === 0 ? [...timestamps] : timestamps.slice(headIndex);
 }
 
+/**
+ * Interval between background cleanup sweeps. The cleanup deletes
+ * per-client windows whose last activity is older than `MAX_IDLE_TIME_MS`.
+ * @const {number}
+ */
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Maximum amount of time a per-client window may sit idle before it is
+ * garbage-collected by the background sweep.
+ * @const {number}
+ */
 const MAX_IDLE_TIME_MS = 60 * 60 * 1000; // 1 hour
 
+/**
+ * Background sweep that removes idle client windows. Registered with
+ * `unref()` so it never holds the event loop open during shutdown, and
+ * tracked in `rateLimiterIntervals` so teardown can clear it.
+ */
 const cleanupInterval = setInterval(() => {
   const now = Date.now();
   for (const [clientName, timestamps] of clientWindows.entries()) {
@@ -175,6 +192,11 @@ const cleanupInterval = setInterval(() => {
 if (cleanupInterval.unref) cleanupInterval.unref();
 rateLimiterIntervals.add(cleanupInterval);
 
+/**
+ * Teardown hook that clears all tracked rate-limiter intervals. Registered
+ * with the global `teardownRegistry` so graceful shutdown walks it as part
+ * of the lifecycle sequence.
+ */
 teardownRegistry.add((loggerInstance) => {
   if (loggerInstance && typeof loggerInstance.debug === 'function') {
     loggerInstance.debug(`Graceful shutdown: clearing ${rateLimiterIntervals.size} rate limiter intervals`);
@@ -209,7 +231,7 @@ teardownRegistry.add((loggerInstance) => {
  * @param {import('express').Request} req - Express request object.
  * @param {import('express').Response} res - Express response object.
  * @param {import('express').NextFunction} next - Express next middleware function.
- * @returns {void|import('express').Response} Returns next call or 429 error response.
+ * @returns {void | import('express').Response} Returns next call or 429 error response.
  */
 export const rateLimiter = (req, res, next) => {
   const { client } = req;

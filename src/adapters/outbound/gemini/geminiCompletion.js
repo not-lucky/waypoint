@@ -4,6 +4,16 @@ import { mapOpenAICompletionResponse } from '../shared/openaiResponse.js';
 import { applyExtraBody } from '../shared/extraBody.js';
 import { attachRawResponse } from '../shared/attachRawResponse.js';
 
+/**
+ * Resolves the model ID to pass to the Gemini API endpoint.
+ *
+ * Extracts the model ID either from the explicitly configured `modelid` field
+ * or extracts the final segment of a slash-delimited model identifier (e.g. 'models/gemini-1.5-flash' -> 'gemini-1.5-flash').
+ *
+ * @private
+ * @param {Object} req - The unified request payload.
+ * @returns {string} The resolved Gemini-specific model identifier.
+ */
 const resolveGeminiModelId = (req) => {
   if (typeof req?.modelid === 'string' && req.modelid.trim() !== '') {
     return req.modelid;
@@ -11,6 +21,28 @@ const resolveGeminiModelId = (req) => {
   return (req?.model || '').split('/').pop();
 };
 
+/**
+ * Executes a non-streaming chat completion request against the Gemini API.
+ *
+ * Depending on whether reasoning is supported by the request config:
+ * 1. Reasoning models: Directly targets Gemini's OpenAI-compatible endpoint with explicit
+ *    `thinking_config` set up, deep-merging client `extraBody` parameters (e.g. google_search),
+ *    and extracts nested thoughts using `<thought>` tags back to `reasoning_content`.
+ * 2. Standard models: Translates the request to native Gemini format, appends `extraBody` parameters,
+ *    submits to the native `generateContent` endpoint, and translates the response back to OpenAI format.
+ *
+ * In both cases, the raw upstream JSON body is attached to the normalized output as a non-enumerable
+ * property for audit logging, and resources are cleaned up cleanly.
+ *
+ * @async
+ * @param {Object} req - The normalized chat completion request payload.
+ * @param {string} apiKey - The Google Gemini API key.
+ * @param {AbortSignal} signal - Abort signal to cancel the HTTP request.
+ * @param {Object|null} [requestLog=null] - Optional audit logger wrapper.
+ * @param {Object} adapter - The GeminiAdapter instance calling this utility.
+ * @returns {Promise<Object>} The normalized OpenAI-compatible completion response.
+ * @throws {Error} Throws if the fetch fails, times out, or returns a non-200 status code.
+ */
 export const executeCompletion = async ( req, apiKey, signal, requestLog, adapter ) => {
   const reasoningSupported = req.reasoningSupported !== false;
 
@@ -97,3 +129,4 @@ export const executeCompletion = async ( req, apiKey, signal, requestLog, adapte
     cleanup();
   }
 };
+

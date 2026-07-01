@@ -3,6 +3,16 @@ import { parseSSEStream, parseSSEEventData } from '../../../utils/streaming/sseP
 import { throwIfStreamErrorPayload } from '../../../domain/errors/upstream.js';
 import { applyExtraBody } from '../shared/extraBody.js';
 
+/**
+ * Resolves the model ID to pass to the Gemini API endpoint.
+ *
+ * Extracts the model ID either from the explicitly configured `modelid` field
+ * or extracts the final segment of a slash-delimited model identifier.
+ *
+ * @private
+ * @param {Object} req - The unified request payload.
+ * @returns {string} The resolved Gemini-specific model identifier.
+ */
 const resolveGeminiModelId = (req) => {
   if (typeof req?.modelid === 'string' && req.modelid.trim() !== '') {
     return req.modelid;
@@ -11,8 +21,24 @@ const resolveGeminiModelId = (req) => {
 };
 
 /**
- * Executes a streaming completion for standard Gemini models (without thinking enabled).
- * Uses the native Gemini streamGenerateContent endpoint.
+ * Executes a streaming chat completion against Gemini's native HTTP/SSE streamGenerateContent endpoint.
+ *
+ * This function handles standard Gemini models (where reasoning/thinking level config is not enabled).
+ * It performs:
+ * 1. Translating the OpenAI request payload to the standard Gemini structure.
+ * 2. Fetching from the Google Gemini streamGenerateContent API with Server-Sent Events (SSE).
+ * 3. Processing and yielding decoded chunks mapped back to the OpenAI-compatible stream chunk shape.
+ * 4. Capturing the first and last raw chunks for audit logs, accumulating usage details, and printing a stream summary.
+ *
+ * @async
+ * @generator
+ * @param {Object} req - The normalized chat completion request payload.
+ * @param {string} apiKey - The Google Gemini API key.
+ * @param {AbortSignal} signal - Abort signal to cancel the stream.
+ * @param {Object|null} requestLog - Optional request/response audit logger.
+ * @param {Object} adapter - The Gemini adapter instance.
+ * @yields {Object} OpenAI-compatible stream chunk deltas.
+ * @throws {Error} Throws if the fetch fails, times out, or receives a fatal stream error response.
  */
 export async function* executeStandardStream(req, apiKey, signal, requestLog, adapter) {
   const payload = translateRequest(FORMATS.OPENAI, FORMATS.GEMINI, req);

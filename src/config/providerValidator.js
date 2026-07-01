@@ -1,8 +1,14 @@
 /**
- * @fileoverview Validator for providers section of configuration.
- * Validates that providers are configured correctly, verify custom base URLs,
- * active API keys, model declarations, aliases, reasoning settings,
- * and fallback models.
+ * @fileoverview Validator for the 'providers' section of the gateway configuration.
+ *
+ * This module is responsible for verifying that LLM providers (both reserved/built-in
+ * and custom/openai-compatible/anthropic-compatible) are configured correctly.
+ * It validates custom base URLs, filters and validates active API keys (including
+ * structured Cloudflare credentials), normalizes model declarations, validates settings
+ * like temperature, maxTokens, reasoning settings (such as reasoningSupported,
+ * reasoningEffort, and extractReasoningFromThinkBlocks), extraBody defaults,
+ * allowedExtraBody whitelists, overrides, and fallback models.
+ *
  * @module config/providerValidator
  */
 
@@ -14,6 +20,12 @@ import { isPlainObject } from '../utils/objectUtils.js';
 
 const logger = getAppLogger('config');
 
+/**
+ * Registry of setting validators and error message generators for model configurations.
+ * Supports parameters like temperature, maxTokens, reasoningSupported, reasoningEffort, and extractReasoningFromThinkBlocks.
+ *
+ * @const {Object<string, {validate: Function, errorMsg: Function}>}
+ */
 const SETTINGS_CONFIG = {
   temperature: {
     validate: (val) => typeof val === 'number' && val >= 0 && val <= 2,
@@ -40,10 +52,25 @@ const SETTINGS_CONFIG = {
   },
 };
 
+/**
+ * Set of keys that are recognized as valid model config setting parameter names.
+ *
+ * @const {Set<string>}
+ */
 const VALID_SETTING_KEYS = new Set(Object.keys(SETTINGS_CONFIG));
 
+/**
+ * List of custom provider connection types currently supported by the gateway.
+ *
+ * @const {Array<string>}
+ */
 const VALID_PROVIDER_TYPES = ['openai-compatible', 'anthropic-compatible'];
 
+/**
+ * Complete list of schema properties permitted within a model configuration block.
+ *
+ * @const {Array<string>}
+ */
 const VALID_MODEL_KEYS = [
   'modelid',
   'aliases',
@@ -58,7 +85,16 @@ const VALID_MODEL_KEYS = [
   'allowedExtraBody',
 ];
 
-// Helper function to validate that client-supplied default extraBody is a plain object.
+/**
+ * Validates that the default extra request body parameters are formatted as a plain JSON object.
+ *
+ * @private
+ * @param {*} value - The extraBody field value.
+ * @param {string} path - Breadcrumb path context for error messages.
+ * @param {string} providerName - Name of the provider.
+ * @param {boolean} shouldExit - Whether to terminate the process on error.
+ * @throws {Error} Throws validation error if verification fails and shouldExit is false.
+ */
 const validateExtraBody = (value, path, providerName, shouldExit) => {
   if (!isPlainObject(value)) {
     logErrorAndExitOrThrow(
@@ -68,8 +104,18 @@ const validateExtraBody = (value, path, providerName, shouldExit) => {
   }
 };
 
-// Helper function to validate that allowedExtraBody whitelist is either the string '*'
-// (which allows all fields) or a flat array of strings representing individual permitted keys.
+/**
+ * Validates that the client-facing extra request body whitelist conforms to the allowed structure.
+ *
+ * Whitelists must be either the wildcard string `'*'` or a flat array of key name strings.
+ *
+ * @private
+ * @param {*} value - The allowedExtraBody field value.
+ * @param {string} path - Breadcrumb path context for error messages.
+ * @param {string} providerName - Name of the provider.
+ * @param {boolean} shouldExit - Whether to terminate the process on error.
+ * @throws {Error} Throws validation error if verification fails and shouldExit is false.
+ */
 const validateAllowedExtraBody = (value, path, providerName, shouldExit) => {
   const isValid =
     value === '*' ||
@@ -83,6 +129,18 @@ const validateAllowedExtraBody = (value, path, providerName, shouldExit) => {
   }
 };
 
+/**
+ * Validates the structure and properties of a Cloudflare credential entry.
+ *
+ * Verifies that the credential object contains a non-empty `apiKey` and a non-empty `accountId`.
+ *
+ * @private
+ * @param {*} entry - The credential entry under inspection.
+ * @param {string} providerName - Provider name ('cloudflare').
+ * @param {number} index - Index of the key in the pool array.
+ * @param {boolean} shouldExit - Whether to terminate the process on error.
+ * @throws {Error} Throws validation error if verification fails and shouldExit is false.
+ */
 const validateCloudflareKeyEntry = (entry, providerName, index, shouldExit) => {
   if (!isCloudflareKeyEntry(entry)) {
     logErrorAndExitOrThrow(
@@ -106,6 +164,18 @@ const validateCloudflareKeyEntry = (entry, providerName, index, shouldExit) => {
   }
 };
 
+/**
+ * Validates the integrity of all key entries configured for a provider.
+ *
+ * Ensures Cloudflare credentials follow structured requirements, while standard provider
+ * keys are validated as non-empty strings.
+ *
+ * @private
+ * @param {string} providerName - Name of the provider.
+ * @param {Object} providerConf - The provider configuration block containing the keys array.
+ * @param {boolean} shouldExit - Whether to terminate the process on error.
+ * @throws {Error} Throws validation error if verification fails and shouldExit is false.
+ */
 const validateProviderKeys = (providerName, providerConf, shouldExit) => {
   providerConf.keys.forEach((entry, index) => {
     if (providerName === 'cloudflare') {
@@ -123,25 +193,32 @@ const validateProviderKeys = (providerName, providerConf, shouldExit) => {
 };
 
 /**
- * Class representing a validator for API providers.
+ * Service class responsible for validating and normalizing the 'providers' configuration
+ * section. Ensures that all defined LLM providers and their models conform to the gateway's
+ * structural, credential, parameter, and fallback model requirements.
  */
 export class ProviderValidator {
   /**
    * Creates an instance of ProviderValidator.
-   * @param {Set<string>} reservedProviders - Set of built-in reserved provider names.
+   *
+   * @param {Set<string>} reservedProviders - A set of built-in reserved provider names
+   * (e.g., 'openai', 'anthropic', 'gemini', 'cloudflare').
    */
   constructor(reservedProviders) {
     this.reservedProviders = reservedProviders;
   }
 
   /**
-   * Validates the providers configuration block.
+   * Validates and normalizes the entire providers configuration object.
    *
-   * @param {Object} providers - The providers configuration block from config file.
-   * @param {boolean} shouldExit - Whether the process should exit on validation failure.
-   * @param {Object|null} customLogger - Logger instance for warning/error reporting.
-   * @throws {Error} Throws validation errors if shouldExit is false.
-   * @returns {Object} Processed providers config
+   * This method processes the configuration for each provider, verifying credentials/keys
+   * pools, model arrays, setting configurations, base URLs for custom/non-reserved providers,
+   * extra request parameters (extraBody and allowedExtraBody), and fallback models.
+   *
+   * @param {Object} providers - The raw providers configuration object from the config file.
+   * @param {boolean} shouldExit - Whether to terminate the process via process.exit(1) on failure.
+   * @throws {Error} Throws a validation Error if validation fails and shouldExit is false.
+   * @returns {Object} The processed, normalized, and validated providers configuration copy.
    */
   validate(providers, shouldExit) {
     if (
@@ -297,13 +374,17 @@ export class ProviderValidator {
   }
 
   /**
-   * Validates a settings block (defaults or overrides) for a model.
+   * Validates a settings block (default settings or parameter overrides) for a model or provider.
    *
-   * @param {Object} settings - The settings configuration object.
-   * @param {string} path - The path identifier for error messages.
-   * @param {string} providerName - The provider name.
-   * @param {boolean} shouldExit - Whether the process should exit on validation failure.
-   * @param {Object|null} customLogger - Logger instance.
+   * Checks setting keys against the recognized parameter names (e.g., temperature, maxTokens,
+   * reasoningSupported, reasoningEffort, extractReasoningFromThinkBlocks) and validates that their
+   * values meet their specific type and range constraints.
+   *
+   * @param {Object} settings - The settings configuration object containing parameter keys and values.
+   * @param {string} path - Breadcrumb path context (e.g. 'models[0]' or 'provider') for detailed error messages.
+   * @param {string} providerName - The name of the provider being validated.
+   * @param {boolean} shouldExit - Whether to terminate the process on error.
+   * @throws {Error} Throws validation error if verification fails and shouldExit is false.
    */
   static validateSettings(settings, path, providerName, shouldExit) {
     if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {

@@ -1,18 +1,36 @@
 /**
- * @fileoverview Validator for the gateway section of configuration.
- * Validates server port, timeouts, routing strategies, cooldown rules,
- * payload size, and CORS configuration.
+ * @fileoverview Validator for the 'gateway' section of the application configuration.
+ *
+ * This module exports the validation logic for gateway server-wide configurations.
+ * It enforces and verifies structural configuration parameters including the HTTP server port,
+ * global retry counts, connection and stream timeouts, backing key cooldown policies,
+ * routing strategies (round-robin or fill-first), maximum allowed request payload sizes,
+ * and CORS settings (such as whitelist origins).
+ *
  * @module config/GatewayValidator
  */
 
 import { isPositiveInteger, isValidMaxPayloadSize, logErrorAndExitOrThrow } from './validationHelpers.js';
 
 /**
- * Validates the gateway configuration block.
+ * Validates the properties and structure of the gateway configuration block.
  *
- * @param {Object} gateway - The gateway configuration block from config file.
- * @param {boolean} shouldExit - Whether the process should exit on validation failure.
- * @throws {Error} Throws validation errors if shouldExit is false.
+ * The validator validates the following fields:
+ * - `port` (Required): Validates that it is a positive integer.
+ * - `globalRetryLimit` (Optional): Validates that it is a positive integer representing maximum fallback retries.
+ * - `httpTimeoutMs` (Optional): Validates that it is a positive integer representing standard request timeout.
+ * - `streamTimeoutMs` (Optional): Validates that it is a positive integer representing stream connection timeout.
+ * - `cooldown` (Optional): Validates that it is an object containing positive integer policies for key cooldowns
+ *   (`baseSeconds`, `maxSeconds`, and `serverSeconds`).
+ * - `routing` (Optional): Validates that it is an object and that the specified `strategy` matches a supported
+ *   gateway strategy ('round-robin' or 'fill-first').
+ * - `maxPayloadSize` (Optional): Validates that it is a positive integer or a valid byte-size string representation (e.g., '10mb').
+ * - `cors` (Optional): Validates that it is an object containing `allowedOrigins` as an array of strings.
+ *
+ * @param {Object} gateway - The gateway configuration block from the parsed configuration file.
+ * @param {boolean} shouldExit - Whether to terminate the process immediately with code 1 on failure.
+ * @throws {Error} Throws a validation Error if the configuration is invalid and shouldExit is false.
+ * @returns {void}
  */
 export const validateGateway = (gateway, shouldExit) => {
   if (!gateway || typeof gateway !== 'object') {

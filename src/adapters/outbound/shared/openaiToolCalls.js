@@ -1,5 +1,12 @@
 /**
- * Merges incremental OpenAI streaming tool_call deltas by index.
+ * Merges progressive, incremental OpenAI streaming tool_call deltas by choice index.
+ *
+ * This function appends new tool call fields (id, type) and concatenates name and JSON
+ * arguments substrings for functions as they arrive over the stream.
+ *
+ * @param {Array<Object>|null|undefined} existing - The current accumulated tool calls.
+ * @param {Array<Object>|null|undefined} incoming - The new tool call deltas to merge.
+ * @returns {Array<Object>} The updated array of aggregated tool calls.
  */
 export function mergeToolCallDeltas(existing, incoming) {
   if (!incoming?.length) return existing;

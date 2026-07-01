@@ -182,9 +182,16 @@ export function translateError(upstreamFormat, targetFormat, normalized) {
 }
 
 /**
+ * Flattens any protocol's normalized upstream error into the OpenAI-hub shape.
+ *
+ * Extracts internal nested fields depending on the source format:
+ * - Anthropic: extracts error details from `{ type: 'error', error: { type, message } }`.
+ * - Gemini: maps `status` code string using {@link mapGeminiStatusToType} and extracts messages.
+ *
  * @private
- * Flattens any protocol's normalized upstream error into the OpenAI-hub shape:
- * `{ errorCode, errorType, message, statusCode, retryAfterSeconds, provider, upstreamBody }`.
+ * @param {string} upstreamFormat - The source provider protocol format (e.g. 'openai', 'anthropic', 'gemini').
+ * @param {Object} normalized - The normalized error descriptor.
+ * @returns {Object} The flattened hub error object.
  */
 function normalizeErrorToHub(upstreamFormat, normalized) {
   if (upstreamFormat === FORMATS.OPENAI) {

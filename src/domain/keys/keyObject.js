@@ -6,6 +6,11 @@
 
 /**
  * Represents a single upstream API key within a provider pool.
+ *
+ * Wraps either a raw API key string (e.g. `'sk-abc...'`) or a structured
+ * provider credential like `{ apiKey, accountId }` (used by Cloudflare).
+ * Tracks the key's lifecycle state (active, cooldown, exhausted) and
+ * supplies `isAvailable` for selection.
  */
 export class KeyObject {
   /**
@@ -59,11 +64,19 @@ export class KeyObject {
 
   /**
    * Determines if this key is eligible to serve requests.
-   * A key is available only if it is active, not permanently exhausted,
-   * and any applied cooldown window has lapsed.
+   *
+   * A key is available only if all three conditions hold:
+   * - `active` is true (set to false on consecutive failures or cooldowns).
+   * - `exhausted` is false (permanently retired keys never recover).
+   * - `cooldownUntil` is null or already in the past.
    *
    * @param {number} [now=Date.now()] - The current timestamp in milliseconds.
    * @returns {boolean} True if the key is available, false otherwise.
+   *
+   * @example
+   * const key = new KeyObject('sk-abc');
+   * key.cooldownUntil = Date.now() + 60_000;
+   * key.isAvailable(); // false — still cooling down
    */
   isAvailable(now = Date.now()) {
     const cooledDown = this.cooldownUntil === null || this.cooldownUntil <= now;

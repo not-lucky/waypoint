@@ -19,8 +19,10 @@ export const DEFAULT_MAX_RETAINED_LOG_FILES = 1000;
 
 /**
  * Escapes a string for safe use inside a RegExp.
- * @param {string} value
- * @returns {string}
+ *
+ * @private
+ * @param {string} value - String to escape.
+ * @returns {string} The escaped string.
  */
 const escapeForRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 

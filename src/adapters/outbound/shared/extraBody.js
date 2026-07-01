@@ -9,8 +9,15 @@ import { isPlainObject } from '../../../utils/objectUtils.js';
 // - 'metadata': Anthropic APIs accept client-specified metadata, which must merge cleanly.
 const deepMergeKeys = new Set(['extra_body', 'metadata']);
 
-// Recursively merges plain object properties from source to target.
-// Mutates target in-place to avoid breaking references in calling adapters.
+/**
+ * Recursively merges plain object properties from a source object into a target object.
+ *
+ * Mutates the target object in-place to preserve references.
+ *
+ * @private
+ * @param {Object} target - The target object to merge properties into.
+ * @param {Object} source - The source object containing properties to copy.
+ */
 const deepMerge = (target, source) => {
   for (const key of Object.keys(source)) {
     if (isPlainObject(target[key]) && isPlainObject(source[key])) {

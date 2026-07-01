@@ -14,6 +14,8 @@ const logger = getAppLogger('request-logger');
 /**
  * No-op stub returned when request logging is disabled.
  * The null object pattern prevents massive nested if checks in downstream operations.
+ *
+ * @type {Readonly<Object>}
  */
 const NOOP_LOG = Object.freeze({
   logProviderRequest() {},
@@ -54,6 +56,14 @@ export class RequestLog {
     this.finalized = false;
   }
 
+  /**
+   * Helper that checks if log writing is permitted.
+   *
+   * Verifies that the log directory has been successfully created and that the log has not yet finalized.
+   *
+   * @async
+   * @returns {Promise<boolean>} True if writes can proceed; otherwise false.
+   */
   async canWrite() {
     if (this.finalized || this.dirFailed) return false;
     const ok = await this.dirReady;
@@ -333,8 +343,10 @@ export const pruneRequestLogFolders = async (basePath, maxRetained) => {
 
 /**
  * Helper to ensure the request log directory exists.
- * @param {string} dir
- * @returns {Promise<boolean>}
+ *
+ * @private
+ * @param {string} dir - Directory path to verify or create.
+ * @returns {Promise<boolean>} Resolves to true if directory exists/created; otherwise false.
  */
 const ensureLogDirectory = async (dir) => {
   try {

@@ -12,6 +12,14 @@ export async function* parseSSEStream(responseBody, signal) {
   const decoder = new TextDecoder('utf-8');
   let buffer = '';
 
+  /**
+   * Processes a single binary chunk, decoding it to text, splitting by double-newlines,
+   * and yielding parsed Server-Sent Event objects.
+   *
+   * @private
+   * @param {Uint8Array} chunk - The raw binary data chunk.
+   * @yields {{event: string|null, data: string}} Parsed event objects.
+   */
   const processChunk = function* processChunk(chunk) {
     buffer += decoder.decode(chunk, { stream: true });
     const parts = buffer.split('\n\n');
@@ -80,6 +88,15 @@ export async function* parseSSEStream(responseBody, signal) {
   }
 }
 
+/**
+ * Safely parses the data field of an SSE event as JSON.
+ *
+ * Returns null if the data matches the standard '[DONE]' stream end sentinel
+ * or is not valid JSON.
+ *
+ * @param {string} data - Raw data string from the SSE line.
+ * @returns {Object|null} Parsed JSON object, or null.
+ */
 export function parseSSEEventData(data) {
   if (data === '[DONE]') {
     return null;

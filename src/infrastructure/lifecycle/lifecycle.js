@@ -1,11 +1,48 @@
+/**
+ * @fileoverview Process lifecycle signal handling.
+ *
+ * Manages the SIGINT/SIGTERM handlers and the graceful teardown sequence.
+ * The teardown process is structured so a slow or stuck teardown can't
+ * pin the event loop indefinitely — a 10-second safety timeout forces
+ * `process.exit(1)` if the orderly path hasn't finished.
+ *
+ * @module infrastructure/lifecycle/lifecycle
+ */
+
 import { flushLogs } from '../logging/logger.js';
 import { teardownRegistry } from './teardownRegistry.js';
 
+/**
+ * Module-level flag that prevents the teardown sequence from running
+ * twice (e.g. when both SIGINT and SIGTERM arrive simultaneously).
+ * @type {boolean}
+ */
 let isTearingDown = false;
 
+/**
+ * Stashed reference to the previously-registered SIGINT handler. Stored
+ * on `global` so the registration is idempotent across module reloads
+ * (which the test harness can do).
+ * @type {Function|null}
+ */
 global.waypointSigint = global.waypointSigint || null;
+
+/**
+ * Stashed reference to the previously-registered SIGTERM handler.
+ * @type {Function|null}
+ */
 global.waypointSigterm = global.waypointSigterm || null;
 
+/**
+ * Resets the lifecycle state for testing.
+ *
+ * Removes any registered SIGINT/SIGTERM handlers, resets the
+ * `isTearingDown` flag, and clears the global handler references. Called
+ * by the test harness between integration tests so each test starts with
+ * a clean signal-handler slate.
+ *
+ * @returns {void}
+ */
 export function resetLifecycleState() {
   isTearingDown = false;
   if (global.waypointSigint) {
@@ -18,6 +55,17 @@ export function resetLifecycleState() {
   }
 }
 
+/**
+ * Best-effort log flush that swallows errors.
+ *
+ * Used during teardown where we cannot tolerate a flush failure preventing
+ * `process.exit` from running. Both the per-sink `logger.flush()` and the
+ * global `flushLogs()` are attempted; either failing is ignored.
+ *
+ * @async
+ * @param {Object|null} logger - The per-app logger instance (optional).
+ * @returns {Promise<void>}
+ */
 async function safeFlush(logger) {
   if (logger && typeof logger.flush === 'function') {
     try {
@@ -33,6 +81,32 @@ async function safeFlush(logger) {
   }
 }
 
+/**
+ * Performs the graceful teardown sequence.
+ *
+ * Steps (in order):
+ * 1. Set `isTearingDown` to make subsequent teardown calls a no-op.
+ * 2. Start a 10-second safety timeout that forces `process.exit(1)` if the
+ *    orderly path stalls (the timer is `unref`'d so it doesn't keep the
+ *    loop alive).
+ * 3. Close the HTTP server (refuses new connections, waits for in-flight).
+ * 4. Walk the `teardownRegistry` hooks (abort active controllers, clear
+ *    rate-limiter intervals, etc.).
+ * 5. Clean up key-registry cooldown timers.
+ * 6. Flush logs and shut down LogTape.
+ *
+ * On any thrown error, the safety flush + `process.exit(1)` ensures the
+ * process eventually exits even if the orderly path fails.
+ *
+ * @async
+ * @param {Object} options - Teardown parameters.
+ * @param {import('node:http').Server|null} options.server - The HTTP server to close.
+ * @param {import('../../domain/keys/keyRegistry.js').KeyRegistry|null} options.keyRegistry -
+ *   Key registry whose cooldown timers should be cleared.
+ * @param {Object|null} options.logger - Logger instance for debug breadcrumbs.
+ * @returns {Promise<void>} Resolves on success. Failures result in
+ *   `process.exit(1)` rather than a thrown error.
+ */
 export async function teardown({
   server,
   keyRegistry,
@@ -105,6 +179,19 @@ export async function teardown({
   }
 }
 
+/**
+ * Registers the SIGINT and SIGTERM handlers that drive `teardown`.
+ *
+ * Stashes the previous handlers on `global` so they can be replaced
+ * idempotently across test reruns. The actual handler is a thin wrapper
+ * that logs the signal and calls `teardown`.
+ *
+ * @param {Object} options - Options forwarded to `teardown`.
+ * @param {import('node:http').Server|null} options.server - HTTP server.
+ * @param {import('../../domain/keys/keyRegistry.js').KeyRegistry|null} options.keyRegistry - Key registry.
+ * @param {Object|null} options.logger - Logger instance.
+ * @returns {void}
+ */
 export function registerLifecycle({
   server,
   keyRegistry,

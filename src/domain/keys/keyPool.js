@@ -1,6 +1,11 @@
 /**
  * @fileoverview API key pool management and selection logic.
- * Handles pool creation, key selection strategies (round-robin, fill-first), and key lookup.
+ *
+ * Provides the building blocks for the key registry: a stateful pool
+ * factory (`createKeyPool`), per-strategy key selection (`getKeyFromPool`),
+ * and lookup of an existing pool entry by raw credential
+ * (`findKeyInPool`).
+ *
  * @module registry/keyManagement/keyPool
  */
 

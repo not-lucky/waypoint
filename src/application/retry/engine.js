@@ -10,22 +10,41 @@ import { buildUpstreamErrorLogFields } from '../../infrastructure/logging/upstre
 import { buildCancelledError, buildFinalError } from './backoff.js';
 import { createStreamWithAbortGuard } from './streamGuard.js';
 
+/**
+ * Module-level logger for the retry engine.
+ * @type {Object}
+ */
 const logger = getAppLogger('retry');
 
 /**
  * Abstracts the retry/key-rotation loop for a single provider.
- * Rotates through keys, invokes the adapter, and tracks success/failure.
  *
- * @param {Object} options
- * @param {string} options.provider
- * @param {Object} options.req
- * @param {Object} options.adapter
- * @param {Object} options.keyRegistry
- * @param {AbortController} options.abortController
- * @param {Object|null} options.requestLog - Per-request debug logger.
- * @param {number} options.retryLimit
- * @param {Function} options.onStreamResponse
- * @returns {Promise<Object|AsyncGenerator>}
+ * The loop runs up to `retryLimit` attempts against a single provider.
+ * Each iteration:
+ *
+ * 1. Aborts cleanly if the controller has already been aborted.
+ * 2. Picks a key from the pool (or the synthetic `'dryrun-mock-key'` when
+ *    the request is a dry run and the pool is empty).
+ * 3. If no key is available and the request is already a fallback, builds
+ *    the final error envelope and returns. If no fallback model is set,
+ *    also returns the final error (the orchestrator will surface it).
+ * 4. Calls either `adapter.generateStream` (with the stream-guard wrapper)
+ *    or `adapter.generateCompletion` and records success/failure on the
+ *    key registry, the metrics collector, and the request debug log.
+ *
+ * Side effects: mutates the key registry (`flagFailure` / `flagSuccess`)
+ * and writes provider request/response artefacts via `requestLog`.
+ *
+ * @param {Object} options - Retry loop parameters.
+ * @param {string} options.provider - The provider name (for key pool lookup).
+ * @param {Object} options.req - The current normalized request.
+ * @param {Object} options.adapter - The outbound provider adapter.
+ * @param {Object} options.keyRegistry - The key registry used for key selection and lifecycle updates.
+ * @param {AbortController} options.abortController - Aborts in-flight upstream calls.
+ * @param {Object|null} options.requestLog - Per-request debug logger (or null).
+ * @param {number} options.retryLimit - Max retry attempts per provider.
+ * @param {Function} options.onStreamResponse - Called when stream chunks begin arriving.
+ * @returns {Promise<Object|AsyncGenerator>} Success response, error envelope, or stream.
  */
 export const executeWithRetry = async ({
   provider,

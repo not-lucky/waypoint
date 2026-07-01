@@ -30,8 +30,15 @@ const FORWARDED_CLIENT_KEYS = new Set([
 ]);
 
 /**
- * Builds an OpenAI-compatible chat/completions payload from a unified request.
- * Preserves client fields (tools, tool_choice, etc.) while applying model routing.
+ * Builds an OpenAI-compatible chat/completions request payload from a unified request.
+ *
+ * It filters and forwards client-supplied parameters (like `messages`, `temperature`, `max_tokens`,
+ * `tools`, `tool_choice`, logprobs, etc.) while mapping model identifiers, streaming settings,
+ * token parameters, reasoning effort settings, and injecting custom whitelisted extra fields.
+ *
+ * @param {Object} req - The unified request payload containing model metadata, messages, temperature, maxTokens, etc.
+ * @param {boolean} stream - Whether the request is streaming (SSE) or unary.
+ * @returns {Object} The constructed OpenAI-compatible request payload object.
  */
 export function buildOpenAIChatPayload(req, stream) {
   const client = req.clientParams || {};

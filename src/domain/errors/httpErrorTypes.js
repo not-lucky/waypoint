@@ -11,6 +11,12 @@
  * of the ingress protocol. Unmapped statuses fall back to `'api_error'`.
  */
 
+/**
+ * Mapping constant that associates HTTP status codes with standard OpenAI-compatible
+ * client error types.
+ *
+ * @type {Readonly<Object<number, string>>}
+ */
 export const HTTP_STATUS_TO_TYPE = Object.freeze({
   400: 'invalid_request_error',
   401: 'authentication_error',

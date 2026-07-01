@@ -12,6 +12,12 @@
  * (the canonical Google API error model: https://cloud.google.com/apis/design/errors)
  */
 
+/**
+ * Mapping constant that associates Google Gemini API error status strings with
+ * standard OpenAI-compatible client error types.
+ *
+ * @type {Readonly<Object<string, string>>}
+ */
 const GEMINI_STATUS_TO_TYPE = Object.freeze({
   INVALID_ARGUMENT: 'invalid_request_error',
   FAILED_PRECONDITION: 'invalid_request_error',

@@ -24,6 +24,17 @@ const STANDARD_REQUEST_KEYS = new Set([
   'extraBody',
 ]);
 
+/**
+ * Evaluates, whitelists, and filters custom client parameters to construct the final extraBody configuration.
+ *
+ * It merges config-specified defaults with client-supplied extraBody overrides, sanitizing to
+ * ensure client parameters do not collide with standard request key properties (like model, messages, stream).
+ *
+ * @private
+ * @param {Object} req - The unified request context.
+ * @param {Object} modelConfig - The resolved model configuration.
+ * @returns {Object|undefined} The resolved extraBody map, or undefined.
+ */
 const getFilteredExtraBody = (req, modelConfig) => {
   const allowed = modelConfig?.allowedExtraBody;
 

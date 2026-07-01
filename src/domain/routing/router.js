@@ -7,6 +7,17 @@ const INHERITED_PROVIDER_MODEL_KEYS = [
   'allowedExtraBody',
 ];
 
+/**
+ * Merges provider-level default settings into a specific model's configuration.
+ *
+ * Specific nested structures like `extraBody` are merged recursively, while flat settings
+ * (like `allowedExtraBody`, `extractReasoningFromThinkBlocks`) are inherited by fallback.
+ *
+ * @private
+ * @param {Object} providerConf - The parent provider configuration block.
+ * @param {Object} modelConfig - The child model configuration block.
+ * @returns {Object} The resolved model configuration containing merged settings.
+ */
 const applyProviderModelInheritance = (providerConf, modelConfig) => {
   const resolvedModelConfig = { ...modelConfig };
 
@@ -44,6 +55,14 @@ const applyProviderModelInheritance = (providerConf, modelConfig) => {
 
 const resolutionCache = new WeakMap();
 
+/**
+ * Retrieves a cached model resolution result.
+ *
+ * @private
+ * @param {Object} providersConfig - The active provider configuration map (used as WeakMap key).
+ * @param {string} modelName - The model identifier to search for.
+ * @returns {Object|null} Cache hit descriptor: `{ hit: boolean, value?: any }`.
+ */
 const getFromCache = (providersConfig, modelName) => {
   if (!providersConfig || typeof providersConfig !== 'object') return null;
   const cache = resolutionCache.get(providersConfig);
@@ -53,6 +72,14 @@ const getFromCache = (providersConfig, modelName) => {
   return { hit: false };
 };
 
+/**
+ * Caches a model resolution outcome.
+ *
+ * @private
+ * @param {Object} providersConfig - The active provider configuration map.
+ * @param {string} modelName - The model identifier key.
+ * @param {Object|null} resolved - The resolution result to cache.
+ */
 const saveToCache = (providersConfig, modelName, resolved) => {
   if (!providersConfig || typeof providersConfig !== 'object') return;
   let cache = resolutionCache.get(providersConfig);
@@ -63,6 +90,19 @@ const saveToCache = (providersConfig, modelName, resolved) => {
   cache.set(modelName, resolved);
 };
 
+/**
+ * Resolves a model name against provider model lists, aliases, and namespaces.
+ *
+ * Performs three resolution phases:
+ * 1. Matches formatted names containing slash separators (e.g. "provider/modelid").
+ * 2. Matches model names or aliases globally across all providers.
+ * 3. Fallbacks to dynamic naming if the prefix represents a valid provider name.
+ *
+ * @private
+ * @param {string} modelName - The input model identifier.
+ * @param {Object} providersConfig - Active provider configurations.
+ * @returns {Object|null} The resolved model info containing `provider` and `modelConfig`, or null.
+ */
 const resolveModelConfig = (modelName, providersConfig) => {
   // Step 1: Check if the input model starts with providerName/ for any configured provider
   if (modelName.includes('/')) {

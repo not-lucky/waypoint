@@ -8,13 +8,23 @@ export const RESERVED_PROVIDERS = new Set(['gemini', 'anthropic', 'openai', 'clo
 const VAR_REGEX = /\$\{([A-Za-z0-9_]+)\}/g;
 
 /**
- * Replaces all ${VAR} placeholders in a string with their process.env values.
+ * Replaces all `${VAR}` placeholders in a string with their corresponding environment variable values.
+ *
+ * Uses a global regular expression search. If the variable is not defined in process.env, it evaluates to undefined.
+ *
+ * @param {string} str - The input string containing placeholders.
+ * @returns {string} The interpolated string.
  */
 export const replaceEnvVars = (str) => str.replace(VAR_REGEX, (_, varName) => process.env[varName]);
 
 /**
  * Scans a string for environment variable placeholders and returns the name of
  * the first one that is missing or empty in the environment.
+ *
+ * Used to validate config keys before loading them, preventing silent failures.
+ *
+ * @param {string} str - The input string to scan.
+ * @returns {string|null} The name of the first missing variable found, or null if all are present.
  */
 export const getMissingEnvVar = (str) => {
   const matches = [...str.matchAll(VAR_REGEX)];
@@ -26,7 +36,13 @@ export const getMissingEnvVar = (str) => {
 };
 
 /**
- * Coerces a specific property of an object to an integer if it's a string of digits.
+ * Coerces a specific property of an object to an integer if it is a string representation of digits.
+ *
+ * Used during parsing to normalize environment variable string injects back to numbers.
+ *
+ * @param {Object} obj - The target object.
+ * @param {string} key - The property key to coerce.
+ * @returns {Object} A shallow copy of the object with the coerced key.
  */
 export const coerceToInt = (obj, key) => {
   if (typeof obj?.[key] === 'string' && /^\d+$/.test(obj[key])) {
@@ -36,7 +52,16 @@ export const coerceToInt = (obj, key) => {
 };
 
 /**
- * Interpolates environment variables into key entries.
+ * Interpolates environment variable placeholders within a key credential entry.
+ *
+ * Supports strings and Cloudflare structured credentials. Filters out and skips any
+ * entries referencing missing environment variables, warning to the config logger.
+ *
+ * @param {*} entry - The raw key credential entry.
+ * @param {Array<string>} path - The configuration breadcrumb path for error context.
+ * @param {number} index - The key entry's index in the key array.
+ * @param {string} providerName - Name of the provider.
+ * @returns {string|Object|null} The interpolated key string/object, or null if skipped.
  */
 export const interpolateProviderKeyEntry = (entry, path, index, providerName) => {
   if (typeof entry === 'string') {

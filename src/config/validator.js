@@ -1,7 +1,10 @@
 /**
  * @fileoverview Main configuration validator entrypoint.
- * Coordinates delegation of configuration sub-sections (gateway, clients, logging, providers)
- * to their respective sub-validators.
+ *
+ * Coordinates the validation of the entire gateway application configuration by
+ * delegating checks for individual configuration namespaces (gateway, clients, logging,
+ * and providers) to their respective specialized sub-validator modules.
+ *
  * @module config/validator
  */
 
@@ -16,13 +19,21 @@ import { ProviderValidator } from './providerValidator.js';
 const logger = getAppLogger('config');
 
 /**
- * Validates the entire application configuration object.
- * Delegates checks for each section to specialized sub-validators and handles errors.
+ * Validates and normalizes the entire application configuration object.
  *
- * @param {Object} config - The raw configuration object to validate.
- * @param {boolean} [shouldExit=true] - Whether the process should exit on error.
- * @param {Set<string>} [reservedProviders=RESERVED_PROVIDERS] - Reserved provider names.
- * @throws {Error} Throws an error if validation fails and shouldExit is false.
+ * Delegates checks for each section to the specialized validators:
+ * 1. `validateGateway` for general server configurations.
+ * 2. `validateClients` for client API credentials and rate limits.
+ * 3. `validateLogging` for system logging targets and options.
+ * 4. `ProviderValidator` instance for validating the LLM keys/pools, reasoning metrics, and fallbacks.
+ *
+ * Updates the configuration in-place with normalized provider settings.
+ *
+ * @param {Object} config - The raw parsed configuration object to validate.
+ * @param {boolean} [shouldExit=true] - Whether to terminate the Node.js process on validation failure.
+ * @param {Set<string>} [reservedProviders=RESERVED_PROVIDERS] - The set of built-in reserved provider identifiers.
+ * @throws {Error} Throws a validation Error if validation fails and shouldExit is false.
+ * @returns {void}
  */
 export const validateConfig = (
   config,

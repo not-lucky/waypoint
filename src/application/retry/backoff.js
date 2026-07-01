@@ -7,14 +7,26 @@
 import { getAppLogger } from '../../infrastructure/logging/logger.js';
 import { resolveLifecycleTier } from '../../domain/errors/policy.js';
 
+/**
+ * Module-level logger for backoff helpers.
+ * @type {Object}
+ */
 const logger = getAppLogger('retry');
 
 /**
  * Builds an error envelope indicating all keys for a provider are in cooldown.
  *
- * @param {string} provider
- * @param {Object} keyRegistry
- * @returns {{ error: Object }}
+ * When the pool contains keys with future cooldown timestamps, the
+ * envelope includes a `retryAfterSeconds` field equal to the smallest
+ * remaining cooldown duration — this lets clients implement smart
+ * backoff instead of guessing a sleep interval.
+ *
+ * @param {string} provider - Provider name.
+ * @param {Object} keyRegistry - Key registry used to read the pool's cooldowns.
+ * @returns {{ error: { code: 'poolUnavailable', message: string, httpStatus: 503, provider: string, retryAfterSeconds: number } }}
+ *   The envelope. `retryAfterSeconds` is `0` when no key is currently in
+ *   cooldown (which can happen if all keys are exhausted rather than
+ *   temporarily unavailable).
  */
 export function buildPoolUnavailableError(provider, keyRegistry) {
   const keys = keyRegistry.pools[provider]?.keys;
@@ -47,8 +59,14 @@ export function buildPoolUnavailableError(provider, keyRegistry) {
 /**
  * Builds an error envelope indicating the request was cancelled by the client.
  *
- * @param {string} provider
- * @returns {{ error: Object }}
+ * Status code 499 mirrors nginx's convention for client cancellations; it
+ * is not part of the official IANA registry but is widely understood by
+ * upstream proxies. The code is propagated through `sendHttpError` so it
+ * reaches the gateway's client verbatim.
+ *
+ * @param {string} provider - Provider name.
+ * @returns {{ error: { code: 'requestCancelled', message: string, httpStatus: 499, provider: string } }}
+ *   The cancellation envelope.
  */
 export function buildCancelledError(provider) {
   return {
@@ -63,14 +81,19 @@ export function buildCancelledError(provider) {
 
 /**
  * Builds the final error response when all retry attempts have failed.
- * Falls back to pool unavailable when no upstream error was captured.
  *
- * @param {string} provider
- * @param {Object} keyRegistry
- * @param {Object} adapter
- * @param {any} lastError
- * @param {Object} req
- * @returns {{ error: Object }}
+ * If the retry loop captured a non-null `lastError`, the envelope is built
+ * from the adapter's normalized error view; otherwise, falls back to
+ * `buildPoolUnavailableError` (all keys exhausted) so the client gets a
+ * 503 with `retryAfterSeconds` reflecting the soonest key recovery.
+ *
+ * @param {string} provider - Provider name.
+ * @param {Object} keyRegistry - Key registry (used in fallback path).
+ * @param {Object} adapter - Outbound adapter used to normalize `lastError`.
+ * @param {any} lastError - The last error captured by the retry loop, or null.
+ * @param {Object} req - The current normalized request.
+ * @returns {{ error: { code: string, message: string, httpStatus: number, provider: string, retryAfterSeconds?: number, upstreamBody?: string, type?: string } }}
+ *   The final error envelope.
  */
 export function buildFinalError(provider, keyRegistry, adapter, lastError, req) {
   if (lastError) {

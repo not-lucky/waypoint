@@ -9,15 +9,40 @@ import { runOrchestrationLoop } from './orchestrationEngine.js';
 import { getAppLogger } from '../infrastructure/logging/logger.js';
 import { teardownRegistry } from '../infrastructure/lifecycle/teardownRegistry.js';
 
+/**
+ * Module-level logger for orchestrator-level events (entry, fallback, abort).
+ * @type {Object}
+ */
 const logger = getAppLogger('orchestrator');
 
 /**
  * Central registry of all active request AbortControllers.
+ *
+ * Every call to `executeCompletion` adds the request's AbortController to
+ * this Set so graceful shutdown can abort all in-flight work without
+ * leaking upstream sockets. Controllers are removed either in the
+ * request's `finally` block (non-streaming) or in the wrapped stream's
+ * `finally` (streaming). The Set is intentionally module-scoped (not a
+ * class field) so the teardown hook below can reach it without holding a
+ * reference to a particular orchestrator instance.
+ *
  * Used during graceful shutdown to cancel all in-flight requests.
  * @type {Set<AbortController>}
  */
 export const activeControllers = new Set();
 
+/**
+ * Teardown hook that aborts every active request AbortController.
+ *
+ * Registered with the global `teardownRegistry`, so it runs as part of the
+ * graceful shutdown sequence initiated by `registerLifecycle` when the
+ * process receives SIGINT/SIGTERM. Errors during individual `abort()`
+ * calls are logged and swallowed — the goal is to clear the Set, not to
+ * recover.
+ *
+ * @param {Object} [logger] - Optional logger instance for debug output.
+ * @returns {void}
+ */
 teardownRegistry.add((logger) => {
   if (logger && typeof logger.debug === 'function') {
     logger.debug(`Graceful shutdown: aborting ${activeControllers.size} active connections`);
@@ -37,6 +62,12 @@ teardownRegistry.add((logger) => {
 /**
  * Orchestrates the request lifecycle: overrides headers, handles client aborts,
  * invokes fallback and retry engines, and tracks active abort controllers.
+ *
+ * The orchestrator is intentionally stateless across requests — every call to
+ * `executeCompletion` creates its own AbortController, registers its own
+ * close listener, and tears everything down in a `finally` block. This keeps
+ * the class cheap to instantiate and makes it safe to share one instance
+ * across many concurrent requests.
  */
 export class UnifiedOrchestrator {
   /**

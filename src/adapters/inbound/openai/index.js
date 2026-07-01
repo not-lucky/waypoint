@@ -6,13 +6,36 @@ import { BaseController } from '../base.js';
 
 /**
  * Protocol controller for the OpenAI-compatible ingress endpoints.
- * Upstream is OpenAI-compatible; ingress is OpenAI-shape; no translation needed.
+ *
+ * The upstream is OpenAI-compatible and the ingress is also OpenAI-shape,
+ * so no body translation is required. Only the response format field
+ * mapping (`max_tokens` → `maxTokens`, `stream` boolean coercion) is
+ * performed in `translateReq`.
+ *
+ * Streaming responses use `data: {JSON}\n\n` framing followed by a
+ * terminal `data: [DONE]\n\n` sentinel.
+ *
+ * @extends BaseController
  */
 export class OpenAIController extends BaseController {
+  /**
+   * @param {import('../../../application/orchestrator.js').UnifiedOrchestrator} orchestrator -
+   *   The shared orchestrator.
+   */
   constructor(orchestrator) {
     super(orchestrator, 'openai');
   }
 
+  /**
+   * Entry point for the `/chat/completions` route. Delegates to
+   * `executeRequest` with the OpenAI ingress format and an identity
+   * translator (we accept OpenAI-shaped bodies directly).
+   *
+   * @async
+   * @param {import('express').Request} req - Express request.
+   * @param {import('express').Response} res - Express response.
+   * @returns {Promise<import('express').Response>}
+   */
   async handleCompletion(req, res) {
     return this.executeRequest(req, res, {
       protocolName: 'OpenAI',
@@ -31,6 +54,19 @@ export class OpenAIController extends BaseController {
     });
   }
 
+  /**
+   * Streams the upstream response to the client as SSE frames.
+   *
+   * Side effects: writes `data: {...}\n\n` frames and a final `[DONE]`
+   * sentinel, maintains a running accumulator for the debug log, and
+   * emits an SSE error frame if the upstream throws mid-stream.
+   *
+   * @async
+   * @param {import('express').Response} res - Express response.
+   * @param {AsyncIterable<Object>} response - The async iterable of OpenAI-shaped chunks.
+   * @param {Object} reqLog - Per-request debug logger.
+   * @returns {Promise<import('express').Response>}
+   */
   async handleStream(res, response, reqLog) {
     this.logger.debug('Starting OpenAI SSE response stream');
 

@@ -3,6 +3,11 @@
  * Prevents redundant recalculations on every request.
  */
 export class ModelCache {
+  /**
+   * Initializes a new ModelCache instance.
+   *
+   * @param {Object} config - The application configuration object containing active providers.
+   */
   constructor(config) {
     this.config = config;
     this.cachedUniqueModels = null;

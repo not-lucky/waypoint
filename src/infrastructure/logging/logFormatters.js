@@ -18,6 +18,8 @@ const LEVEL_COLORS = {
  * Returns the colored `[LEVEL]` tag for the text formatter when stdout is a
  * TTY; otherwise returns the plain string. `styleText` is wrapped here so the
  * formatter stays simple and so the no-TTY path is allocation-free.
+ *
+ * @private
  * @param {string} level
  * @returns {string}
  */
@@ -86,7 +88,11 @@ export const customJsonFormatter = (record) => {
 };
 
 /**
- * Escapes special characters in log values for safe formatting.
+ * Escapes special characters in log values to guarantee log-reader safety.
+ *
+ * Wraps values in quotes if they contain spaces, quotes, or whitespace characters, escaping inner quotes.
+ *
+ * @private
  * @param {string} val - Value to escape
  * @returns {string} Escaped value
  */
@@ -99,6 +105,10 @@ const escapeLogValue = (val) => {
 
 /**
  * Formats a single property value for log output.
+ *
+ * Coerces Errors to message tags and structural objects to JSON strings.
+ *
+ * @private
  * @param {*} val - Value to format
  * @returns {string} Formatted value string
  */

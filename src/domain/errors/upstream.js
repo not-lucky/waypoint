@@ -101,8 +101,12 @@ export class UpstreamError extends Error {
 /**
  * Extracts response headers from an error object.
  *
- * @param {any} error - Error object with potential headers.
- * @returns {Object} Normalized headers object.
+ * Handles native Headers objects (such as those returned by standard fetch) as well
+ * as plain objects under `response.headers` or top-level `headers`. Normalizes keys to lowercase.
+ *
+ * @private
+ * @param {any} error - Caught error structure.
+ * @returns {Object<string, string>} Normalized key-value header mappings.
  */
 const extractResponseHeaders = (error) => {
   const rawHeaders = error?.response?.headers ?? error?.headers;
@@ -118,11 +122,13 @@ const extractResponseHeaders = (error) => {
 };
 
 /**
- * Resolves the upstream HTTP status from a caught error.
- * Looks at `statusCode`, `status`, and `response.status` in that order.
+ * Resolves the upstream HTTP status code from a caught error.
  *
- * @param {any} error
- * @returns {number|undefined}
+ * Inspects `statusCode`, `status`, and nested `response.status` properties.
+ *
+ * @private
+ * @param {any} error - Caught error structure.
+ * @returns {number|undefined} The resolved status code, or undefined if unavailable.
  */
 const resolveStatusCode = (error) => {
   if (typeof error?.statusCode === 'number') return error.statusCode;
@@ -251,7 +257,9 @@ export const createStreamUpstreamError = (upstreamBody, statusCode, provider, he
  *
  * @param {any} parsedData - Parsed SSE event data.
  * @param {string} provider - Provider name.
- * @param {Object} [headers] - Optional response headers.
+ * @param {Object} [headers={}] - Optional response headers.
+ * @throws {UpstreamError} Throws an UpstreamError if the payload contains an inline error definition.
+ * @returns {void}
  */
 export const throwIfStreamErrorPayload = (parsedData, provider, headers = {}) => {
   if (!parsedData?.error) return;

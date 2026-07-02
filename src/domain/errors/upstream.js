@@ -17,20 +17,46 @@
  */
 export const classifyTransportError = (error) => {
   const message = error?.message || String(error);
-  const msgLower = message.toLowerCase();
+  const causeMessage = error?.cause?.message || '';
+  const combinedMessage = `${message} ${causeMessage}`.trim();
+  const msgLower = combinedMessage.toLowerCase();
+  const errorName = error?.name || '';
+  const causeName = error?.cause?.name || '';
+  const errorCode = error?.code;
+  const causeCode = error?.cause?.code;
   let code = 'connect_timeout';
 
   if (msgLower.includes('ssl') || msgLower.includes('tls') || msgLower.includes('certificate') || msgLower.includes('cert') || msgLower.includes('handshake')) {
     code = 'tls_error';
-  } else if (error?.name === 'TimeoutError' || msgLower.includes('timeout') || msgLower.includes('abort') || error?.code === 'ETIMEDOUT') {
+  } else if (
+    errorName === 'TimeoutError'
+    || causeName === 'TimeoutError'
+    || causeName === 'HeadersTimeoutError'
+    || causeName === 'BodyTimeoutError'
+    || msgLower.includes('timeout')
+    || msgLower.includes('abort')
+    || errorCode === 'ETIMEDOUT'
+    || causeCode === 'ETIMEDOUT'
+    || causeCode === 'UND_ERR_HEADERS_TIMEOUT'
+    || causeCode === 'UND_ERR_BODY_TIMEOUT'
+  ) {
     code = 'read_timeout';
-  } else if (msgLower.includes('dns') || msgLower.includes('enotfound') || msgLower.includes('eaddrinfo') || msgLower.includes('econnrefused') || msgLower.includes('econnreset') || msgLower.includes('fetch failed')) {
+  } else if (
+    msgLower.includes('dns')
+    || msgLower.includes('enotfound')
+    || msgLower.includes('eaddrinfo')
+    || msgLower.includes('econnrefused')
+    || msgLower.includes('econnreset')
+    || msgLower.includes('fetch failed')
+    || causeCode === 'UND_ERR_CONNECT_TIMEOUT'
+  ) {
     code = 'connect_timeout';
   }
 
   const httpStatus = code === 'read_timeout' ? 504 : 503;
+  const detailMessage = message === 'fetch failed' && causeMessage ? causeMessage : message;
 
-  return { code, message: `Upstream connection failed: ${message}`, httpStatus };
+  return { code, message: `Upstream connection failed: ${detailMessage}`, httpStatus };
 };
 
 /**
@@ -266,4 +292,3 @@ export const throwIfStreamErrorPayload = (parsedData, provider, headers = {}) =>
   const statusCode = resolveStreamErrorStatus(parsedData);
   throw createStreamUpstreamError(parsedData, statusCode, provider, headers);
 };
-

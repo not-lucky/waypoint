@@ -1,3 +1,4 @@
+import { createServer } from 'node:http';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { wireServices } from '../../src/infrastructure/web/wireServices.js';
 import { createApp } from '../../src/infrastructure/web/createApp.js';
@@ -42,6 +43,35 @@ describe('Global HTTP Dispatcher', () => {
     const agent = installGlobalDispatcher();
     expect(agent).toBeDefined();
     expect(typeof agent.dispatch).toBe('function');
+  });
+
+  it('disables undici header timeout so AbortSignal controls request lifetime', async () => {
+    const server = createServer((req) => {
+      req.resume();
+    });
+
+    await new Promise((resolve) => server.listen(0, resolve));
+    const { port } = server.address();
+    installGlobalDispatcher();
+
+    try {
+      await expect(fetch(`http://127.0.0.1:${port}/`, {
+        method: 'POST',
+        body: '{}',
+        headers: { 'content-type': 'application/json' },
+        signal: AbortSignal.timeout(50),
+      })).rejects.toMatchObject({
+        name: 'TimeoutError',
+        message: 'The operation was aborted due to timeout',
+      });
+    } finally {
+      await new Promise((resolve, reject) => {
+        server.close((err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+    }
   });
 });
 

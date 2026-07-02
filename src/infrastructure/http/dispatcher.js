@@ -50,6 +50,22 @@ const CONNECTIONS_PER_ORIGIN = 32;
 const PIPELINING = 1;
 
 /**
+ * Disable undici's internal response-header timeout so the gateway's own
+ * AbortSignal-based `httpTimeoutMs` remains the single source of truth for
+ * how long unary requests may wait upstream.
+ * @const {number}
+ */
+const HEADERS_TIMEOUT_MS = 0;
+
+/**
+ * Disable undici's internal response-body timeout for the same reason as
+ * `HEADERS_TIMEOUT_MS`. Streaming routes are governed by `streamTimeoutMs`
+ * and unary routes by `httpTimeoutMs`.
+ * @const {number}
+ */
+const BODY_TIMEOUT_MS = 0;
+
+/**
  * Cached instance of the undici keep-alive Agent.
  *
  * @private
@@ -73,6 +89,8 @@ export function installGlobalDispatcher() {
       keepAliveMaxTimeout: KEEP_ALIVE_MAX_TIMEOUT_MS,
       connections: CONNECTIONS_PER_ORIGIN,
       pipelining: PIPELINING,
+      headersTimeout: HEADERS_TIMEOUT_MS,
+      bodyTimeout: BODY_TIMEOUT_MS,
     });
   }
   setGlobalDispatcher(sharedAgent);

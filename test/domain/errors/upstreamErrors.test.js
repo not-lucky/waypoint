@@ -177,6 +177,20 @@ describe('classifyTransportError', () => {
     expect(timeout.code).toBe('read_timeout');
     expect(timeout.httpStatus).toBe(504);
   });
+
+  it('classifies undici header timeout causes as read timeouts', () => {
+    const timeout = classifyTransportError({
+      message: 'fetch failed',
+      cause: {
+        name: 'HeadersTimeoutError',
+        message: 'Headers Timeout Error',
+        code: 'UND_ERR_HEADERS_TIMEOUT',
+      },
+    });
+    expect(timeout.code).toBe('read_timeout');
+    expect(timeout.httpStatus).toBe(504);
+    expect(timeout.message).toContain('Headers Timeout Error');
+  });
 });
 
 describe('normalizeUpstreamError', () => {
@@ -200,6 +214,21 @@ describe('normalizeUpstreamError', () => {
     expect(res.statusCode).toBeUndefined();
     expect(res.transportCode).toBe('connect_timeout');
     expect(res.message).toContain('fetch failed');
+  });
+
+  it('uses the nested undici cause when fetch failed wraps a headers timeout', () => {
+    const res = normalizeUpstreamError({
+      message: 'fetch failed',
+      cause: {
+        name: 'HeadersTimeoutError',
+        message: 'Headers Timeout Error',
+        code: 'UND_ERR_HEADERS_TIMEOUT',
+      },
+    }, 'gemini');
+    expect(res.statusCode).toBeUndefined();
+    expect(res.transportCode).toBe('read_timeout');
+    expect(res.errorCode).toBe('read_timeout');
+    expect(res.message).toContain('Headers Timeout Error');
   });
 
   it('parses Retry-After from headers', () => {

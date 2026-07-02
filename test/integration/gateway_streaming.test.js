@@ -264,4 +264,63 @@ describe('Gateway E2E Streaming & Abort Flow', () => {
       await close();
     }
   });
+
+  it('places key on cooldown when mid-stream failure occurs', async () => {
+    const config = createStreamingConfig();
+    const mockAdapter = new MockAdapter();
+    const chunks = [
+      {
+        id: 'chunk1',
+        object: 'chat.completion.chunk',
+        choices: [{ index: 0, delta: { content: 'hello' } }],
+      },
+      {
+        delay: 20,
+      }
+    ];
+
+    Object.defineProperty(chunks, 2, {
+      get() {
+        const err = new Error('Upstream Rate Limit');
+        err.statusCode = 429;
+        err.provider = 'requesty';
+        throw err;
+      }
+    });
+
+    mockAdapter.chunksToYield = chunks;
+
+    const { app, close, services } = await createTestApp({
+      config,
+      configureServices: ({ providerFactory }) => {
+        providerFactory.register('requesty', mockAdapter);
+      },
+    });
+
+    const keyRegistry = services.keyRegistry;
+
+    try {
+      const response = await request(app)
+        .post('/chat/completions')
+        .set('Authorization', 'Bearer test-client-token')
+        .send({
+          model: 'requesty/custom-model',
+          stream: true,
+          messages: [{ role: 'user', content: 'trigger mid-stream failure' }],
+        })
+        .expect(200);
+
+      expect(response.text).toContain('hello');
+      expect(response.text).toContain('rate_limit_error');
+      
+      const pool = keyRegistry.pools['requesty'];
+      const keyObj = pool.keys[0];
+      expect(keyObj.active).toBe(false);
+      expect(keyObj.cooldownUntil).not.toBeNull();
+      expect(keyObj.consecutiveFailures).toBeGreaterThan(0);
+    } finally {
+      await close();
+    }
+  });
 });
+

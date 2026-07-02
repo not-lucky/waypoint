@@ -459,5 +459,174 @@ describe('Gateway E2E Provider Integrations', () => {
         await cfClose();
       }
     });
+
+    it('correctly routes Cloudflare streaming completions and uses credentials', async () => {
+      const customConfig = {
+        gateway: { port: 0, globalRetryLimit: 1 },
+        logging: { enableConsole: false, enableFile: false, format: 'json' },
+        clients: [{ name: 'test', token: 'token-cf' }],
+        providers: {
+          cloudflare: {
+            keys: [
+              { apiKey: 'cf-key-secret-stream', accountId: 'cf-acct-54321' },
+            ],
+            models: [
+              { modelid: '@cf/meta/llama-3.1-8b-instruct', aliases: ['cf-llama'] },
+            ],
+          },
+        },
+      };
+
+      const { app: cfApp, close: cfClose } = await createTestApp({ config: customConfig });
+
+      server.use(
+        http.post('https://api.cloudflare.com/client/v4/accounts/cf-acct-54321/ai/v1/chat/completions', async ({ request: upstreamReq }) => {
+          const headers = Object.fromEntries(upstreamReq.headers.entries());
+          expect(headers.authorization).toBe('Bearer cf-key-secret-stream');
+
+          const body = await upstreamReq.json();
+          expect(body.stream).toBe(true);
+
+          return createSseResponse([
+            'data: {"id": "cf-chunk-1", "choices": [{"index": 0, "delta": {"content": "Hello Cloudflare"}, "finish_reason": null}]}\n\n',
+            'data: {"id": "cf-chunk-2", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}\n\n',
+            'data: [DONE]\n\n',
+          ]);
+        })
+      );
+
+      try {
+        const res = await request(cfApp)
+          .post('/chat/completions')
+          .set('Authorization', 'Bearer token-cf')
+          .send({
+            model: 'cloudflare/cf-llama',
+            messages: [{ role: 'user', content: 'cf message stream' }],
+            stream: true,
+          })
+          .expect(200);
+
+        expect(res.text).toContain('Hello Cloudflare');
+      } finally {
+        await cfClose();
+      }
+    });
+  });
+
+  describe('Anthropic & Custom Compatible Stream Reasoning Integration', () => {
+    it('translates Anthropic streaming response thinking blocks to standard reasoning_content', async () => {
+      server.use(
+        http.post('https://api.anthropic.com/v1/messages', async () => {
+          return createSseResponse([
+            'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_anth_thinking","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4-20250514","usage":{"input_tokens":10,"output_tokens":0}}}\n\n',
+            'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n',
+            'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Let me think about this..."}}\n\n',
+            'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"The final answer is hello."}}\n\n',
+            'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":15}}\n\n',
+            'event: message_stop\ndata: {"type":"message_stop"}\n\n',
+          ]);
+        })
+      );
+
+      const res = await request(app)
+        .post('/chat/completions')
+        .set('Authorization', 'Bearer mock-webui-token')
+        .send({
+          model: 'anthropic/claude-sonnet-4-20250514',
+          messages: [{ role: 'user', content: 'thinking please' }],
+          stream: true,
+        })
+        .expect(200);
+
+      const lines = res.text.split('\n').filter(l => l.startsWith('data: '));
+      const chunks = lines.map(line => {
+        try {
+          return JSON.parse(line.replace('data: ', ''));
+        } catch {
+          return null;
+        }
+      }).filter(Boolean);
+
+      let accumulatedReasoning = '';
+      let accumulatedContent = '';
+      for (const chunk of chunks) {
+        const delta = chunk.choices[0]?.delta;
+        if (delta) {
+          if (delta.reasoning_content) accumulatedReasoning += delta.reasoning_content;
+          if (delta.content) accumulatedContent += delta.content;
+        }
+      }
+
+      expect(accumulatedReasoning).toBe('Let me think about this...');
+      expect(accumulatedContent).toBe('The final answer is hello.');
+    });
+
+    it('extracts reasoning from think blocks on custom compatible streaming requests', async () => {
+      const customConfig = {
+        gateway: { port: 0, globalRetryLimit: 1 },
+        logging: { enableConsole: false, enableFile: false, format: 'json' },
+        clients: [{ name: 'test', token: 'token-custom' }],
+        providers: {
+          'custom-provider': {
+            type: 'openai-compatible',
+            baseUrl: 'https://custom-openai.example/v1',
+            keys: ['key-custom'],
+            models: [{
+              modelid: 'custom-model',
+              extractReasoningFromThinkBlocks: true,
+            }],
+          },
+        },
+      };
+
+      const { app: customApp, close: customClose } = await createTestApp({ config: customConfig });
+
+      server.use(
+        http.post('https://custom-openai.example/v1/chat/completions', async () => {
+          return createSseResponse([
+            'data: {"id": "chunk1", "choices": [{"index": 0, "delta": {"content": "<think>Let me formulate advice"}, "finish_reason": null}]}\n\n',
+            'data: {"id": "chunk2", "choices": [{"index": 0, "delta": {"content": "</think>My advice is here."}, "finish_reason": "stop"}]}\n\n',
+            'data: [DONE]\n\n',
+          ]);
+        })
+      );
+
+      try {
+        const res = await request(customApp)
+          .post('/chat/completions')
+          .set('Authorization', 'Bearer token-custom')
+          .send({
+            model: 'custom-provider/custom-model',
+            messages: [{ role: 'user', content: 'custom advice please' }],
+            stream: true,
+          })
+          .expect(200);
+
+        const lines = res.text.split('\n').filter(l => l.startsWith('data: '));
+        const chunks = lines.map(line => {
+          try {
+            return JSON.parse(line.replace('data: ', ''));
+          } catch {
+            return null;
+          }
+        }).filter(Boolean);
+
+        let accumulatedReasoning = '';
+        let accumulatedContent = '';
+        for (const chunk of chunks) {
+          const delta = chunk.choices[0]?.delta;
+          if (delta) {
+            if (delta.reasoning_content) accumulatedReasoning += delta.reasoning_content;
+            if (delta.content) accumulatedContent += delta.content;
+          }
+        }
+
+        expect(accumulatedReasoning).toBe('Let me formulate advice');
+        expect(accumulatedContent).toBe('My advice is here.');
+      } finally {
+        await customClose();
+      }
+    });
   });
 });
+

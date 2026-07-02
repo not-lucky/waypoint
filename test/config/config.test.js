@@ -239,7 +239,51 @@ providers:
     expect(config.gateway.port).toBe(30001);
     expect(config.clients[0].rateLimit.max).toBe(50);
   });
+
+  it('returns cached configuration on subsequent loadConfig calls', () => {
+    const config1 = configLoader.loadConfig();
+    const config2 = configLoader.loadConfig();
+    expect(config1).toBe(config2);
+  });
+
+  it('throws error when parsing an invalid non-object structure', () => {
+    expect(() => configLoader.interpolateAndValidate(null)).toThrow('Invalid configuration structure.');
+    expect(() => configLoader.interpolateAndValidate('string')).toThrow('Invalid configuration structure.');
+  });
+
+  it('skips Cloudflare key interpolation if apiKey or accountId environment variable is missing', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const loader = new ConfigLoader();
+    const baseConfig = getBaseValidConfig();
+    baseConfig.providers = {
+      cloudflare: {
+        keys: [{ apiKey: '${MISSING_ENV_VAR}', accountId: 'some-acct' }],
+        models: ['m']
+      }
+    };
+    expect(() => loader.interpolateAndValidate(baseConfig)).toThrow('zero active keys');
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it('skips key and warns on unsupported key entry shapes in configUtils', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const loader = new ConfigLoader();
+    const baseConfig = getBaseValidConfig();
+    baseConfig.providers = {
+      gemini: {
+        keys: [12345, true],
+        models: ['m']
+      }
+    };
+    expect(() => loader.interpolateAndValidate(baseConfig)).toThrow('zero active keys');
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
 });
+
+
 
 describe('Zod Schema Validation Tests', () => {
   beforeEach(() => {

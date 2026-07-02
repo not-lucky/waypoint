@@ -6,8 +6,10 @@ import { KeyRegistry } from '../../src/domain/keys/keyRegistry.js';
 import { ProviderFactory } from '../../src/adapters/outbound/factory.js';
 import { MetricsCollector } from '../../src/infrastructure/monitoring/metricsCollector.js';
 import { installGlobalDispatcher } from '../../src/infrastructure/http/dispatcher.js';
-import { bootstrap, shutdownServer } from '../../src/infrastructure/web/server.js';
+import { bootstrap, shutdownServer, createServer as createWebServer } from '../../src/infrastructure/web/server.js';
 import { ConfigLoader } from '../../src/config/loader.js';
+import { TeardownRegistry } from '../../src/infrastructure/lifecycle/teardownRegistry.js';
+
 
 describe('Dependency Injection & Service Wiring', () => {
   it('wires all core gateway services from config', () => {
@@ -140,5 +142,53 @@ describe('Server Bootstrap and Safety Nets', () => {
       await expect(handler(new Error('unhandled rejection'))).rejects.toThrow('process.exit called');
       expect(exitSpy).toHaveBeenCalledWith(1);
     }
+  });
+
+  it('triggers the server listening callback and logs port', async () => {
+    const config = { gateway: { port: 0 } };
+    const mockLogger = { debug: vi.fn(), info: vi.fn() };
+    const services = wireServices({
+      gateway: { routing: { strategy: 'round-robin' } },
+      providers: { gemini: { keys: ['k'], models: ['m'] } },
+    });
+    const app = createApp(config, services, mockLogger);
+    const server = createWebServer(app, config, mockLogger);
+    
+    await new Promise(resolve => {
+      if (server.listening) resolve();
+      else server.once('listening', resolve);
+    });
+    
+    await new Promise(resolve => setTimeout(resolve, 50));
+    
+    expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining('Waypoint listening on port'));
+    await new Promise(resolve => server.close(resolve));
+  });
+
+  describe('TeardownRegistry', () => {
+    it('runs hooks in order and handles hook execution errors gracefully', async () => {
+      const registry = new TeardownRegistry();
+      const mockLogger = { error: vi.fn(), debug: vi.fn() };
+      
+      const calls = [];
+      registry.add(async () => { calls.push(1); });
+      registry.add(async () => {
+        calls.push(2);
+        throw new Error('Hook failure');
+      });
+      registry.add(async () => { calls.push(3); });
+      
+      await registry.execute(mockLogger);
+      expect(calls).toEqual([1, 2, 3]);
+      expect(mockLogger.error).toHaveBeenCalledWith('Error executing teardown hook:', expect.any(Error));
+      
+      registry.clear();
+      expect(registry.hooks).toHaveLength(0);
+    });
+
+    it('throws if a non-function is added to the registry', () => {
+      const registry = new TeardownRegistry();
+      expect(() => registry.add(null)).toThrow('Teardown hook must be a function');
+    });
   });
 });
